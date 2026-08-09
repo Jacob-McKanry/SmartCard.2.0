@@ -323,6 +323,39 @@ Every readable row must be justified by a specific graph relationship — there'
 
 `connection_attempts`, `app_config`, `pending_connections` have no user-facing read policy at all.
 
+### 3.6 Implementation notes and judgment calls (added 2026-08-09, schema + RLS phase)
+
+Recorded here rather than left implicit in a diff, per the documentation standard. The schema and all policies were implemented from §2/§3 and applied to project `crpsbnbegeoqtlgshltt`; migrations live in `supabase/migrations/`. Nothing below changes a signed-off decision — these are the places §2/§3 did not specify an answer and one had to be chosen, plus two corrections where implementation proved a stated assumption wrong.
+
+**Two corrections to §3.1's pattern.**
+
+1. *The revoke needs a matching grant.* §3.1 shows `revoke all on public.<t> from anon, authenticated` but not the other half. Supabase's default privileges grant ALL on every new `public` table to both roles, so the revoke is essential — but a policy alone cannot make a table readable, because RLS filters rows while GRANT decides verbs. Every table therefore also carries an explicit, narrow grant to `authenticated` (never to `anon`, which holds nothing anywhere in this schema), written next to the policy that constrains it. Column-level grants do real work: `users.is_admin`, `users.status`, `users.kinde_user_id`, `cards.owner_user_id` and `connections.origin_meeting_id` are outside the update grants, because RLS cannot express "this row but not that column".
+
+2. *Policy expressions do re-check function EXECUTE.* The helper functions were initially locked away from `authenticated` entirely, on the assumption that a policy expression runs with the table owner's rights. It does not — that rule covers *tables* referenced in a policy, not *functions* — and the result was every policy failing with `permission denied for function current_user_id`. Caught by exercising the policies against a simulated JWT, not by reading the catalog. `20260809211400_rls_helper_function_grants.sql` grants EXECUTE to `authenticated` on the seven policy-referenced helpers. This does **not** reopen the graph oracle §3.3 forbids: USAGE on schema `private` stays revoked, so the functions still cannot be *named* in a query (verified: a direct call is refused with `permission denied for schema private`), and PostgREST cannot reach a non-exposed schema at any grant level.
+
+**Helpers added beyond §3.1's list.** `private.meeting_party(meeting_id, n)` is spec'd as §3.2 references it: the nth participant, **ordered by `user_id`** so the two calls inside one policy evaluation cannot return the same person, returning null past the end so callers fail closed. `private.can_see_meeting()` and `private.can_see_event()` exist because the same visibility rule is applied from two tables each (`meetings` + `meeting_participants`, `events` + the RSVP insert check) and two copies of an access rule is a disclosure waiting to happen.
+
+**Where §2/§3 was silent and a call was made.**
+
+| Decision | Call taken | Why, and what to watch |
+|---|---|---|
+| Nullability, generally | NOT NULL where the row is meaningless or unsafe without the column; nullable otherwise | §2 gives types, not nullability. "Everything required" would block the 337-user import; "everything optional" would let a meeting exist with no timestamp. |
+| `users.email` | NOT NULL | §2.1 marks `username` nullable explicitly and `email` not; every account starts from a Kinde signup carrying an email. If the import turns up emailless rows this is one reviewed `alter column`. |
+| `meetings.verification_session_id` | NOT NULL **and** UNIQUE | NOT NULL makes "every meeting traces to a verification" structural. UNIQUE means one session cannot produce two meetings, i.e. a replay is unrepresentable. **Watch:** this assumes the NFC redeem path creates a session row, which §2.5's `method` enum and §2.8 both imply. If it is later built without one, create the session — do not drop the constraint. |
+| `connections.origin_meeting_id` | NOT NULL | An edge with no origin is an edge nobody can account for. |
+| Meeting visibility (feed post) | Mutual of **both** parties | §3.2's only worked example uses mutual-of-both. "Connected to either" would surface the existence and identity of someone the viewer has no relationship with. If the feed phase wants the looser rule, that is a reviewed migration. |
+| `shares_event_with` | Both sides must be `going` | `interested` is an intention, not attendance; counting it would make two strangers at a large public event mutually visible. This is still the widest branch of the `users` policy and the first thing to re-examine if events outgrow the pilot. |
+| `events.visibility` values | `public` \| `private`, defaulting to `private` | Smallest set that supports §2.6's reasoning. Fail-closed default: broad visibility is an explicit choice. |
+| Event creation | No INSERT policy or grant at all | Q5 is open. The fail-closed reading of an open question is "nobody". Opening it up once Q5 lands is one policy + one grant. |
+| `connection_attempts.outcome` | `success` \| `rejected` | §4.2 describes only these two. Friction on adding a third is a feature for an audit table whose value is cross-row comparability. |
+| `pending_connections.status` | `pending` \| `claimed` \| `expired` \| `cancelled` | Minimum the deferred flow needs; expect §2.8's build phase to revisit. |
+| `app_config.updated_by` | `uuid` FK → `users`, ON DELETE SET NULL | Type unspecified in §2.5. A real identity beats an unverifiable string; SET NULL so the config outlives the admin. |
+| Connection removal | UPDATE policy allowing `active` → `removed` **only** | `removed` exists in §2.3's enum, so users can remove. The one-way constraint matters: re-activating would produce a live edge with no fresh verification — an INSERT by another verb. |
+| FK delete behaviour | CASCADE for personal data and edges; RESTRICT for shared history and physical inventory (cards, hosted events, origin meetings); SET NULL for audit rows | Users are soft-deleted; a hard delete is an administrative act, and these rules decide what that act may destroy silently. |
+| `blocks` in the `users` policy | Not included | §3.4's policy has no block branch, and blocks are enforced at connection time. Q4 is open; adding profile-hiding is a deliberate amendment, not a slip-in. |
+
+**Observations for later phases, not changes.** (a) `private.connections_attending()` is implemented in `private` as §3.3 specifies and is therefore not callable by the apps — the events phase will need a thin `public` wrapper with an EXECUTE grant, which is where that decision belongs. (b) `meeting_locations` has no write policy at all, so nothing can write it until the verification service exists; that is §3.2's intent, not a gap. (c) `meeting_party()` only ever checks participants 1 and 2 — meetings are pairwise by construction, and introducing group meetings requires revisiting §3.2 rather than just the table.
+
 ---
 
 ## 4. Connection verification design

@@ -38,7 +38,11 @@ docs/
 
 ## Status
 
-Pre-implementation. See the architecture proposal for the full stack, schema, RLS strategy, and connection-verification design. Build order for the first pilot:
+Database schema and Row Level Security policies are implemented and applied (`supabase/migrations/`, mirrored as Zod schemas in `packages/types/src/db/`). Everything above that layer — auth wiring, API routes, connection-verification logic — is still to build.
+
+One thing to expect while working on the next phase: until the Kinde → Supabase token exchange exists (architecture proposal §5.4), `auth.uid()` returns nothing, so every RLS policy denies every row for every client. That is the schema failing closed exactly as designed, not a bug to work around. Server-side code using the service role bypasses RLS and is unaffected.
+
+See the architecture proposal for the full stack, schema, RLS strategy, and connection-verification design; §3.6 records the judgment calls made while implementing the schema. Build order for the first pilot:
 
 1. Profile
 2. Connect flow — NFC + QR/GPS (highest security priority)

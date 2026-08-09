@@ -1,13 +1,14 @@
-// packages/types is the single source of truth for data shapes once the
-// database schema lands: one Zod schema per table/row will drive both
-// runtime validation (parsing API responses, form input) and the
-// TypeScript types derived from it (`z.infer<...>`), so the shape can't
-// drift between the two. The next phase (database schema + RLS) populates
-// this file to mirror docs/architecture/2026-08-09-initial-architecture-proposal.md
-// §2 exactly — field names are deliberately not pre-guessed here.
-import { z } from "zod";
-
-// Placeholder only, to prove the workspace wiring (apps -> packages/types)
-// and the zod dependency resolve correctly.
-export const placeholderSchema = z.object({ ok: z.literal(true) });
-export type Placeholder = z.infer<typeof placeholderSchema>;
+// packages/types is the single source of truth for data shapes (§1.3 of the
+// architecture proposal): one Zod schema drives both runtime validation and the
+// TypeScript type derived from it via `z.infer`, so the two cannot drift.
+//
+// `./db` mirrors the database schema created by supabase/migrations — one file
+// per table, with the same column names, types and nullability as the SQL.
+// Anything added there must be added in the migration that creates the column,
+// in the same change.
+//
+// Request/response schemas for the API (§1.7) and the verification-input
+// schemas from §4.1 are not here yet: those belong with the routes and the
+// verification service that define them, and will land in the phases that build
+// them.
+export * from "./db";
