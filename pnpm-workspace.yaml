@@ -1,0 +1,15 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Expo's Metro bundler cannot resolve pnpm's default node_modules layout, so
+# node_modules is laid out flat (npm/yarn classic style) instead. See
+# .npmrc for the long version of why, and
+# docs/architecture/2026-08-09-initial-architecture-proposal.md §1.2.
+nodeLinker: hoisted
+
+# unrs-resolver is a native-binary dependency pulled in transitively by
+# eslint tooling; approving its postinstall script (rather than leaving it
+# silently ignored) avoids an "ignored build scripts" warning on every install.
+allowBuilds:
+  unrs-resolver: true

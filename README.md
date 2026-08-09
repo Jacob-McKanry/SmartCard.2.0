@@ -36,8 +36,6 @@ docs/
   architecture/ Signed-off architecture decisions and their rationale
 ```
 
-*(Scaffolding not yet created — this is the target layout from the signed-off architecture proposal.)*
-
 ## Status
 
 Pre-implementation. See the architecture proposal for the full stack, schema, RLS strategy, and connection-verification design. Build order for the first pilot:
@@ -52,4 +50,24 @@ Messaging and the non-user landing/pending-connection flow are deferred past the
 
 ## Getting started
 
-To be filled in once the monorepo is scaffolded.
+**Prerequisites:** Node 22+, and [Corepack](https://nodejs.org/api/corepack.html) enabled (`corepack enable && corepack prepare pnpm@latest --activate`) — this repo uses pnpm workspaces + Turborepo, pinned via `packageManager` in `package.json`, so plain `npm`/`yarn` won't work correctly here.
+
+```sh
+pnpm install
+```
+
+**Web (Next.js):**
+
+```sh
+pnpm --filter web dev
+```
+
+**Mobile (Expo):**
+
+```sh
+pnpm --filter mobile start
+```
+
+NFC work later in the build order needs an EAS development build, not Expo Go — see `docs/architecture/` §7.2.
+
+**Environment variables** come from a single `.env.local` at the repo root (gitignored — never committed). Both apps' dev scripts load it directly rather than keeping a per-app copy. If it's missing, ask the project owner for values.
