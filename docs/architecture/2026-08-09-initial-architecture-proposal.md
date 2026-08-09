@@ -1,6 +1,6 @@
 # SmartCard 2.0 — Technical Architecture Proposal
 
-**Status:** §1.4 (no shared UI components between web/mobile) confirmed by project owner on 2026-08-09. Remaining sections pending sign-off. Open questions Q1, Q2, Q6, Q7, Q12, Q13 block implementation start — see §8 and track resolutions below as they land.
+**Status:** §1.4 (no shared UI components between web/mobile) confirmed by project owner on 2026-08-09. Q2, Q6, Q11, Q12, Q13 resolved (see §8). Only **Q1** (what's physically encoded on the unassigned card inventory) remains a hard blocker on the `cards` table migration — everything else is clear to implement. Q7 (Supabase JWT approach) is a self-verify-against-docs task, not a human decision.
 **Full rendered version:** https://claude.ai/code/artifact/b00877ac-2992-48bc-a511-f8ed1d3940c8
 **Prepared:** 2026-08-09, by an Opus pass at xhigh reasoning effort per the project's model/effort guidance for architecture-and-security-critical design work.
 
@@ -561,7 +561,7 @@ Tracked here as they resolve — update this table in place rather than deleting
 | # | Question | Status |
 |---|---|---|
 | Q1 | What is physically encoded on the 6,809 unassigned cards? (blocks `cards` schema — highest priority) | Open |
-| Q2 | What's the pilot venue, and is it indoors? (drives starting GPS radius) | Open |
+| Q2 | What's the pilot venue, and is it indoors? (drives starting GPS radius) | **Resolved 2026-08-09** — not known yet / varies by event. Defaulting to the recommended starting radius (150m), server-side config, tuned from `connection_attempts` rejection logs after the first pilot event. |
 | Q3 | Do we still need `username`, given no global search? | Open |
 | Q4 | Block/report in the pilot scope? | Open |
 | Q5 | Who can create events for the pilot — anyone, or hosts only? | Open |
@@ -570,9 +570,9 @@ Tracked here as they resolve — update this table in place rather than deleting
 | Q8 | Is "presenter must keep the app open" acceptable UX (heartbeat requirement)? | Open |
 | Q9 | App Store review risk — need a documented demo/reviewer test path? | Open |
 | Q10 | Contacts import: hash retention window, user delete control? | Open |
-| Q11 | Rate limiting backend — Upstash Redis vs. a Postgres table? | Open |
-| Q12 | Is the Vercel `front-end-playground` project disposable? | Open |
-| Q13 | Supabase plan/region/backups — Free vs. Pro with PITR? | Open |
+| Q11 | Rate limiting backend — Upstash Redis vs. a Postgres table? | **Resolved 2026-08-09** — Postgres table. Zero extra cost/service at pilot scale; the check is a small, swappable piece if Upstash is needed later. |
+| Q12 | Is the Vercel `front-end-playground` project disposable? | **Resolved 2026-08-09** — yes, disposable leftover from earlier experimentation. Left untouched; a fresh `smartcard-web` project is created alongside it, nothing built in this repo depends on it. |
+| Q13 | Supabase plan/region/backups — Free vs. Pro with PITR? | **Resolved 2026-08-09** — start on Free while building with no real user data at stake; upgrade to Pro (backups, no auto-pause) before the production data migration / pilot go-live, so real data is never without a backup. |
 | Q14 | Recurring events — one `events` row per occurrence (recommended), or a recurrence concept? | Open |
 
 ---
