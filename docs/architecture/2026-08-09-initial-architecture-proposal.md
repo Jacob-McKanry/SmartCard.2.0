@@ -565,7 +565,7 @@ Tracked here as they resolve — update this table in place rather than deleting
 | Q3 | Do we still need `username`, given no global search? | Open |
 | Q4 | Block/report in the pilot scope? | Open |
 | Q5 | Who can create events for the pilot — anyone, or hosts only? | Open |
-| Q6 | How many of the 337 legacy users have a null/stale `kindeuserid`? | Open — query once DB provisioned |
+| Q6 | How many of the 337 legacy users have a null/stale `kindeuserid`? | **Resolved 2026-08-09** — 0 of 337 users have a null or empty `kindeuserid`, and no duplicates exist. No manual reconciliation flow needed; every legacy user lands cleanly on their existing row via the Kinde join key. |
 | Q7 | Confirm the Supabase JWT approach (§5.4) against current docs before building | Open |
 | Q8 | Is "presenter must keep the app open" acceptable UX (heartbeat requirement)? | Open |
 | Q9 | App Store review risk — need a documented demo/reviewer test path? | Open |
