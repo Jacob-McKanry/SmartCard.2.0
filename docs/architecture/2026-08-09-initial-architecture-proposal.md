@@ -1,6 +1,6 @@
 # SmartCard 2.0 — Technical Architecture Proposal
 
-**Status:** §1.4 (no shared UI components between web/mobile) confirmed by project owner on 2026-08-09. Q2, Q6, Q11, Q12, Q13 resolved (see §8). Only **Q1** (what's physically encoded on the unassigned card inventory) remains a hard blocker on the `cards` table migration — everything else is clear to implement. Q7 (Supabase JWT approach) is a self-verify-against-docs task, not a human decision.
+**Status:** §1.4 (no shared UI components between web/mobile) confirmed by project owner on 2026-08-09. Q1, Q2, Q6, Q11, Q12, Q13, Q15 resolved (see §8) — monorepo scaffolding underway, Supabase project provisioned. No remaining hard blockers on implementation. Q7 (Supabase JWT approach) is a self-verify-against-docs task. Remaining open questions (Q3, Q4, Q5, Q8, Q9, Q10, Q14) are product-scope decisions that land naturally as their relevant build phase comes up, not upfront blockers.
 **Full rendered version:** https://claude.ai/code/artifact/b00877ac-2992-48bc-a511-f8ed1d3940c8
 **Prepared:** 2026-08-09, by an Opus pass at xhigh reasoning effort per the project's model/effort guidance for architecture-and-security-critical design work.
 
@@ -125,19 +125,24 @@ One row per human — no personas, no alternate profiles.
 
 ### 2.2 Cards
 
+**Q1 resolved 2026-08-09 — this section changed from the original proposal.** Tapping a real card shows a fixed URL physically encoded on the chip: `https://smartcard.tech/card/<code>`, where `<code>` is `<cosmetic-prefix>-<12-hex-char-suffix>` (e.g. `CUSTOM-f2a930bcb5fe`). Checked against the full production export: all 7,142 cards have a suffix that is exactly 12 hex characters, unique across every row, with 20 distinct cosmetic prefixes (`StarterCard`, `CUSTOM`, `STANDARD`, `HAT`, `WearTech-SmartHat`, and others — some clearly test/internal labels). The prefix is a vanity label the card owner sets; the suffix is auto-generated and not user-controlled.
+
+That suffix is 48 bits of randomness, unique per card — it already functions as an unguessable token, so **no second secret is needed.** This is a simpler and better design than the original proposal (which planned a separate `card_token`, assuming the visible code was guessable): the existing `card_code` does the job on its own, backed by rate limiting (§4.6) against brute-force guessing. It also means **the full existing inventory — all 6,809 unassigned cards — is usable as-is.** No re-encoding, no dead stock, no fallback plan needed.
+
 **`cards`**
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid | PK |
-| `card_code` | text | unique — legacy `StarterCard-<hex>` printed identifier |
-| `card_token` | text | unique, high-entropy random — what's actually in the NFC tag URL |
+| `card_code` | text | unique — the exact string in the tag URL after `/card/`, e.g. `CUSTOM-f2a930bcb5fe`. Doubles as both the public label and the security-bearing lookup value. |
 | `status` | text | `unassigned` / `assigned` / `revoked` |
 | `owner_user_id` | uuid | FK → users, nullable |
 | `assigned_at`, `created_at` | timestamptz | |
 | `legacy_card_id` | bigint | nullable |
 
-Two identifiers on purpose: `card_code` is human-readable and structurally guessable; `card_token` is the actual secret in the tag URL. Whether new tokens can be written to the existing 6,809 unassigned cards is **open question Q1** — the single biggest unknown blocking this table's final design.
+Any future physical card orders should keep generating codes the same way (cosmetic prefix + a securely-random 12-hex-char suffix) for consistency — there's no reason to introduce a second scheme.
+
+**New dependency this creates — domain control.** The physical chips are permanently encoded with `https://smartcard.tech/card/<code>` and can't be changed without literally re-encoding 7,142 pieces of hardware. That means **`smartcard.tech` itself must route to the new backend** for NFC to work at all post-migration — see the open question on this in §8.
 
 ### 2.3 The social graph
 
@@ -401,15 +406,15 @@ IP-based geolocation is logged as a signal only, never a substitute gate (trivia
 
 ### 4.5 NFC — end to end
 
-Two in-scope cases (card tap, passive NDEF tag read), one code path — both are "the app receives a URL containing a token."
+Two in-scope cases (card tap, passive NDEF tag read), one code path — both are "the app receives a URL containing a code."
 
-1. Tag contains `https://smartcard.app/t/<card_token>` — the opaque random token, not the printed `StarterCard-<hex>` code.
-2. Phone opens the URL via universal/app links (§7.3); no app installed → web preview page.
-3. App calls `POST /api/connect/nfc/redeem { cardToken }` with the scanner's auth.
-4. Server looks up `cards` by `card_token`; requires `status='assigned'`, owner not null, owner ≠ scanner, no block, not already connected.
+1. Tag contains `https://smartcard.tech/card/<code>` — this is the real, physically-fixed format (confirmed by tapping a production card — see §2.2), where `<code>` is `<cosmetic-prefix>-<12-hex-char-suffix>`. The suffix's 48 bits of randomness is what makes this unguessable; the prefix is cosmetic only.
+2. Phone opens the URL via universal/app links (§7.3 — note `smartcard.tech`, not a new domain, must serve the link files); no app installed → web preview page.
+3. App calls `POST /api/connect/nfc/redeem { code }` with the scanner's auth.
+4. Server looks up `cards` by `card_code`; requires `status='assigned'`, owner not null, owner ≠ scanner, no block, not already connected.
 5. Commits connection + meeting, `verification_method='nfc_card'`, `profileRichness='full'`.
 
-The client's claimed card ID/owner is never trusted — identity is resolved server-side from the token alone. No GPS gate for NFC: physical range (a few centimeters) *is* the proximity proof. Rate limiting on redeem velocity per card matters here, since a stolen physical card is a real risk; an owner can set `status='revoked'` to instantly kill a lost card.
+The client's claimed owner is never trusted — identity is resolved server-side from the code alone. No GPS gate for NFC: physical range (a few centimeters) *is* the proximity proof. Rate limiting on redeem velocity per card matters here, since a stolen physical card is a real risk; an owner can set `status='revoked'` to instantly kill a lost card.
 
 ### 4.6 Rate limiting
 
@@ -493,9 +498,7 @@ Risk: rows with null/stale `kindeuserid` can't be matched to a Kinde identity an
 
 ### 6.3 `cards` (7,142 rows)
 
-`cardid` → `card_code`, `ownerid` → `owner_user_id` via the legacy→new UUID map; generate a new random `card_token` per card; 333 assigned, 6,809 unassigned.
-
-**Largest risk in the migration:** the new `card_token` only works if it can be written into the physical tags. If the 6,809 unassigned cards are already encoded with a fixed legacy URL, options are: (1) keep the legacy domain alive routing to the new backend using `card_code` as lookup (weaker — structured/guessable); (2) re-encode the inventory in bulk (physical work on 6,809 items); (3) treat as dead stock, print new cards. **Must be answered before implementation — Q1.**
+`cardid` → `card_code` direct copy (no regeneration needed — see §2.2), `ownerid` → `owner_user_id` via the legacy→new UUID map; 333 assigned, 6,809 unassigned, all usable as-is. This was flagged as the largest migration risk in the original proposal (Q1) — resolved, and turned out simpler than expected: the physical inventory needs no re-encoding and nothing is dead stock. The remaining dependency is DNS/routing for `smartcard.tech` itself (see §8), not the card data.
 
 ### 6.4 `social_links` (466 rows)
 
@@ -540,7 +543,7 @@ NFC requires an EAS development build, not Expo Go — slower dev loop, set up o
 
 ### 7.3 Deep links
 
-For a tapped tag URL to open the app rather than the browser, the web app must serve `/.well-known/apple-app-site-association` (iOS Universal Links) and `/.well-known/assetlinks.json` (Android App Links) — static files on Vercel. Without these, NFC "works" but always lands in the browser, which looks like a broken product.
+For a tapped tag URL to open the app rather than the browser, **`smartcard.tech`** — not whatever domain the new Next.js app deploys to by default — must serve `/.well-known/apple-app-site-association` (iOS Universal Links) and `/.well-known/assetlinks.json` (Android App Links), because that's the exact domain physically baked into the existing card inventory (§2.2). This only works cleanly if `smartcard.tech` itself points at the new backend (or proxies `/card/*` and the `.well-known` files to it) — see the open question in §8. Without this, NFC "works" but always lands in a browser at the wrong domain, which looks like a broken product.
 
 ### 7.4 Environment variable inventory
 
@@ -560,7 +563,8 @@ Tracked here as they resolve — update this table in place rather than deleting
 
 | # | Question | Status |
 |---|---|---|
-| Q1 | What is physically encoded on the 6,809 unassigned cards? (blocks `cards` schema — highest priority) | Open |
+| Q1 | What is physically encoded on the 6,809 unassigned cards? (blocks `cards` schema — highest priority) | **Resolved 2026-08-09** — `https://smartcard.tech/card/<prefix>-<12-hex-char-suffix>`, confirmed by tapping a real card and cross-checked against all 7,142 rows in the production export. The suffix is a unique, auto-generated 48-bit random value; no re-encoding needed, full inventory usable as-is. See §2.2. Creates a new dependency: **Q15**, domain control for `smartcard.tech`. |
+| Q15 | Do we control DNS/hosting for `smartcard.tech`? Does the new app deploy there directly, or does that domain just proxy `/card/*` + the universal-link files to wherever the new app lives? | **Resolved 2026-08-09** — yes, controlled, currently on Cloudflare DNS. `smartcard.tech` becomes the production domain for SmartCard 2.0 directly (not a separate proxy setup). DNS stays on Cloudflare — no registrar/nameserver transfer to Vercel needed; once the Vercel project exists (§7.1, created on first deploy), add `smartcard.tech` as a custom domain there and point Cloudflare's DNS record at it with the Cloudflare proxy ("orange cloud") turned **off** for that record — a proxied record can break Vercel's SSL issuance and domain verification. |
 | Q2 | What's the pilot venue, and is it indoors? (drives starting GPS radius) | **Resolved 2026-08-09** — not known yet / varies by event. Defaulting to the recommended starting radius (150m), server-side config, tuned from `connection_attempts` rejection logs after the first pilot event. |
 | Q3 | Do we still need `username`, given no global search? | Open |
 | Q4 | Block/report in the pilot scope? | Open |
