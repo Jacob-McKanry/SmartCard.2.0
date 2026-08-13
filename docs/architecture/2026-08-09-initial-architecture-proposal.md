@@ -1,5 +1,7 @@
 # SmartCard 2.0 — Technical Architecture Proposal
 
+**Status (updated 2026-08-13, meeting feed pass):** §2.9 (the feed — no feed table, both post types computed on read) **is now built on web** (`apps/web/src/app/feed/`), completing README build order item 4 and the core Phase 1 pilot feature set. No migration, no policy change, and no line of §4's connection-verification code touched — the feed reads the existing `meetings`/`meeting_participants`/`meeting_locations`/`connections`/`users` RLS exactly as §3.2/§3.3/§3.4 already specified it. See the README's "Meeting feed landed" entry for the build's own notes, and the §2.9 amendment below for what, if anything, this pass found worth recording about the design as built.
+
 **Status (updated 2026-08-13, Connect Flow pass):** §4 — the connection-verification layer, the most security-critical part of the product — **is now built on web** and its four new migrations are applied (`supabase/migrations/`, 24 files). Each subsection of §4 carries a "built" amendment recording the decisions the design left open; §2.5's amendment is applied and extended with the rate-limiting mechanism §4.6 needed. The threat model in §4.7 is now an automated Vitest suite (193 tests) that attempts each attack, and the suite was verified capable of failing before being called done. Not built in this pass, on purpose: the QR-display and camera-scan screens on either platform, mobile Kinde auth, push-token registration, and the reverse-geocoding job that would fill `place_label` (blocked on Q25).
 
 **Status (updated 2026-08-13):** Schema and RLS for the tables in §2/§3 are implemented and applied to the live Supabase project (`supabase/migrations/`, originally 15 files) — do not redesign what is already built. §1.4 (no shared UI components between web/mobile) confirmed 2026-08-09. Q1, Q2, Q6, Q11, Q12, Q13, Q15 resolved 2026-08-09; Q16–Q24 recorded resolved 2026-08-13 (see §9). **Q7 resolved 2026-08-13** and the §5 auth bridge is built on web (§5.4 amendment); the last outstanding line of §6.6 has been run and passes. **Profile (README build order item 1) is built on web, also 2026-08-13** (§6.5 amendment below) — the `profile-photos` bucket now has its first real Storage RLS policy, and `/auth-check` is retired now that `/profile` exercises the same auth-bridge chain on every real load.
@@ -25,7 +27,7 @@ The most important section is **§4 (Connection Verification)**. That is the sec
 | § | Section | Status |
 |---|---|---|
 | 1 | Recommended stack | Confirmed; monorepo scaffolded |
-| 2 | Database schema | **Implemented and applied.** §2.4/§2.5/§2.6 amended 2026-08-13 (design notes only — no new migration) |
+| 2 | Database schema | **Implemented and applied.** §2.4/§2.5/§2.6 amended 2026-08-13 (design notes only — no new migration). §2.9 (feed) amended 2026-08-13 — built on web exactly as designed, no schema change |
 | 3 | Row Level Security strategy | **Implemented and applied.** §3.6 records the judgment calls made while building it |
 | 4 | Connection verification design | **Built on web 2026-08-13** (`packages/core/src/connect/`, `apps/web/src/app/api/connect/`, `apps/web/src/server/connect/`). §4.1–§4.7 each carry a "built" amendment recording what was decided along the way. No QR-display or camera-scan UI on either platform yet — this pass is the verification logic and the API surface |
 | 5 | Auth flow | **Built on web** (§5.1/§5.3/§5.4); mobile (§5.2) not started. §5.4 amended 2026-08-13 with Q7's answer |
@@ -388,6 +390,12 @@ This needs no schema change, but it is recorded rather than assumed because it i
 ### 2.9 Feed
 
 No feed table for the pilot. Both post types ("You met X" / "A met B") derive on read from `meetings` + `meeting_participants` + `connections` — simpler and always consistent at ~337 users, and avoids fan-out bugs when a meeting's visibility changes. Indexes needed: `connections(user_a_id)`, `connections(user_b_id)`, `meeting_participants(user_id)`, `meetings(occurred_at desc)`.
+
+#### Amendment (2026-08-13) — built as designed, no schema change
+
+**Built on web** (README build order item 4; `apps/web/src/app/feed/`, `apps/web/src/server/feed/feed-service.ts`). The design above held exactly as written: no feed table was added, both post types are computed on every read, and the four indexes this section already asked for were already in place from the original migrations — nothing new was needed at the database layer.
+
+One thing worth recording that this section's original text left implicit: the "derive on read" query is deliberately capped (`limit(50)` in `feed-service.ts`), not paginated. §2.9's own "~337 users" framing, and the build task's more specific sizing note — pilot users have a single-digit number of meetings on day one — both point the same direction, so a plain reverse-chronological list with a generous fixed cap is proportionate; real cursor-based pagination is a deliberate addition to make later, once usage approaches the cap, not a gap in this pass.
 
 ---
 
