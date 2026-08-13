@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ConnectApiError, createQrSession, heartbeatQrSession, redeemQr } from "./connect";
+import { ConnectApiError, createQrSession, heartbeatQrSession, redeemNfc, redeemQr } from "./connect";
 
 /**
  * These tests run under plain Node (no DOM, no real network — `fetchImpl` is
@@ -168,5 +168,49 @@ describe("redeemQr", () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { surprise: true }));
 
     await expect(redeemQr(VALID_REDEEM_REQUEST, { fetchImpl })).rejects.toBeInstanceOf(ConnectApiError);
+  });
+});
+
+describe("redeemNfc", () => {
+  const VALID_NFC_REQUEST = { code: "CUSTOM-f2a930bcb5fe" };
+
+  it("returns an ok: true result without throwing", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, {
+        ok: true,
+        connectionId: "11111111-1111-4111-8111-111111111111",
+        meetingId: "22222222-2222-4222-8222-222222222222",
+      }),
+    );
+
+    const result = await redeemNfc(VALID_NFC_REQUEST, { fetchImpl });
+    expect(result.ok).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "/api/connect/nfc/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("returns an ok: false result without throwing — a rejection is a normal answer here", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(200, { ok: false, message: "That card isn't set up yet." }));
+
+    const result = await redeemNfc(VALID_NFC_REQUEST, { fetchImpl });
+    expect(result).toEqual({ ok: false, message: "That card isn't set up yet." });
+  });
+
+  it("validates the request shape before ever calling fetch", async () => {
+    const fetchImpl = vi.fn();
+
+    // Too short to be a real card code — fails `cardCodeSchema` locally.
+    await expect(redeemNfc({ code: "short" }, { fetchImpl })).rejects.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("throws ConnectApiError for a body matching neither branch of the union", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { surprise: true }));
+
+    await expect(redeemNfc(VALID_NFC_REQUEST, { fetchImpl })).rejects.toBeInstanceOf(ConnectApiError);
   });
 });

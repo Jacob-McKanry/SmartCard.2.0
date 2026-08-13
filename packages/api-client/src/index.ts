@@ -11,6 +11,7 @@ export {
   ConnectApiError,
   createQrSession,
   heartbeatQrSession,
+  redeemNfc,
   redeemQr,
   type ConnectApiOptions,
 } from "./connect";

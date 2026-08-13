@@ -34,12 +34,14 @@
  */
 import {
   connectRedeemResponseSchema,
+  nfcRedeemRequestSchema,
   qrHeartbeatRequestSchema,
   qrHeartbeatResponseSchema,
   qrRedeemRequestSchema,
   qrSessionCreateRequestSchema,
   qrSessionCreateResponseSchema,
   type ConnectRedeemResponse,
+  type NfcRedeemRequest,
   type QrHeartbeatRequest,
   type QrHeartbeatResponse,
   type QrRedeemRequest,
@@ -179,4 +181,22 @@ export async function redeemQr(
 ): Promise<ConnectRedeemResponse> {
   const body = qrRedeemRequestSchema.parse(input);
   return postConnect("/api/connect/qr/redeem", body, (json) => connectRedeemResponseSchema.parse(json), opts);
+}
+
+/**
+ * `POST /api/connect/nfc/redeem` — §4.5 step 3.
+ *
+ * Same error model as `redeemQr` and for the same reason (§4.2 step 7's
+ * reasoning applies identically to §4.5): a rejected tap is an ordinary
+ * `{ ok: false, message }` answer, not a thrown exception, so callers branch
+ * on `.ok` rather than catching. `ConnectApiError` is reserved for what is
+ * outside the API's own contract — no network, a non-JSON body, or a body
+ * matching neither branch of the union.
+ */
+export async function redeemNfc(
+  input: NfcRedeemRequest,
+  opts: ConnectApiOptions = {},
+): Promise<ConnectRedeemResponse> {
+  const body = nfcRedeemRequestSchema.parse(input);
+  return postConnect("/api/connect/nfc/redeem", body, (json) => connectRedeemResponseSchema.parse(json), opts);
 }
