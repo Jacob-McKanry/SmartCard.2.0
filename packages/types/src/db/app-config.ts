@@ -17,9 +17,15 @@ import { z } from "zod";
 import { jsonbSchema, timestamptzSchema, uuidSchema } from "./scalars";
 
 /**
- * The six keys seeded by the migration. Typed as a closed set so a typo in a
- * lookup is a compile error rather than a silent `undefined` that the caller
- * then treats as "no limit".
+ * Every key seeded by a migration. Typed as a closed set so a typo in a lookup
+ * is a compile error rather than a silent `undefined` that the caller then
+ * treats as "no limit".
+ *
+ * Six seeded 2026-08-09 (§2.5); thirteen added 2026-08-13 by
+ * 20260813210000 — the six relaxation keys (§2.5 amendment (a)), the
+ * notification-coalescing key (amendment (d)), and the six §4.6 rate limits,
+ * whose numbers the architecture never specified and whose reasoning is
+ * recorded in that migration.
  */
 export const appConfigKeySchema = z.enum([
   "qr_max_distance_m",
@@ -28,6 +34,22 @@ export const appConfigKeySchema = z.enum([
   "qr_rotation_seconds",
   "presenter_location_max_age_seconds",
   "session_max_lifetime_seconds",
+
+  "qr_relaxation_enabled",
+  "qr_relaxation_failure_threshold",
+  "qr_relaxation_window_seconds",
+  "qr_relaxed_max_distance_m",
+  "qr_relaxed_max_accuracy_m",
+  "qr_relaxation_cooldown_seconds",
+
+  "nfc_tap_notification_coalesce_seconds",
+
+  "rate_limit_qr_session_create_per_user_hour",
+  "rate_limit_qr_redeem_per_user_hour",
+  "rate_limit_qr_redeem_failures_per_session",
+  "rate_limit_nfc_redeem_per_card_hour",
+  "rate_limit_nfc_redeem_per_user_hour",
+  "rate_limit_connect_per_ip_hour",
 ]);
 export type AppConfigKey = z.infer<typeof appConfigKeySchema>;
 
@@ -55,10 +77,18 @@ export type AppConfigRow = z.infer<typeof appConfigRowSchema>;
 /**
  * Parser for the value of a threshold key.
  *
- * All six seeded thresholds are non-negative numbers of metres or seconds.
+ * Every threshold is a non-negative number of metres, seconds or attempts. The
+ * one exception is `qr_relaxation_enabled`, which is a boolean master switch —
+ * use `z.boolean()` for that one, not this.
+ *
  * Parsing through this rather than casting means a malformed config row — a
  * string, a null, a negative — throws at the point of use, so the gate refuses
  * to run rather than silently comparing against `NaN`, which would compare
  * false and let everything through.
+ *
+ * `packages/core/src/connect/config.ts` parses the whole set at once and is the
+ * thing the connect flow actually uses; it additionally refuses a configuration
+ * whose relaxed radius has been tuned too close to its relaxed accuracy floor,
+ * which is the one invariant §4.3's amendment says must never be broken.
  */
 export const appConfigNumberSchema = z.number().min(0);

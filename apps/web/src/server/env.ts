@@ -132,3 +132,64 @@ export function supabaseJwtSecret(): string {
       "Server-side only — anyone holding it can mint a token for any user.",
   );
 }
+
+/**
+ * The HMAC key the QR tokens are signed with (§4.2 step 2, §7.4).
+ *
+ * A client holding this can mint a valid token for any session id and any
+ * nonce, which is the first of the nine checks in §4.2 step 5 — so it is
+ * server-side only and must never be given a `NEXT_PUBLIC_` prefix. It is not
+ * derived from any other secret in this file, deliberately: one key, one
+ * purpose, so that rotating or leaking it has a bounded blast radius.
+ *
+ * Generate with `openssl rand -base64 48`, or any 32+ bytes of real randomness.
+ */
+export function qrSigningSecret(): string {
+  return required(
+    "QR_SIGNING_SECRET",
+    "Generate one: `openssl rand -base64 48`. Server-side only — anyone holding it can mint a QR token for any session.",
+  );
+}
+
+/**
+ * The salt for hashing IP addresses before they are stored (§4.6, and the
+ * `ip_hash` columns on `connection_attempts` and `rate_limit_events`).
+ *
+ * WHY THIS IS REQUIRED RATHER THAN OPTIONAL, EVEN THOUGH A MISSING SALT WOULD
+ * "ONLY" WEAKEN THE HASH. Without it there are two bad options and no good one:
+ * hash the IP unsalted, which is trivially reversible because the entire IPv4
+ * space is 4 billion values a laptop can enumerate in seconds — i.e. store raw
+ * IPs while believing you did not — or skip the per-IP rate limit, which
+ * removes a §4.6 control silently. Failing closed at startup is the honest
+ * third option, and it matches the posture the rest of this file takes.
+ *
+ * Deliberately NOT the same value as `CONTACT_HASH_SALT` (§2.7): reusing one
+ * salt across two datasets means one leak compromises both.
+ */
+export function connectIpHashSalt(): string {
+  return required(
+    "CONNECT_IP_HASH_SALT",
+    "Generate one: `openssl rand -base64 32`. Server-side only. Must differ from CONTACT_HASH_SALT.",
+  );
+}
+
+/**
+ * The credential our server presents to Expo's push API (§7.5).
+ *
+ * OPTIONAL, and that is a deliberate difference from every other secret here.
+ * §4.5's amendment is explicit that a failed or absent notification must never
+ * block, delay or reverse a connection: physical possession of the card is the
+ * proof, and it is already complete by the time we try to notify. Making this
+ * required would mean a missing environment variable stops people connecting —
+ * failing closed on the one part of this path where failing closed is the wrong
+ * answer, because there is nothing left to verify.
+ *
+ * Returns null when unset. The send path logs loudly and carries on, which is
+ * also correct: §4.5 warns that the failure mode to avoid is SILENT breakage —
+ * a notification pipeline dead for a week is a security regression even though
+ * no single connection was affected.
+ */
+export function expoAccessToken(): string | null {
+  const value = process.env.EXPO_ACCESS_TOKEN?.trim();
+  return value === undefined || value === "" ? null : value;
+}

@@ -1,12 +1,11 @@
 import Link from "next/link";
 
-import { placeholder as corePlaceholder } from "@smartcard/core";
-import { placeholder as apiClientPlaceholder } from "@smartcard/api-client";
-
 export default function Home() {
-  // Proves the pnpm workspace wiring (apps/web -> packages/core,
-  // packages/api-client -> packages/types) actually resolves at build time.
-  console.log(corePlaceholder(), apiClientPlaceholder());
+  // The two `placeholder()` calls that used to sit here existed only to prove
+  // the pnpm workspace wiring resolved at build time. `packages/core` now holds
+  // the real connection-verification layer (§4) and is imported for that by
+  // `src/server/connect/`, so the workspace wiring is proven by code that does
+  // something. The placeholder export was removed with them.
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background font-sans">

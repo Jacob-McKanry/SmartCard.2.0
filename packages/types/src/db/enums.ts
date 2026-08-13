@@ -47,6 +47,17 @@ export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;
 export const verificationMethodSchema = z.enum(["qr_gps", "nfc_card"]);
 export type VerificationMethod = z.infer<typeof verificationMethodSchema>;
 
+/**
+ * The same union under a name that does not collide with §4.1's
+ * `VerificationMethod` *interface* in `packages/core`. That interface is the
+ * pluggable verifier ("a future verification method means one new
+ * implementation"); this type is the two-value column. They are different
+ * things with the same obvious name, and importing both into one file is
+ * routine — so the alias exists to stop that being resolved by whichever
+ * import happened to come last.
+ */
+export type VerificationMethodId = VerificationMethod;
+
 /** `meetings.location_visibility` */
 export const locationVisibilitySchema = z.enum(["participants_only", "mutuals"]);
 export type LocationVisibility = z.infer<typeof locationVisibilitySchema>;
@@ -58,6 +69,17 @@ export type ConnectionSessionStatus = z.infer<typeof connectionSessionStatusSche
 /** `connection_attempts.outcome` */
 export const connectionAttemptOutcomeSchema = z.enum(["success", "rejected"]);
 export type ConnectionAttemptOutcome = z.infer<typeof connectionAttemptOutcomeSchema>;
+
+/**
+ * `connection_attempts.radius_mode` (added 20260813210000, §2.5 amendment (b)).
+ *
+ * Orthogonal to `outcome`, not an extension of it: a relaxed attempt can
+ * succeed or be rejected, and both are interesting. Two values and no third —
+ * §4.3's relaxation is a rung, not a ladder, and a `radius_mode` with three
+ * values would be the first sign someone had turned it into one.
+ */
+export const radiusModeSchema = z.enum(["normal", "relaxed"]);
+export type RadiusMode = z.infer<typeof radiusModeSchema>;
 
 /**
  * `events.visibility`.

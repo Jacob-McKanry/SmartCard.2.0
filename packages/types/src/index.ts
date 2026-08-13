@@ -7,8 +7,9 @@
 // Anything added there must be added in the migration that creates the column,
 // in the same change.
 //
-// Request/response schemas for the API (§1.7) and the verification-input
-// schemas from §4.1 are not here yet: those belong with the routes and the
-// verification service that define them, and will land in the phases that build
-// them.
+// `./connect` holds the request/response shapes for the connection-verification
+// endpoints (§4.2, §4.5). They live here rather than beside the routes because
+// §1.7 has one service layer reached by both platforms — the same schema types
+// the route's validation, the browser's call, and (later) the mobile client's.
 export * from "./db";
+export * from "./connect";

@@ -11,5 +11,12 @@ nodeLinker: hoisted
 # unrs-resolver is a native-binary dependency pulled in transitively by
 # eslint tooling; approving its postinstall script (rather than leaving it
 # silently ignored) avoids an "ignored build scripts" warning on every install.
+#
+# esbuild is Vitest's transform step (added with the test runner in the Connect
+# Flow phase). Its postinstall selects the platform-native binary; without the
+# approval pnpm skips it and `vitest` fails to start, which would leave the
+# adversarial security tests unrunnable — the one class of failure this project
+# can least afford to have go quiet.
 allowBuilds:
+  esbuild: true
   unrs-resolver: true

@@ -15,7 +15,11 @@
 import { z } from "zod";
 
 import { doublePrecisionSchema, timestamptzSchema, uuidSchema } from "./scalars";
-import { connectionAttemptOutcomeSchema, verificationMethodSchema } from "./enums";
+import {
+  connectionAttemptOutcomeSchema,
+  radiusModeSchema,
+  verificationMethodSchema,
+} from "./enums";
 
 export const connectionAttemptRowSchema = z.object({
   id: uuidSchema,
@@ -48,6 +52,34 @@ export const connectionAttemptRowSchema = z.object({
   user_agent: z.string().nullable(),
 
   created_at: timestamptzSchema,
+
+  // --- Added 20260813210000, per §2.5 amendment (b) ------------------------
+
+  /**
+   * Whether this attempt was evaluated against the relaxed thresholds (§4.3
+   * amendment). Explicit rather than inferred from `radius_config_used_m`,
+   * because that number stops distinguishing the two the moment someone tunes
+   * the normal radius up — exactly the tuning §4.4 anticipates. Audit data has
+   * to survive its own configuration history.
+   *
+   * It is a separate column rather than a third `outcome` value on purpose:
+   * §3.6 constrained `outcome` to success|rejected for cross-row
+   * comparability, and a `relaxed_success` outcome would silently under-count
+   * successes in every query written before it existed. `radius_mode` composes
+   * with `outcome` instead — relaxed *rejections* are as interesting as relaxed
+   * successes (§4.4 amendment, question 4).
+   */
+  radius_mode: radiusModeSchema,
+
+  /** The accuracy floor in force, for symmetry with `radius_config_used_m`. Never returned to a user. */
+  accuracy_config_used_m: doublePrecisionSchema.nullable(),
+
+  /**
+   * On a relaxed attempt, the earlier distance/accuracy rejection by this same
+   * pair that unlocked it — so §4.4 question 3 ("did relaxation actually rescue
+   * people?") is answered by joining rather than by guessing at the pairing.
+   */
+  relaxation_source_attempt_id: uuidSchema.nullable(),
 });
 
 export type ConnectionAttemptRow = z.infer<typeof connectionAttemptRowSchema>;
