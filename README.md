@@ -38,11 +38,18 @@ docs/
 
 ## Status
 
-Database schema and Row Level Security policies are implemented and applied (`supabase/migrations/`, mirrored as Zod schemas in `packages/types/src/db/`). Everything above that layer — auth wiring, API routes, connection-verification logic — is still to build.
+**Built and applied:** the database schema and Row Level Security policies (`supabase/migrations/`, mirrored as Zod schemas in `packages/types/src/db/`). Everything above that layer — auth wiring, API routes, connection-verification logic — is still to build.
 
-One thing to expect while working on the next phase: until the Kinde → Supabase token exchange exists (architecture proposal §5.4), `auth.uid()` returns nothing, so every RLS policy denies every row for every client. That is the schema failing closed exactly as designed, not a bug to work around. Server-side code using the service role bypasses RLS and is unaffected.
+**Architecture updated 2026-08-13** (`docs/architecture/`). Two things changed:
 
-See the architecture proposal for the full stack, schema, RLS strategy, and connection-verification design; §3.6 records the judgment calls made while implementing the schema. Build order for the first pilot:
+- A round of product decisions was recorded as amendments to the sections they affect (tracked as Q16–Q24): card taps connect instantly but now notify the card owner in real time so a lost card can be revoked immediately; the GPS proximity check automatically relaxes its radius once for a pair that has failed it repeatedly; meeting place names are filled by automatic server-side reverse geocoding; the "who's going" hook shows going and interested as two separate counts; push notifications go through Expo; and the legacy data migration is confirmed as a single complete import.
+- A new **§8 designs Friend Proximity** (mutual per-connection location sharing, post-pilot Phase 3) — schema sketch, permission model, protected zones, and threat model. It is **design only**: no tables, no migration, nothing applied, and it is waiting on sign-off (Q26).
+
+**Next up, in order:** the full legacy data migration — users, cards, social_links, photos, all in one pass before the pilot (architecture §6). Then Phase 1 features, which still need their own schema and RLS work built on top of what is already applied: Profile, then the Connect Flow (§4).
+
+One thing to expect while working on the next phase: until the Kinde → Supabase token exchange exists (architecture proposal §5.4), `auth.uid()` returns nothing, so every RLS policy denies every row for every client. That is the schema failing closed exactly as designed, not a bug to work around. Server-side code using the service role bypasses RLS and is unaffected. That token exchange (Q7) is also now on the migration's critical path, since verifying RLS as a real migrated user is meaningless without it.
+
+See the architecture proposal for the full stack, schema, RLS strategy, and connection-verification design; §3.6 records the judgment calls made while implementing the schema, and the 2026-08-13 amendments record theirs the same way. Build order for the first pilot:
 
 1. Profile
 2. Connect flow — NFC + QR/GPS (highest security priority)
