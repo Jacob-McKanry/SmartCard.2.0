@@ -105,14 +105,60 @@ export const qrHeartbeatRequestSchema = z
 
 export type QrHeartbeatRequest = z.infer<typeof qrHeartbeatRequestSchema>;
 
-export const qrHeartbeatResponseSchema = z
-  .object({
-    /** The token to display now. Unchanged from the previous heartbeat until rotation is due. */
-    token: z.string(),
-    rotateAfterSeconds: z.number().positive(),
-    expiresAt: z.iso.datetime({ offset: true }),
-  })
-  .strict();
+/**
+ * ADDITION (2026-08-13, presenter-screen build): `status`.
+ *
+ * THE GAP THIS CLOSES. Before this field existed, a heartbeat against a
+ * session that was no longer `active` — because it had just been scanned —
+ * failed exactly the same way as one against a session that was revoked, or
+ * one that never existed at all: the store's `heartbeat()` predicate
+ * (`status = 'active'`) returns null for all three, and the route threw a
+ * generic `session_not_found`. That collapse is correct and unchanged for
+ * strangers to a session; it was never correct for the presenter's own
+ * screen, which has no way to tell "you're connected" apart from "something
+ * went wrong" without it, and has been polling this exact endpoint every
+ * `qr_rotation_seconds` the whole time regardless (§4.2's heartbeat/rotation
+ * merge) — so no new request pattern is introduced to learn it.
+ *
+ * WHY THIS IS SAFE TO EXPOSE HERE WHEN IT WOULD NOT BE SAFE ON `qr/redeem`.
+ * §4.2 step 7's whole reasoning is that a STRANGER holding a valid token must
+ * learn nothing from a rejection beyond "it didn't work" — three distinct
+ * reasons collapsing to one message is what stops a scan from being used to
+ * probe the presenter's session. This field answers a different question,
+ * asked by a different caller: `heartbeatQrSession` only ever returns it for
+ * the session's own `presenter_user_id`, re-checked against the caller's
+ * authenticated identity on every call (see the service function) — never
+ * inferable by anyone who merely holds a copy of the displayed token. A
+ * presenter learning the fate of the one session that is unambiguously theirs
+ * is not the trilateration-shaped leak §4.2 step 7 defends against.
+ *
+ * WHY THREE VALUES AND NOT THE DATABASE'S FOUR. `connection_sessions.status`
+ * has `active | consumed | expired | revoked`. Only `consumed` needs its own
+ * branch — it is the one the presenter's screen must act on differently
+ * (show success, stop polling). `expired` and `revoked` both mean the same
+ * thing to a presenter ("this code is dead, get a new one") and are collapsed
+ * into `ended` on purpose: telling a presenter their session was `revoked`
+ * would be telling them it was revoked *because it failed the five-strikes
+ * rule in §4.6*, which is a rejection-count signal about scans against their
+ * own session — a smaller, but real, instance of the same "don't describe
+ * the security mechanism" reasoning `user-messages.ts` states at the top of
+ * its file.
+ */
+export const qrHeartbeatResponseSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("active"),
+      /** The token to display now. Unchanged from the previous heartbeat until rotation is due. */
+      token: z.string(),
+      rotateAfterSeconds: z.number().positive(),
+      expiresAt: z.iso.datetime({ offset: true }),
+    })
+    .strict(),
+  /** Somebody scanned this session. The presenter's screen shows success and stops polling. */
+  z.object({ status: z.literal("consumed") }).strict(),
+  /** Dead for any other reason (expired or revoked). Show "get a new code" and stop polling. */
+  z.object({ status: z.literal("ended") }).strict(),
+]);
 
 export type QrHeartbeatResponse = z.infer<typeof qrHeartbeatResponseSchema>;
 

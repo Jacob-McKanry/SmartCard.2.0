@@ -202,8 +202,9 @@ export async function heartbeatQrSession(
 
   // The store pins the update to `presenter_user_id = caller` and
   // `status = 'active'`, so a caller can only heartbeat their own live session.
-  // A null result means one of those was false; the caller is told the session
-  // is gone and nothing about which condition failed.
+  // A null result means one of those was false, and below is where those two
+  // very different situations get told apart — see the `status` field's own
+  // doc comment in `packages/types` for why that split is safe to make here.
   const session = await deps.store.heartbeat({
     sessionId: input.sessionId,
     presenterUserId: ctx.callerUserId,
@@ -216,15 +217,30 @@ export async function heartbeatQrSession(
     nextNonce: generateNonce(),
   });
 
-  if (session === null || session.currentNonce === null) {
-    throw new ConnectRefusedError("session_not_found", 404);
+  if (session !== null && session.currentNonce !== null) {
+    return {
+      status: "active",
+      token: await mintToken(deps.signingSecret, session.id, session.currentNonce, ctx.now, config),
+      rotateAfterSeconds: config.qr_rotation_seconds,
+      expiresAt: session.expiresAt.toISOString(),
+    };
   }
 
-  return {
-    token: await mintToken(deps.signingSecret, session.id, session.currentNonce, ctx.now, config),
-    rotateAfterSeconds: config.qr_rotation_seconds,
-    expiresAt: session.expiresAt.toISOString(),
-  };
+  // `heartbeat()` returning null does not by itself say whether this was ever
+  // the caller's session. Re-reading it and re-checking ownership here — with
+  // no service-role shortcut and no trusting the fact that the caller merely
+  // knows this UUID — is what keeps this branch from becoming a way for
+  // anyone holding a session id (e.g. one glimpsed in a screenshot of a QR
+  // code, which encodes it) to learn that session's status. Only the true
+  // owner gets `consumed`/`ended`; everyone and everything else — a foreign
+  // session, a typo, a session that never existed — falls through to the same
+  // `session_not_found` refusal this endpoint always gave.
+  const owned = await deps.store.loadSession(input.sessionId);
+  if (owned !== null && owned.presenterUserId === ctx.callerUserId && owned.status !== "active") {
+    return { status: owned.status === "consumed" ? "consumed" : "ended" };
+  }
+
+  throw new ConnectRefusedError("session_not_found", 404);
 }
 
 /**

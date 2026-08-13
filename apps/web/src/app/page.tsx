@@ -17,6 +17,18 @@ export default function Home() {
       <Link href="/profile" className="text-sm text-primary underline underline-offset-4">
         Go to your profile
       </Link>
+      {/* Connect Flow's screens (README.md build order, item 2). No link to
+          either lives anywhere else yet — both are reachable only from a
+          signed-in nav, never from a shareable URL, per CLAUDE.md's
+          non-negotiable product rule. */}
+      <div className="flex gap-4">
+        <Link href="/connect/present" className="text-sm text-primary underline underline-offset-4">
+          Show my code
+        </Link>
+        <Link href="/connect/scan" className="text-sm text-primary underline underline-offset-4">
+          Scan a code
+        </Link>
+      </div>
     </div>
   );
 }
