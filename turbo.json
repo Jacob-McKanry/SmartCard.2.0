@@ -7,7 +7,34 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**", "!.next/cache/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      // Turborepo only forwards a non-`NEXT_PUBLIC_*` env var into a task's
+      // build environment if it's declared here — everything else is
+      // stripped before `next build` runs, even if it's set on the Vercel
+      // project. Local dev never noticed this because `next dev` reads
+      // `.env.local` directly, bypassing Turbo entirely; Vercel's build
+      // goes through `turbo run build`, which is where this first showed up
+      // as `KINDE_ISSUER_URL is required` during "Collecting page data" for
+      // /api/auth/[kindeAuth] — the route itself was fine, Turbo just never
+      // handed it the variable. Add any new server-only env var the web app
+      // reads at build or request time to this list, or it'll silently be
+      // missing again the next time it's added to Vercel but not here.
+      "env": [
+        "KINDE_DOMAIN",
+        "KINDE_CLIENT_ID",
+        "KINDE_CLIENT_SECRET",
+        "KINDE_MOBILE_CLIENT_ID",
+        "KINDE_ISSUER_URL",
+        "KINDE_SITE_URL",
+        "KINDE_POST_LOGIN_REDIRECT_URL",
+        "KINDE_POST_LOGOUT_REDIRECT_URL",
+        "SUPABASE_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_JWT_SIGNING_KEY",
+        "QR_SIGNING_SECRET",
+        "CONNECT_IP_HASH_SALT"
+      ]
     },
     "lint": {
       "dependsOn": ["^build"]
