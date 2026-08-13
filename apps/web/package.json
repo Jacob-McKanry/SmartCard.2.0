@@ -10,17 +10,19 @@
     "type-check": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@kinde-oss/kinde-auth-nextjs": "^2.13.0",
+    "@smartcard/api-client": "workspace:*",
+    "@smartcard/core": "workspace:*",
+    "@smartcard/types": "workspace:*",
+    "@supabase/supabase-js": "^2.112.2",
+    "@tanstack/react-query": "^5.101.4",
+    "jose": "^6.2.8",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "@kinde-oss/kinde-auth-nextjs": "^2.13.0",
-    "@supabase/supabase-js": "^2.112.2",
-    "@tanstack/react-query": "^5.101.4",
-    "zustand": "^5.0.14",
+    "server-only": "^0.0.1",
     "zod": "^4.4.3",
-    "@smartcard/core": "workspace:*",
-    "@smartcard/types": "workspace:*",
-    "@smartcard/api-client": "workspace:*"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

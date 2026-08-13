@@ -1,10 +1,12 @@
 # SmartCard 2.0 — Technical Architecture Proposal
 
-**Status (updated 2026-08-13):** Schema and RLS for the tables in §2/§3 are implemented and applied to the live Supabase project (`supabase/migrations/`, 15 files) — do not redesign what is already built. §1.4 (no shared UI components between web/mobile) confirmed 2026-08-09. Q1, Q2, Q6, Q11, Q12, Q13, Q15 resolved 2026-08-09; Q16–Q24 recorded resolved 2026-08-13 (see §9).
+**Status (updated 2026-08-13):** Schema and RLS for the tables in §2/§3 are implemented and applied to the live Supabase project (`supabase/migrations/`, 15 files) — do not redesign what is already built. §1.4 (no shared UI components between web/mobile) confirmed 2026-08-09. Q1, Q2, Q6, Q11, Q12, Q13, Q15 resolved 2026-08-09; Q16–Q24 recorded resolved 2026-08-13 (see §9). **Q7 resolved 2026-08-13** and the §5 auth bridge is built on web (§5.4 amendment); the last outstanding line of §6.6 has been run and passes.
 
 This revision adds **§8, the Friend Proximity design (Phase 3, post-pilot)** — designed now, deliberately, because it is the highest-sensitivity feature in the product and its constraints need to be settled while they can still shape the schema rather than fight it. Nothing in §8 is built or applied.
 
-**The legacy data migration (§6) ran on 2026-08-13** — users, cards, social_links and the `contactexchange` archive are loaded and checksum-verified; photos alone are deferred to a follow-up pass (see the §6.5 deviation). **Confirmed next step:** Q7 (the Supabase JWT approach, §5.4). It is no longer just a self-verify-against-docs task — real user data is now live with §6.6's "spot-check RLS as a real migrated user" still unrun, because `auth.uid()` resolves to nothing until the token exchange exists. **Still to build on top of the applied schema:** the Phase 1 features in the README's build order — Profile, then Connect Flow (§4), which is where most of §4's design finally becomes code.
+**The legacy data migration (§6) ran on 2026-08-13** — users, cards, social_links and the `contactexchange` archive are loaded and checksum-verified; photos alone are deferred to a follow-up pass (see the §6.5 deviation).
+
+**Q7 was answered later the same day and the auth bridge is written** (§5.4 amendment): Supabase Third-Party Auth still cannot take Kinde, the §5.4 token exchange is confirmed as the design, and it is implemented in `apps/web` — Kinde sign-in (§5.1), JWKS verification, `ensureUser()` (§5.3), the short-lived Supabase JWT, and an RLS-bound `supabase-js` client. With that, **§6.6's "spot-check RLS as a real migrated user" has been run against a real migrated user and passes** (see the §6.6 outcome) — the one line of the migration checklist that had been genuinely unverified. Two secrets are still outstanding before the flow can be exercised over real HTTP; see the §5.4 amendment and `.env.local`. **Still to build on top of the applied schema:** the Phase 1 features in the README's build order — Profile, then Connect Flow (§4), which is where most of §4's design finally becomes code.
 
 **Full rendered version:** https://claude.ai/code/artifact/b00877ac-2992-48bc-a511-f8ed1d3940c8
 **Prepared:** 2026-08-09, by an Opus pass at xhigh reasoning effort per the project's model/effort guidance for architecture-and-security-critical design work.
@@ -24,8 +26,8 @@ The most important section is **§4 (Connection Verification)**. That is the sec
 | 2 | Database schema | **Implemented and applied.** §2.4/§2.5/§2.6 amended 2026-08-13 (design notes only — no new migration) |
 | 3 | Row Level Security strategy | **Implemented and applied.** §3.6 records the judgment calls made while building it |
 | 4 | Connection verification design | Designed; **not yet built** — this is Phase 1's Connect Flow. §4.3/§4.4/§4.5/§4.7 amended 2026-08-13 |
-| 5 | Auth flow | Designed; not yet built. Q7 to verify first |
-| 6 | Migration plan | Designed; **confirmed as the next step**, amended 2026-08-13 |
+| 5 | Auth flow | **Built on web** (§5.1/§5.3/§5.4); mobile (§5.2) not started. §5.4 amended 2026-08-13 with Q7's answer |
+| 6 | Migration plan | **Complete.** Amended 2026-08-13; §6.6's last deferred check now run and passing |
 | 7 | Deployment | Designed; amended 2026-08-13 with push infrastructure |
 | 8 | **Friend Proximity (Phase 3, post-pilot)** | **New 2026-08-13.** Design only — no schema, no migration, nothing applied |
 | 9 | Open questions | Live tracker; Q16–Q24 added and resolved 2026-08-13 |
@@ -699,6 +701,43 @@ Supabase Auth (`auth.users`) is unused — Kinde is the only identity provider. 
 
 **Fallback — Option B:** server-side authorization only via the service role, with checks enforced in TypeScript. Simpler, but RLS becomes decorative since the service role bypasses it — loses the second lock. Option A is recommended; B is contingency only.
 
+#### Amendment (2026-08-13) — Q7 resolved: Option A stands, for a better reason than the one originally given, and with a knowingly-legacy signing mechanism
+
+**Resolved (Q7).** Option A is built as specified. Nothing above needs redesigning — but two of the paragraphs above were right for reasons that turned out not to be the real ones, and one of them is now materially out of date, so this amendment records what was actually checked rather than leaving the original text standing as if it were still the whole story. **No RLS policy, helper function or schema change was required** — the risk this exercise was meant to surface did not materialise.
+
+**What was checked, and against what.** The original text says "verified directly against the docs", and the doc-list part of that has since drifted, so it was re-checked against Supabase's live documentation (via the Supabase MCP docs search, not from memory) alongside the live database itself.
+
+| Claim checked | Finding |
+|---|---|
+| Supabase Third-Party Auth's provider list | **Clerk, Firebase Auth, Auth0, AWS Cognito, WorkOS.** The original list was indeed stale — but it grew by one *named* provider (WorkOS), not into a generic mechanism. Kinde is still not on it. |
+| Does TPA accept an arbitrary OIDC issuer? | Not per the documented interface. The overview documents integrations per named provider, and its stated limitations are about the *provider's* key material: "The third-party provider must use asymmetrically signed JWTs (exposed as an OIDC Issuer Discovery URL…) … Using symmetrically signed JWTs is not possible at this time." |
+| Is there a generic-OIDC feature that *does* take Kinde? | Yes, but it is a different feature — **Custom OAuth/OIDC Providers**, which registers any OIDC issuer as a *login provider for Supabase Auth* (`supabase.auth.signInWithOAuth({ provider: 'custom:…' })`). It creates `auth.users` rows and issues Supabase's own tokens. Rejected — see below. |
+| Is the legacy JWT secret still supported? | Yes, but explicitly demoted: the JWT Signing Keys guide labels it "**No longer recommended.** Available for backward compatibility." The successor system supports asymmetric keys *and* a shared secret key, and states that a key held by Supabase "can't be extracted". |
+
+**The two facts that decide this regardless of any provider list.** Both were verified against the live project (`crpsbnbegeoqtlgshltt`), and either one on its own rules out feeding Kinde's token straight to Supabase:
+
+1. **`auth.uid()` is `(request.jwt.claims ->> 'sub')::uuid`** — read from the function definition in the live database, not assumed. **All 337 migrated `kinde_user_id` values are `kp_` + 32 hex characters; zero are uuid-shaped.** Simulating a raw Kinde `sub` in a policy evaluation does not merely deny, it *raises*: `ERROR: 22P02: invalid input syntax for type uuid: "kp_…" CONTEXT: SQL function "current_user_id"`. A native integration would therefore not fail closed and quietly — it would make every authenticated query error.
+2. **Kinde tokens carry no `role: authenticated` claim.** Every named provider's TPA guide has a step for adding one (a Firebase custom claim, a Cognito pre-token-generation Lambda, a WorkOS JWT template) because Supabase reads `role` to pick the Postgres role. Without it the caller lands on `anon`, which holds no grant on any table in this schema (§3.6) — so even with the uuid problem solved, a raw Kinde token would see nothing.
+
+**Why Custom OAuth/OIDC Providers was rejected even though it genuinely accepts Kinde.** It solves a different problem: it would make Kinde a login *source* for Supabase Auth, minting a parallel `auth.users` row per person and issuing Supabase's own token. `auth.uid()` would then be the `auth.users` id — still not `public.users.id`, which is what every policy in §3 compares against. Adopting it would mean either backfilling `auth.users` so its ids equal our 337 live `users.id` values (a second identity store to keep in sync forever, on live data, to save one signing call), or changing `private.current_user_id()` into a lookup against `public.users` — which that function's own header argues against at length, on both recursion and separation-of-concerns grounds. It would also duplicate the session layer §5.1/§5.2 already assign to Kinde's own SDK. The simplification is illusory: it moves the mapping from one small server module into the database and a second user table.
+
+**So the mapping has to exist somewhere, and Option A is where it belongs.** `ensureUser()` is that mapping (§5.3), and it is the *only* thing that can perform it, because `users.id` is a value this system owns and Kinde has never heard of.
+
+**The one thing that genuinely changed: the signing mechanism is now a legacy one.** The original text flagged asymmetric signing keys as something to confirm; that move has happened, and the shared JWT secret is now documented as backward-compatibility only. This is recorded as a **deliberate, dated choice, not an oversight**: the legacy secret is the only key material Supabase will hand us, and minting a token requires holding a key the project trusts. The implementation therefore signs HS256 with `SUPABASE_JWT_SECRET`, and the migration path is known in advance:
+
+- **If the project later migrates to JWT signing keys and revokes the legacy secret**, the exchange must sign with a key the project trusts instead. Supabase's own current/standby keys cannot be exported, so the options are to *import* our own shared secret, or import our own asymmetric private key and sign RS256/ES256 with it.
+- **Either way the blast radius is one file** — `apps/web/src/server/auth/supabase-token.ts`. `private.current_user_id()` and every policy in the schema are untouched, which is exactly the payoff that function's header predicted when it argued for the indirection.
+- Before switching, re-read the signing-keys guide's rotation ordering: create the new key as *standby*, rotate, and only then revoke the old one, or in-flight tokens are rejected mid-request.
+
+**Judgment call — `azp`, not `aud`, is what pins a token to our applications.** Both SmartCard apps live in one Kinde business and are signed with the same keys, so signature + issuer do not distinguish them from anything else in that business. Kinde only populates `aud` when an API audience is configured, which it is not. The verifier therefore requires the `azp` (authorized party) claim to be one of our two client ids, and **rejects a token with no `azp` at all** rather than treating its absence as benign. If a future Kinde configuration stops emitting `azp`, the correct fix is to configure an API audience in Kinde and check `aud` — not to delete the check.
+
+**Consequence for mobile (§5.2), recorded now so the mobile pass does not rediscover it.** Nothing in §7.4's Expo variable list changes, and the app still holds no Supabase credentials — §7.4's "it talks to our API, never the database directly" survives intact, which means the mobile client never sees a Supabase token at all; the exchange happens per request on our server. Two things the mobile pass does need to know:
+
+- **`KINDE_MOBILE_CLIENT_ID` is now a server-side concern too.** It was previously an Expo-only value; the token verifier's `azp` allow-list must include it or every mobile request is rejected with a message that will look like a Kinde misconfiguration. It is read server-side by `apps/web/src/server/env.ts`.
+- **The web-only shortcut in the identity path must not be copied.** Where Kinde puts profile claims (`email`, `given_name`, `family_name`) in the ID token rather than the access token, the web path reads them from the SDK's session — safe there only because that session is an encrypted HttpOnly cookie written by a server-side code exchange. Mobile has no such cookie, so it must verify the ID token against Kinde's JWKS explicitly. The invariant either way: profile claims may only be attached to an identity that was actually verified, and only ever seed a *new* row.
+
+**Where this lives.** `apps/web/src/server/env.ts` (fail-closed variable access), `auth/kinde-identity.ts` (JWKS verification), `auth/ensure-user.ts` (§5.3's identity bridge, service-role), `auth/supabase-token.ts` (the mint), `supabase/rls-client.ts` + `supabase/service-role-client.ts` (the two clients, and the note on why there are exactly two), `auth/current-user.ts` (the web glue), `app/api/auth/[kindeAuth]/route.ts` (§5.1's flow), and `app/auth-check/page.tsx` (the end-to-end proof, temporary — it belongs to this phase, not to the Profile screen).
+
 ---
 
 ## 6. Migration plan (outline)
@@ -817,7 +856,31 @@ Row counts match (337 / 7,142 / 466); every assigned card's `owner_user_id` reso
 | No orphaned `social_links` | 0 |
 | No `users` row retains any password field | 0 hits |
 | Every photo path resolves to a real object | **Deferred** — no photo was imported (§6.5). The underlying check was still run against the export: 148/148 present, 0 missing. |
-| Spot-check RLS as a real migrated user | **Deferred — blocked by Q7, exactly as the §6.1 amendment predicted.** Until the Kinde → Supabase token exchange exists, `auth.uid()` returns nothing and every policy denies every row, so this check cannot distinguish "RLS is protecting this user" from "auth is not wired up". It is the one line of this checklist that remains genuinely unverified and it must be run once Q7 lands. |
+| Spot-check RLS as a real migrated user | **Deferred — blocked by Q7, exactly as the §6.1 amendment predicted.** Until the Kinde → Supabase token exchange exists, `auth.uid()` returns nothing and every policy denies every row, so this check cannot distinguish "RLS is protecting this user" from "auth is not wired up". It is the one line of this checklist that remains genuinely unverified and it must be run once Q7 lands. **Now run — see the outcome immediately below.** |
+
+#### Outcome (2026-08-13, later) — the deferred RLS spot-check has been run and passes
+
+The last outstanding line of §6.6 is closed. It was run as part of resolving Q7 (§5.4 amendment), against the live project and a **real migrated user** — one with 4 social links and 11 assigned cards, chosen so the check had something to *find* as well as something to deny. A user with no rows to see would have made every "cannot see a stranger's data" assertion pass for the wrong reason, which is the precise failure mode §6.6 was worried about.
+
+The claim set used is the exact one `mintSupabaseAccessToken()` produces — `{ sub: <users.id>, role: "authenticated", aud: "authenticated", iss: "<project>/auth/v1", iat, exp }`, read back out of a token minted by the real code path — applied the way Supabase's API gateway applies it after verifying a signature.
+
+| Assertion | Expected | Observed |
+|---|---|---|
+| `auth.uid()` resolves | the user's `public.users.id` | resolves to exactly that uuid |
+| `auth.role()` | `authenticated` | `authenticated` |
+| `users` rows visible | 1 of 337 | **1** |
+| Any *other* user's row | 0 | **0** |
+| Own `social_links` | 4 of 465 | **4** |
+| Any other user's `social_links` | 0 | **0** |
+| Own `cards` | 11 of 7,142 | **11** |
+| Any other user's `cards` | 0 | **0** |
+| No claims set at all (today's state for every client) | everything denied | `auth.uid()` null, 0 rows everywhere |
+| `private.current_user_id()` called directly | refused | `42501: permission denied for schema private` — §3.3's oracle stays shut |
+| `connection_attempts`, `app_config`, `pending_connections`, schemas `private` and `legacy` | no access for `authenticated` | no privilege on any of them (§3.5) |
+
+Both halves matter. The positives prove `auth.uid()` genuinely resolved; the zeros prove the policies are doing the filtering rather than auth being absent. **That distinction is the entire reason this check was deferred rather than fudged.**
+
+**What is still simulated, and why that is a smaller gap than it sounds.** The claims were set directly on the database session rather than arriving inside a signed JWT over HTTPS, because this environment's egress policy blocks the project's Supabase host (the same restriction that blocked the §6.5 photo upload) and the secrets needed to sign a real token were not available. The two unexercised legs are the signature check and the HTTP transport — both Supabase's code, neither ours, and neither able to change which rows a policy returns for a given `sub`. The leg that was genuinely in doubt — whether `auth.uid()` resolves to the right `public.users.id` and whether the policies then behave — is the leg that was run. `apps/web/src/app/auth-check/page.tsx` performs the same assertions over the real HTTP path for whoever finishes the run with the secrets in place.
 
 **Added check — per-table content checksums.** The checklist as written is entirely structural: every line of it passes on data that loaded in the right *shape* but with a corrupted *value*. Because these 9,757 rows were hand-transmitted as SQL text, that was a live risk, so an order-independent digest of the actual column values was computed from the source export and recomputed identically in SQL after loading. All four tables matched byte-for-byte.
 
@@ -879,6 +942,15 @@ Anything prefixed `NEXT_PUBLIC_`/`EXPO_PUBLIC_` is shipped to users and readable
 | `EXPO_ACCESS_TOKEN` 🔒 | Next.js / Vercel, server-side | Authenticates our server to Expo's push API (§7.5). Secret — it is the credential that lets something send notifications as us. |
 | `GEOCODING_API_KEY` 🔒 | Next.js / Vercel, server-side | Reverse geocoding for `meeting_locations.place_label` (§2.4 amendment) and later §8's approximate-mode area names. Exact name depends on the provider chosen (Q25). Server-side by necessity — §2.4 explains why the geocode must not happen on a phone. |
 | `EXPO_PUBLIC_PROJECT_ID` | Expo / EAS, public | The EAS project id `getExpoPushTokenAsync()` requires to mint a push token. Public and harmless: a push token is only useful to whoever holds `EXPO_ACCESS_TOKEN`. |
+
+#### Amendment (2026-08-13) — corrections from building the auth bridge (§5.4)
+
+| Variable | Correction |
+|---|---|
+| `KINDE_MOBILE_CLIENT_ID` | **Also needed server-side**, not only in Expo. The token verifier pins a Kinde token to one of our two applications via its `azp` claim (see the §5.4 amendment's judgment call), so the mobile client id must be on the server's allow-list or every request from the phone is rejected — with an error that will read like a Kinde misconfiguration. Not a secret: a public client id. |
+| `KINDE_ISSUER_URL` | Already listed, but its role has widened. It is no longer just the SDK's sign-in endpoint — it is the value `iss` is verified against. Deliberately the *same* variable for both: what we obtain tokens from must be what we verify them against, or a token from an unrelated Kinde business could pass. |
+| `KINDE_SITE_URL`, `KINDE_POST_LOGIN_REDIRECT_URL`, `KINDE_POST_LOGOUT_REDIRECT_URL` | Already listed; recorded here because they are environment-specific and easy to miss at deploy time. On Vercel they must point at the deployed origin, and `<origin>/api/auth/kinde_callback` must be registered as an allowed callback for the SmartCard Web application in Kinde, or login fails at Kinde before it reaches us. |
+| `SUPABASE_JWT_SECRET` | Still required, still 🔒, but now flagged as **legacy**: Supabase documents the shared JWT secret as backward-compatibility only. See the §5.4 amendment for the migration path and why the blast radius is one file. |
 
 ### 7.5 Push notifications — Expo's push service
 
@@ -1138,7 +1210,7 @@ Getting this wrong does not produce a subtly worse product; it produces one that
 
 Tracked here as they resolve — update this table in place rather than deleting rows, so the decision history stays visible. Rows keep their original numbers and their original order (resolved and open interleaved) for the same reason; new questions are appended with the next free number rather than slotted in beside related ones.
 
-**2026-08-13 round.** Q16–Q24 were answered directly by the project owner and are recorded resolved below, each pointing at the section it amended. Q25 (geocoding provider) and Q26 (Friend Proximity sign-off) are new and deliberately open. **Q3, Q4, Q7, Q8, Q9 and Q10 were *not* answered by this round** and remain open — their rows now say so explicitly, and where this round changed their cost or urgency without answering them (Q7 moved onto the critical path; Q9 acquired a background-location dimension; Q4 became a hard prerequisite for §8) that is noted in the row rather than mistaken for a resolution. Q5 is marked partially resolved, because the round settled where events come from without settling who may create one.
+**2026-08-13 round.** Q16–Q24 were answered directly by the project owner and are recorded resolved below, each pointing at the section it amended. Q25 (geocoding provider) and Q26 (Friend Proximity sign-off) are new and deliberately open. **Q3, Q4, Q7, Q8, Q9 and Q10 were *not* answered by this round** and remain open — their rows now say so explicitly, and where this round changed their cost or urgency without answering them (Q7 moved onto the critical path; Q9 acquired a background-location dimension; Q4 became a hard prerequisite for §8) that is noted in the row rather than mistaken for a resolution. *(Q7 was subsequently resolved later on 2026-08-13, in the auth-bridge pass — its row records the outcome. This paragraph is left as written because it describes what that round did, and the tracker's whole convention is that history is not rewritten.)* Q5 is marked partially resolved, because the round settled where events come from without settling who may create one.
 
 | # | Question | Status |
 |---|---|---|
@@ -1149,7 +1221,7 @@ Tracked here as they resolve — update this table in place rather than deleting
 | Q4 | Block/report in the pilot scope? | Open — **not answered by the 2026-08-13 round.** Note that §8 now depends on `blocks` existing and being enforced (§8.3 step 2), so Friend Proximity cannot ship without it; it is still optional for the pilot itself. |
 | Q5 | Who can create events for the pilot — anyone, or hosts only? | **Partially resolved 2026-08-13** — the *source* is settled: events are created natively in SmartCard only, with no Luma/Eventbrite import (Q20). The *permission* half — whether any user or only designated hosts may create one — is still open, and §3.6's fail-closed reading stands until it lands: there is no INSERT policy or grant on `events` at all, so nobody can create one through the client path yet. |
 | Q6 | How many of the 337 legacy users have a null/stale `kindeuserid`? | **Resolved 2026-08-09** — 0 of 337 users have a null or empty `kindeuserid`, and no duplicates exist. No manual reconciliation flow needed; every legacy user lands cleanly on their existing row via the Kinde join key. |
-| Q7 | Confirm the Supabase JWT approach (§5.4) against current docs before building | Open — and **now on the critical path.** The §6.1 amendment explains why: §6.6's "spot-check RLS as a real migrated user" is not a meaningful check until `auth.uid()` resolves, so this must be settled before the production import, not after. |
+| Q7 | Confirm the Supabase JWT approach (§5.4) against current docs before building | **Resolved 2026-08-13 — Option A (token exchange) confirmed and built.** See the §5.4 amendment for the evidence. Short version: Third-Party Auth still takes only named providers (Clerk, Firebase, Auth0, Cognito, **WorkOS** — the list had grown, but by one name, not into a generic OIDC mechanism), and two facts about *our* data rule out a native integration regardless: `auth.uid()` casts `sub` to uuid while all 337 Kinde subs are `kp_<32 hex>` (a raw Kinde token makes policies **raise 22P02**, not deny), and Kinde tokens carry no `role: authenticated` claim so the caller would land on `anon`, which holds no grant anywhere. Supabase's generic **Custom OAuth/OIDC Providers** feature does accept Kinde but solves a different problem — it mints `auth.users` rows, so `auth.uid()` would still not be `public.users.id`. **No RLS policy, helper or schema change was needed.** One real change: the shared JWT secret is now documented as backward-compatibility only, so the HS256 mint is a knowingly-legacy choice with a one-file migration path recorded in the amendment. Unblocks §6.6's last line, **which has now been run and passes** (see the §6.6 outcome). |
 | Q8 | Is "presenter must keep the app open" acceptable UX (heartbeat requirement)? | Open — **not answered by the 2026-08-13 round**, but its cost is now lower: automatic radius relaxation (§4.3) removes the worst version of the failure, where a genuine pair simply cannot connect. Still a pilot observation, not a decision anyone can make from a desk. |
 | Q9 | App Store review risk — need a documented demo/reviewer test path? | Open — **not answered by the 2026-08-13 round, and its scope grew.** §8.7 adds a second review hazard: Google Play requires a written justification and a demo video for background location access, and iOS's "Always" location permission draws its own scrutiny. Whenever this is tackled, cover NFC, camera, location, *and* background location together. |
 | Q10 | Contacts import: hash retention window, user delete control? | Open — **not answered by the 2026-08-13 round.** Unchanged; lands with whatever phase builds contacts import. |
