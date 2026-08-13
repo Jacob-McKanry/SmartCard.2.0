@@ -118,18 +118,120 @@ export function supabaseServiceRoleKey(): string {
 }
 
 /**
- * The symmetric secret the Supabase project uses to verify JWTs.
+ * The private JWT signing key the token exchange signs with — an ES256 (NIST
+ * P-256) key **we** generated and imported into the Supabase project's JWT
+ * Signing Keys, so that the project trusts tokens we mint (§5.4, and the second
+ * 2026-08-13 amendment recording Q27).
  *
- * This is the key the token exchange signs with (§5.4, and the 2026-08-13
- * amendment recording why the exchange is still necessary). Holding it means
- * being able to mint a token for any user, so it lives server-side only and is
- * never sent to a browser or a phone.
+ * WHY THIS EXISTS RATHER THAN JUST USING THE PROJECT'S CURRENT KEY. Supabase's
+ * own current signing key is generated and held by Supabase: "Once you've moved
+ * to using the JWT signing keys feature extracting of the private key or shared
+ * secret from Supabase is not possible." Only Supabase Auth can sign with it. A
+ * third-party minter like us therefore has exactly one supported route — import
+ * a key we control and let the project trust it — which is the route this
+ * variable is for.
+ *
+ * FORMAT. The full **private** JWK as compact JSON, exactly as
+ * `supabase gen signing-key --algorithm ES256` emits it and exactly as it was
+ * pasted into the dashboard: `{"kty":"EC","kid":"…","d":"…","crv":"P-256",…}`.
+ * The `d` member is the private scalar — this value is as sensitive as the old
+ * shared secret was, and is why this is read here and never anywhere near a
+ * `NEXT_PUBLIC_` name.
+ *
+ * OPTIONAL, AND THAT IS A TRANSITIONAL STATE, NOT A DESIGN. Returning null
+ * makes the mint fall back to the legacy HS256 shared secret so that the app
+ * keeps working in the window between this code shipping and the key being
+ * imported *and rotated to in-use* in the dashboard — a manual step no code
+ * here can perform. That window is the same one Supabase's own zero-downtime
+ * rotation assumes. Once the rotation is confirmed, this becomes required and
+ * the fallback goes; see the note in `supabase-token.ts`.
+ *
+ * Anything present-but-wrong throws instead of falling back: a typo'd or
+ * truncated key must not quietly demote the app onto the deprecated secret,
+ * because the whole point of Q27 is that the deprecated secret can be revoked
+ * without warning and we would not notice we were still relying on it.
+ */
+export interface SupabaseJwtSigningKey {
+  /**
+   * The key id. Goes in the JWT's `kid` header, which is how Supabase picks
+   * which trusted public key to verify the signature with — a token minted
+   * without it cannot be verified even when the key itself is trusted.
+   */
+  kid: string;
+  /** The private JWK, parsed. Passed to `jose`'s `importJWK`. */
+  jwk: Record<string, unknown>;
+}
+
+export function supabaseJwtSigningKey(): SupabaseJwtSigningKey | null {
+  const raw = process.env.SUPABASE_JWT_SIGNING_KEY?.trim();
+  if (raw === undefined || raw === "") {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "SUPABASE_JWT_SIGNING_KEY is set but is not valid JSON. It must be the whole private JWK " +
+        'on one line, e.g. {"kty":"EC","kid":"…","d":"…","crv":"P-256","x":"…","y":"…"} — the exact ' +
+        "output of `supabase gen signing-key --algorithm ES256`.",
+    );
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(
+      "SUPABASE_JWT_SIGNING_KEY must be a single JWK object, not an array or scalar.",
+    );
+  }
+
+  const jwk = parsed as Record<string, unknown>;
+  const kid = jwk.kid;
+
+  // Each of these three is checked because getting it wrong produces a token
+  // Supabase rejects with an opaque 401, and an opaque 401 on this path reads
+  // like "auth is broken" rather than "the key is misconfigured".
+  if (typeof kid !== "string" || kid === "") {
+    throw new Error(
+      "SUPABASE_JWT_SIGNING_KEY has no `kid`. Supabase identifies the verifying key by `kid`, and " +
+        "the value must match the key imported in the dashboard exactly.",
+    );
+  }
+  if (jwk.alg !== undefined && jwk.alg !== "ES256") {
+    throw new Error(
+      `SUPABASE_JWT_SIGNING_KEY declares alg "${String(jwk.alg)}"; this app signs ES256 only. ` +
+        "Generate one with `supabase gen signing-key --algorithm ES256`.",
+    );
+  }
+  if (typeof jwk.d !== "string" || jwk.d === "") {
+    throw new Error(
+      "SUPABASE_JWT_SIGNING_KEY is a public key, not a private one — it has no `d` member, so it " +
+        "cannot sign anything. Use the full private JWK (the same JSON pasted into the dashboard).",
+    );
+  }
+
+  return { kid, jwk };
+}
+
+/**
+ * The legacy symmetric secret the Supabase project uses to verify JWTs.
+ *
+ * **Deprecated, and on a live deprecation path (Q27).** This project has
+ * already rotated to asymmetric JWT signing keys; this shared secret is the
+ * project's *previous* key, which Supabase keeps alive only "to verify tokens
+ * that are yet to expire" and can revoke at any time. It is read here solely so
+ * the app keeps working until `SUPABASE_JWT_SIGNING_KEY` is live — see that
+ * function, and the second §5.4 amendment.
+ *
+ * Holding it means being able to mint a token for any user, so it lives
+ * server-side only and is never sent to a browser or a phone.
  */
 export function supabaseJwtSecret(): string {
   return required(
     "SUPABASE_JWT_SECRET",
     "Supabase dashboard -> Project Settings -> JWT Keys (JWT Settings) -> JWT secret / legacy shared secret. " +
-      "Server-side only — anyone holding it can mint a token for any user.",
+      "Server-side only — anyone holding it can mint a token for any user. " +
+      "Prefer SUPABASE_JWT_SIGNING_KEY: this secret is the project's previous key and Supabase may revoke it.",
   );
 }
 
