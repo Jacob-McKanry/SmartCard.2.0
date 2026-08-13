@@ -38,16 +38,22 @@ docs/
 
 ## Status
 
-**Built and applied:** the database schema and Row Level Security policies (`supabase/migrations/`, mirrored as Zod schemas in `packages/types/src/db/`). Everything above that layer — auth wiring, API routes, connection-verification logic — is still to build.
+**Built and applied:** the database schema and Row Level Security policies (`supabase/migrations/`, mirrored as Zod schemas in `packages/types/src/db/`), and — as of 2026-08-13 — **the legacy data is imported**. Everything above that layer — auth wiring, API routes, connection-verification logic — is still to build.
+
+**Legacy import completed 2026-08-13** (architecture §6; transformation logic and verification queries in `supabase/seed/`). 337 users, 7,142 cards (333 assigned / 6,809 unassigned), 465 social links, and 1,813 `contactexchange` rows archived into a service-role-only `legacy` schema. Every table was verified byte-identical to the source export by content checksum, not just by row count — which is what caught the one real corruption in the run (a mangled newline in a single bio). Three things a reader should know:
+
+- **Legacy passwords were never imported.** Kinde is the sole identity provider, so the old bcrypt hashes have no role here; importing them would create a credential store nothing authenticates against and everything could leak.
+- **Photos are not in yet** — `photo_path` is NULL for every user, pending a follow-up pass. The paths are preserved in `supabase/seed/2026-08-13_legacy_photo_paths.csv`. See the §6.5 deviation for why this one piece was safe to split out when the rest was not.
+- **One social link was deliberately skipped** (of 466) because its stored value contained two different URLs with no way to tell which was the person's actual profile. Guessing would have published a link pointing strangers at somebody else's account.
 
 **Architecture updated 2026-08-13** (`docs/architecture/`). Two things changed:
 
 - A round of product decisions was recorded as amendments to the sections they affect (tracked as Q16–Q24): card taps connect instantly but now notify the card owner in real time so a lost card can be revoked immediately; the GPS proximity check automatically relaxes its radius once for a pair that has failed it repeatedly; meeting place names are filled by automatic server-side reverse geocoding; the "who's going" hook shows going and interested as two separate counts; push notifications go through Expo; and the legacy data migration is confirmed as a single complete import.
 - A new **§8 designs Friend Proximity** (mutual per-connection location sharing, post-pilot Phase 3) — schema sketch, permission model, protected zones, and threat model. It is **design only**: no tables, no migration, nothing applied, and it is waiting on sign-off (Q26).
 
-**Next up, in order:** the full legacy data migration — users, cards, social_links, photos, all in one pass before the pilot (architecture §6). Then Phase 1 features, which still need their own schema and RLS work built on top of what is already applied: Profile, then the Connect Flow (§4).
+**Next up, in order:** the Kinde → Supabase token exchange (Q7), then the photo backfill, then Phase 1 features, which still need their own schema and RLS work built on top of what is already applied: Profile, then the Connect Flow (§4).
 
-One thing to expect while working on the next phase: until the Kinde → Supabase token exchange exists (architecture proposal §5.4), `auth.uid()` returns nothing, so every RLS policy denies every row for every client. That is the schema failing closed exactly as designed, not a bug to work around. Server-side code using the service role bypasses RLS and is unaffected. That token exchange (Q7) is also now on the migration's critical path, since verifying RLS as a real migrated user is meaningless without it.
+Q7 moved to the front for a reason. Until the token exchange exists (architecture proposal §5.4), `auth.uid()` returns nothing, so every RLS policy denies every row for every client. That is the schema failing closed exactly as designed, not a bug to work around — server-side code using the service role bypasses RLS and is unaffected. But it also means the one line of the migration's verification checklist that could not be run is "spot-check RLS as a real migrated user" (§6.6): with `auth.uid()` empty, that check cannot tell "RLS is correctly protecting this user's data" from "everything is denied because auth is not wired up". **Real user data is now in the database with that check still outstanding**, so it should be run the moment Q7 lands rather than folded into later feature work.
 
 See the architecture proposal for the full stack, schema, RLS strategy, and connection-verification design; §3.6 records the judgment calls made while implementing the schema, and the 2026-08-13 amendments record theirs the same way. Build order for the first pilot:
 

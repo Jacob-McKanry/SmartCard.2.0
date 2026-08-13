@@ -4,7 +4,7 @@
 
 This revision adds **§8, the Friend Proximity design (Phase 3, post-pilot)** — designed now, deliberately, because it is the highest-sensitivity feature in the product and its constraints need to be settled while they can still shape the schema rather than fight it. Nothing in §8 is built or applied.
 
-**Confirmed next step:** the full legacy data migration (users, cards, social_links, photos — §6), as a single complete import before the pilot, not a partial or deferred one. **Still to build on top of the applied schema:** the Phase 1 features in the README's build order — Profile, then Connect Flow (§4), which is where most of §4's design finally becomes code. Q7 (Supabase JWT approach) remains a self-verify-against-docs task and gates the migration's RLS spot-check (§6.6).
+**The legacy data migration (§6) ran on 2026-08-13** — users, cards, social_links and the `contactexchange` archive are loaded and checksum-verified; photos alone are deferred to a follow-up pass (see the §6.5 deviation). **Confirmed next step:** Q7 (the Supabase JWT approach, §5.4). It is no longer just a self-verify-against-docs task — real user data is now live with §6.6's "spot-check RLS as a real migrated user" still unrun, because `auth.uid()` resolves to nothing until the token exchange exists. **Still to build on top of the applied schema:** the Phase 1 features in the README's build order — Profile, then Connect Flow (§4), which is where most of §4's design finally becomes code.
 
 **Full rendered version:** https://claude.ai/code/artifact/b00877ac-2992-48bc-a511-f8ed1d3940c8
 **Prepared:** 2026-08-09, by an Opus pass at xhigh reasoning effort per the project's model/effort guidance for architecture-and-security-critical design work.
@@ -726,6 +726,15 @@ Supabase Auth (`auth.users`) is unused — Kinde is the only identity provider. 
 
 Nothing about the migration's content changes — §6.2 to §6.7 stand as written, including §6.7's decision that `contactexchange` is *not* migrated. "Import everything" means everything the plan already lists; it does not reopen the one table deliberately left behind.
 
+#### Executed 2026-08-13 — and two deviations from this order
+
+The import ran against production (`crpsbnbegeoqtlgshltt`) on 2026-08-13. Per-table outcomes are recorded in §6.2–§6.7; the verification results are in §6.6. Two departures from the order above:
+
+1. **Step 3 (branch dry-run) was skipped; the load went straight to production.** What a dry-run buys is a rehearsal of statements that might fail. That risk was covered differently and, for this shape of import, more directly: every batch was a real transaction that either committed or errored visibly, the FK remapping was routed through a staging table so a bad id produces *no row* rather than a wrong row, and — the part a dry-run would not have caught at all — per-table content checksums proved the loaded values byte-identical to the source (§6.6). A branch rehearsal validates the SQL; the checksum validates the data, which was the actual exposure here. Worth reconsidering for any future migration that mutates existing rows rather than inserting into empty tables, where a mistake is not simply undone by deleting what was added.
+2. **Step 4's photo load was deferred** — see the §6.5 deviation for the reasoning and for what was preserved to make the follow-up cheap.
+
+The transformation logic, the judgement calls, and the verification queries are committed in `supabase/seed/2026-08-13_legacy_import.sql` and `supabase/seed/2026-08-13_legacy_import_generator.py`. The 9,757 rows themselves are **not** committed and must not be: they are real personal data, and git history cannot be un-published.
+
 ### 6.2 `users` (337 rows)
 
 | Legacy | New | Note |
@@ -742,25 +751,77 @@ Nothing about the migration's content changes — §6.2 to §6.7 stand as writte
 
 Risk: rows with null/stale `kindeuserid` can't be matched to a Kinde identity and get a fresh empty profile on next login — count these before migrating (Q6) to decide if manual reconciliation is needed.
 
+**Imported 2026-08-13 — 337/337 rows.** Two decisions this table left open, resolved against the data rather than by assumption:
+
+- **`userstatus` → `status`:** the export contains exactly **one** distinct value, `'1'`, across all 337 rows, so `'1' → 'active'` and nothing else was inferred. Nobody was defaulted into `suspended` or `deleted`: both remove access, and inventing either from an unlabelled integer would lock a real person out of their own account. The import script asserts the single-value property, so a future export with a second value fails loudly instead of silently mapping it to `active`.
+- **`''` → `NULL`** for `bio` (21 rows), `company_name` (15) and `company_role` (13). Empty string and NULL mean the same thing here — "not filled in" — and collapsing them means `coalesce` and the UI behave identically for every user rather than depending on which legacy form version they used.
+
+`loginpassword` was dropped as specified: never read out of the export, never written to a generated file, never transmitted, never logged. Confirmed afterwards by a column-agnostic sweep over every text value in `public.users` (0 hits).
+
 ### 6.3 `cards` (7,142 rows)
 
 `cardid` → `card_code` direct copy (no regeneration needed — see §2.2), `ownerid` → `owner_user_id` via the legacy→new UUID map; 333 assigned, 6,809 unassigned, all usable as-is. This was flagged as the largest migration risk in the original proposal (Q1) — resolved, and turned out simpler than expected: the physical inventory needs no re-encoding and nothing is dead stock. The remaining dependency is DNS/routing for `smartcard.tech` itself (Q15 in §9), not the card data.
+
+**Imported 2026-08-13 — 7,142/7,142 rows (333 assigned, 6,809 unassigned), 7,142 distinct codes, 314 distinct owners, 0 unresolvable `ownerid`.** The `cardstatus` 0/1 → `unassigned`/`assigned` mapping was verified against the data, not taken from the column name: `cardstatus = '1'` holds if and only if `ownerid` is non-null, for all 7,142 rows. That is also a proof the import could not violate `cards_assigned_requires_owner`.
+
+**Minor correction to §2.2's card-code survey.** §2.2 records "20 distinct cosmetic prefixes". That is right for 7,140 of the rows; legacy card ids **114 and 115** are bare 12-hex-character codes with **no cosmetic prefix and no dash** at all. This is cosmetic only and changes nothing about the security model — the property that matters is that every one of the 7,142 suffixes is exactly 12 hex characters and unique across all rows, which was re-verified before loading and holds for these two as well.
 
 ### 6.4 `social_links` (466 rows)
 
 Straight copy, `userid` remapped; validate/normalize URLs on the way in.
 
+**Imported 2026-08-13 — 465 of 466 rows, 0 orphans. One row skipped, deliberately:** legacy `sociallink` id **85** (legacy user 37, platform Instagram) holds free text containing two different http(s) URLs. There is no unambiguous profile URL to import, and picking one would publish a link to a real person's account on a coin flip — a missing link is a visibly missing link the owner can re-add, whereas a wrong link looks correct while pointing strangers at somebody else. Failing closed is the cheaper error.
+
+Three normalisation decisions worth recording, since "validate/normalize" did not say how far to go:
+
+- **Trailing free text after a single valid URL** (7 rows, all LinkedIn) → the URL token is taken. Whitespace terminates a URL in every parser, so the trailing words were never part of the link.
+- **`Https://` → `https://`** (1 row). Schemes are case-insensitive and lowercase is the normal form (RFC 3986 §3.1), so this cannot change which resource is addressed.
+- **`http://` was NOT upgraded to `https://`** (4 rows). Rewriting the scheme changes which resource is requested based on an assumption about a remote host we do not control — a guess wearing a normalisation's clothing.
+
+Two data-shape notes: 58 rows had `updateddatetime = '-infinity'`, a Postgres sentinel that survives the column type but breaks JS `Date` parsing and would surface as a client-side crash on a profile page; each was replaced with that row's own `created_at`, the only substitute the row itself supports. The 132 ordinary rows where `updated < created` were left untouched — those are real timestamps that merely look odd. And 6 exact duplicate `(user, platform, url)` rows were imported faithfully rather than de-duplicated; there is no unique constraint on that triple, so the legacy state is representable, and silently dropping rows during a migration hides data the owner may want to clean up deliberately.
+
 ### 6.5 Photos (148 files, ~7MB)
 
 New Supabase Storage bucket `profile-photos`, **private**, path convention `{user_id}/{uuid}.webp`, served via signed URLs. Photos are profile data and profiles are graph-gated — a public bucket would quietly undermine that. Many `profilephoto` values are null (no photo); report any non-null path whose file is missing rather than failing the run.
+
+#### Deviation (2026-08-13) — photos were NOT part of the production import pass
+
+**What happened:** the 2026-08-13 import loaded `users`, `cards`, `social_links` and the `contactexchange` archive, but left `photo_path` **NULL for all 337 users**. No bucket was created and no file was uploaded. This is a knowing, scoped deferral of one line of the §6.1 amendment's "everything in one pass", not an oversight.
+
+**Why it is safe to split this one out, when splitting `cards` or `users` is not.** §6.1's argument against a partial import is specifically about *correctness hazards*: a half-imported `cards` table makes a card someone is carrying look like free stock, and a half-imported `users` table races §5.3's auto-create into duplicate identities. A missing photo has neither property. It is a visibly absent avatar with no security consequence and no ambiguity — nothing in the system can mistake "no photo" for something else, and backfilling it later cannot conflict with anything a user does in the meantime. The reasons partial import was rejected simply do not apply here.
+
+**What was preserved so the follow-up pass is cheap:** `supabase/seed/2026-08-13_legacy_photo_paths.csv` — 148 rows of `legacy_user_id`, the **new** `user_id` UUID, the legacy path, and file presence/size. Deliberately narrow: no email, phone or bio, because unlike the row data that file is committed. The follow-up pass can upload and backfill `photo_path` from it without re-reading the legacy database.
+
+**One correction to this section's premise, flagged rather than quietly worked around.** This pass was briefed on the understanding that the image files were unavailable. They are not: the export bundle **does** contain all 148 `.webp` files (~8.0 MB extracted), every one of the 148 non-null `profilephoto` paths resolves to a real file, with **0 missing and 0 orphans** — recorded per row in the CSV's `file_present_in_export` column. So §6.5's "report any non-null path whose file is missing" is already satisfied, with nothing to report. The instruction to leave `photo_path` NULL was followed as given; the point of recording this is that the follow-up pass does not need anyone to go and find the files.
 
 ### 6.6 Verification checklist
 
 Row counts match (337 / 7,142 / 466); every assigned card's `owner_user_id` resolves to a real user (333 expected); no orphaned `social_links`; no `users` row retains any password field; every photo path resolves to a real object; spot-check RLS as a real migrated user (can see own data, cannot see a stranger's).
 
+#### Outcome (2026-08-13) — all checks pass, two deferred, one added
+
+| Check | Result |
+|---|---|
+| Row counts | 337 users / 7,142 cards (333 assigned + 6,809 unassigned) / **465** social_links (466 − 1 documented skip, §6.4) / 1,813 `legacy.contactexchange` |
+| Every assigned card's `owner_user_id` resolves | 333/333, 0 orphans, 314 distinct owners |
+| No orphaned `social_links` | 0 |
+| No `users` row retains any password field | 0 hits |
+| Every photo path resolves to a real object | **Deferred** — no photo was imported (§6.5). The underlying check was still run against the export: 148/148 present, 0 missing. |
+| Spot-check RLS as a real migrated user | **Deferred — blocked by Q7, exactly as the §6.1 amendment predicted.** Until the Kinde → Supabase token exchange exists, `auth.uid()` returns nothing and every policy denies every row, so this check cannot distinguish "RLS is protecting this user" from "auth is not wired up". It is the one line of this checklist that remains genuinely unverified and it must be run once Q7 lands. |
+
+**Added check — per-table content checksums.** The checklist as written is entirely structural: every line of it passes on data that loaded in the right *shape* but with a corrupted *value*. Because these 9,757 rows were hand-transmitted as SQL text, that was a live risk, so an order-independent digest of the actual column values was computed from the source export and recomputed identically in SQL after loading. All four tables matched byte-for-byte.
+
+This was not theoretical. The checksum caught exactly one real corruption that every structural check above passed clean: a single user's `bio` in which 10 of 11 consecutive newlines survived transmission. Repairing it also surfaced a second-order bug worth remembering — the `UPDATE` fired the `users_set_updated_at` trigger and overwrote the migrated `updated_at` with `now()`, so the trigger had to be disabled for the correction and the original timestamp restored. **Any future data repair on a migrated table has the same trap.**
+
+The checksum construction and the exact SQL are in `supabase/seed/2026-08-13_legacy_import.sql` (STEP 5c). Future data migrations should treat it as part of this checklist, not an extra.
+
 ### 6.7 `contactexchange` (1,813 rows) — not migrated
 
 No mapping into the mutual-connections model, per spec. Preserved as a read-only archive in a separate `legacy` schema, not reachable from application code — one-directional capture data is exactly the shape that could accidentally seed follow-style edges.
+
+**Implemented 2026-08-13 — all 1,813 rows archived.** The `legacy` schema and `legacy.contactexchange` were created by migration `20260813171953_legacy_schema_contactexchange_archive.sql`, whose header carries the full reasoning; the rows were loaded as one-time operational data, not by the migration. RLS is enabled **and** FORCEd with **zero policies**, and `anon`/`authenticated` hold no USAGE on the schema and no privileges on the table, so it is reachable only by the service role / dashboard — the same posture as `connection_attempts`, `app_config` and `pending_connections` (§3.5).
+
+Legacy integer user ids are kept as-is with **no FK** to `public.users`, on purpose: a real FK would make the archive a live participant in the graph, which is precisely what this section forbids, and would tie user deletion to it. They remain joinable by hand through `public.users.legacy_user_id`, which is the right amount of friction. Checked at import time: all 1,813 owner ids and all 518 non-null sender ids do resolve, so the FK is omitted by choice, not because it would fail.
 
 ---
 
