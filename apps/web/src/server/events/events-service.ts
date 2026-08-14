@@ -6,6 +6,7 @@ import {
   eventUpdateSchema,
   type CityRow,
   type EventInsert,
+  type EventInviteRow,
   type EventRow,
   type EventRsvpRow,
   type EventUpdate,
@@ -50,6 +51,18 @@ import { summarizeConnectionsAttending, type ConnectionsAttendingSummary } from 
  * a computed answer rather than the attendee list. Relaxing the `event_rsvps`
  * policy to compute these client-side would turn every public event into a way
  * to enumerate the people at it.
+ *
+ * *Invites to private events are an ordinary insert, and that is not an
+ * inconsistency.* `inviteToEvent` writes `event_invites` directly rather than
+ * going through an RPC, because unlike an RSVP an invite has no computed
+ * component — there is no capacity to weigh, no approval gate to consult and no
+ * lock to hold, so the INSERT policy can decide the whole question by itself
+ * (20260814060100). What that policy enforces is worth knowing without reading
+ * it: only the host or somebody holding a `going` RSVP may invite, and an invite
+ * may only reach an existing *connection* of the inviter. An invite grants
+ * visibility of the event and nothing else — the invitee still calls
+ * `request_event_rsvp` themselves, so the rule that every `event_rsvps` row is a
+ * deliberate act by its own subject survives this feature intact.
  */
 
 // ---------------------------------------------------------------------------
@@ -482,6 +495,106 @@ export async function updateOwnEvent(
   if (!data || data.length === 0) {
     throw new Error("That event couldn't be updated — you may not be its host.");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Private-event invites — ordinary RLS-checked writes, and deliberately so
+// ---------------------------------------------------------------------------
+
+/**
+ * Invites somebody to see a private event.
+ *
+ * Unlike every RSVP mutation in this file, this is a plain insert rather than an
+ * RPC, and the difference is principled rather than incidental. The RSVP RPCs
+ * exist because `going` is a *computed outcome* — it depends on capacity, on the
+ * approval gate, and on a lock over the event — so a client-asserted value would
+ * be a client-asserted privilege. An invite has no computed component at all: it
+ * is one row, and every rule about it is a question the INSERT policy can answer
+ * on its own. Wrapping it in a `security definer` function would move the
+ * authorization out of the policy layer without making it any stricter.
+ *
+ * What the policy enforces, none of which is re-implemented here:
+ *   - `invited_by_user_id` must be the caller (act as yourself);
+ *   - the invitee must be an existing *connection* of the inviter
+ *     (`private.are_connected`) — the security-relevant condition, since an
+ *     event's population feeds the `users` read policy once two people are both
+ *     `going`, and without it a private event would be a way to pull a stranger
+ *     into that rule with no tap and no scan;
+ *   - the caller must be the host or hold a `going` RSVP;
+ *   - and you cannot invite yourself (policy *and* a CHECK constraint).
+ *
+ * `invitedByUserId` is a separate argument rather than part of an input object,
+ * for the same reason `createEvent` takes `hostUserId` separately: it must come
+ * from the session and never from client input. The policy would refuse a
+ * mismatch anyway; passing it explicitly enforces the rule one layer earlier,
+ * where it reads as intent rather than as a policy violation.
+ *
+ * Idempotent by design: inviting the same person twice is a no-op rather than an
+ * error a UI has to explain. Note the deliberate consequence — a repeat invite
+ * does not overwrite `invited_by_user_id`, so the row keeps whoever opened the
+ * door first.
+ *
+ * That idempotency is a plain `.insert()` whose unique violation (23505,
+ * `event_invites_one_per_user_per_event`) is swallowed, rather than `.upsert()`
+ * with `ignoreDuplicates`. The reason is a permission one, not a stylistic one:
+ * `authenticated` holds INSERT and SELECT on this table and deliberately no
+ * UPDATE grant at all, so an upsert that resolved to a merge instead of
+ * `ON CONFLICT DO NOTHING` would fail with a permission error at runtime rather
+ * than quietly doing the right thing. Catching the constraint by name depends
+ * only on SQL semantics that cannot drift.
+ *
+ * Note which error is swallowed and which is not: 23505 means the invite already
+ * exists, which is the caller's desired end state. A policy refusal is 42501 and
+ * still throws — "you are not allowed to invite this person" must never be
+ * silently reported as success.
+ *
+ * This grants visibility only. It creates no RSVP — the invitee still answers
+ * for themselves, which is the invariant that keeps `shares_event_with()` safe.
+ */
+export async function inviteToEvent(
+  supabase: SupabaseClient,
+  eventId: string,
+  invitedByUserId: string,
+  invitedUserId: string,
+): Promise<void> {
+  const { error } = await supabase.from("event_invites").insert({
+    event_id: eventId,
+    invited_user_id: invitedUserId,
+    invited_by_user_id: invitedByUserId,
+  });
+
+  // Already invited — the end state the caller wanted, reached earlier.
+  if (error && error.code === "23505") {
+    return;
+  }
+  if (error) {
+    throw new Error(`Failed to send the invite: ${error.message}`, { cause: error });
+  }
+}
+
+/**
+ * The invites for one event.
+ *
+ * No ownership filter and no role check, because RLS already scopes the answer
+ * and doing it twice here would only invent a second, weaker copy of the rule: a
+ * host gets every invite to their own event, an inviter gets the ones they sent,
+ * an invitee gets their own, and anybody else gets an empty list rather than an
+ * error. That is the same posture `getHostRsvpQueue` takes for a non-host.
+ */
+export async function listEventInvites(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<EventInviteRow[]> {
+  const { data, error } = await supabase
+    .from("event_invites")
+    .select("id, event_id, invited_user_id, invited_by_user_id, created_at")
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to load the invites for this event: ${error.message}`, { cause: error });
+  }
+  return (data ?? []) as EventInviteRow[];
 }
 
 // ---------------------------------------------------------------------------
