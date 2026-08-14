@@ -1,0 +1,1605 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#e6e9f0;font-family:'Instrument Sans',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#0b60ff;text-decoration:none}a:hover{color:#0847c4}
+*{box-sizing:border-box}
+input,textarea,select,button{font-family:inherit}
+@keyframes sc-spring-in{0%{transform:scale(.4);opacity:0}55%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes sc-rise{0%{transform:translateY(14px) scale(.985);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
+@keyframes sc-sheet{0%{transform:translateY(100%)}100%{transform:translateY(0)}}
+@keyframes sc-shimmer{0%{transform:translateX(-120%) rotate(8deg)}100%{transform:translateX(220%) rotate(8deg)}}
+@keyframes sc-halo{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.06);opacity:.9}}
+@keyframes sc-draw{0%{stroke-dashoffset:36}100%{stroke-dashoffset:0}}
+@keyframes sc-blurup{0%{filter:blur(14px);opacity:.4;transform:scale(1.04)}100%{filter:blur(0);opacity:1;transform:scale(1)}}
+@keyframes sc-orbit{to{transform:rotate(360deg)}}
+@keyframes sc-orbit-rev{to{transform:rotate(-360deg)}}
+@keyframes sc-merge{0%{transform:translateX(26px)}100%{transform:translateX(0)}}
+@keyframes sc-merge-l{0%{transform:translateX(-26px)}100%{transform:translateX(0)}}
+@keyframes sc-scanline{0%{transform:translateY(0)}50%{transform:translateY(206px)}100%{transform:translateY(0)}}
+</style></helmet>
+
+<div style="--g-bg:{{ gBg }};--g-blur:{{ gBlur }};--g-bd:{{ gBd }};--g-sh:{{ gSh }};--accent:{{ accent }};--accent-deep:{{ accentDeep }};--accent-tint:{{ accentTint }};font-family:'Instrument Sans',ui-sans-serif,system-ui,sans-serif;color:#0d1220;min-height:100vh;padding:28px 32px 64px;background:radial-gradient(1100px 700px at 8% -10%,rgba(11,96,255,.10),transparent 62%),radial-gradient(900px 600px at 92% 2%,rgba(124,58,237,.08),transparent 60%),#eef1f7">
+
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:22px">
+    <div style="display:flex;flex-direction:column;gap:2px;margin-right:8px">
+      <div style="font:600 17px/22px 'Instrument Sans',sans-serif;letter-spacing:-.01em">SmartCard 2.0 &mdash; glass &amp; light</div>
+      <div style="font:400 12px/16px 'Geist Mono',monospace;color:#8b93a5">interactive &middot; every rule from the backend reference held</div>
+    </div>
+    <div style="display:flex;background:rgba(255,255,255,.65);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.8);border-radius:999px;padding:4px;gap:2px;box-shadow:0 4px 14px rgba(16,24,40,.06)">
+      <button onClick="{{ setPhone }}" style="border:0;border-radius:999px;padding:7px 15px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer;background:{{ phoneBtnBg }};color:{{ phoneBtnFg }};transition:all .25s cubic-bezier(.32,.72,0,1)">Phone</button>
+      <button onClick="{{ setDesktop }}" style="border:0;border-radius:999px;padding:7px 15px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer;background:{{ deskBtnBg }};color:{{ deskBtnFg }};transition:all .25s cubic-bezier(.32,.72,0,1)">Desktop</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      <sc-for list="{{ jumpLinks }}" as="j" hint-placeholder-count="6">
+        <button onClick="{{ j.go }}" style="border:1px solid {{ j.bd }};background:{{ j.bg }};color:{{ j.fg }};border-radius:999px;padding:6px 13px;font:500 12px/16px 'Instrument Sans',sans-serif;cursor:pointer;transition:all .2s ease">{{ j.label }}</button>
+      </sc-for>
+    </div>
+  </div>
+
+  <div data-screen-label="App frame" style="position:relative;width:{{ frameW }}px;height:{{ frameH }}px;border-radius:{{ frameR }}px;padding:{{ framePad }}px;background:{{ frameBezel }};box-shadow:0 40px 80px -20px rgba(13,18,32,.35),0 2px 6px rgba(13,18,32,.2);transition:width .5s cubic-bezier(.32,.72,0,1),height .5s cubic-bezier(.32,.72,0,1)">
+    <div style="position:relative;width:100%;height:100%;border-radius:{{ screenR }}px;overflow:hidden;background:radial-gradient(700px 500px at 15% -5%,rgba(11,96,255,.13),transparent 60%),radial-gradient(600px 420px at 95% 8%,rgba(124,58,237,.09),transparent 62%),radial-gradient(700px 500px at 50% 108%,rgba(11,96,255,.07),transparent 60%),#f1f4fa">
+
+      <sc-if value="{{ isPhone }}">
+        <div style="position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;font:600 13px/16px 'Instrument Sans',sans-serif;color:#0d1220;z-index:40;pointer-events:none">
+          <span>9:41</span>
+          <span style="display:flex;gap:5px;align-items:center;opacity:.85"><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;display:inline-block;position:relative"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></span>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isDesktop }}">
+        <div style="position:absolute;top:0;left:0;right:0;z-index:40;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border-bottom:1px solid var(--g-bd,rgba(255,255,255,.75))">
+          <div style="max-width:940px;margin:0 auto;display:flex;align-items:center;gap:6px;padding:12px 28px">
+            <span style="display:flex;align-items:center;gap:8px;margin-right:18px;font:700 15px/20px 'Instrument Sans',sans-serif;letter-spacing:-.02em"><span style="width:9px;height:9px;border-radius:3px;background:var(--accent,#0b60ff);box-shadow:0 0 0 4px var(--accent-tint,rgba(11,96,255,.12))"></span>SmartCard</span>
+            <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="7">
+              <button onClick="{{ n.go }}" style="display:flex;align-items:center;gap:7px;border:0;background:{{ n.topBg }};color:{{ n.topFg }};border-radius:999px;padding:8px 14px;font:{{ n.topWeight }} 13px/16px 'Instrument Sans',sans-serif;cursor:pointer;transition:all .22s cubic-bezier(.32,.72,0,1)">{{ n.icon }}{{ n.label }}</button>
+            </sc-for>
+            <div style="flex:1"></div>
+            <button onClick="{{ goProfile }}" style="width:34px;height:34px;border-radius:999px;border:1px solid rgba(255,255,255,.9);background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));color:#0d1220;font:600 12px/1 'Instrument Sans',sans-serif;cursor:pointer">JM</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:{{ scrollPadTop }}px 0 {{ scrollPadBottom }}px">
+        <div style="width:100%;max-width:{{ contentMax }}px;margin:0 auto;padding:0 {{ contentPad }}px">
+
+          <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+            <div data-screen-label="Home" style="display:flex;flex-direction:column;gap:22px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;flex-direction:column;gap:6px;padding-top:6px">
+                <div style="font:500 12px/16px 'Geist Mono',monospace;color:#8b93a5;letter-spacing:.04em">TUESDAY, AUG 18</div>
+                <h1 style="margin:0;font:600 34px/38px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Hey, Jacob</h1>
+                <p style="margin:0;font:400 15px/22px 'Instrument Sans',sans-serif;color:#5b6478">12 connections, all made in person.</p>
+              </div>
+
+              <button onClick="{{ goConnect }}" style="position:relative;overflow:hidden;text-align:left;border:1px solid rgba(255,255,255,.55);border-radius:28px;padding:22px;cursor:pointer;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));box-shadow:0 18px 40px -12px rgba(11,96,255,.55);color:#fff;transition:transform .35s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-2px) scale(1.008)">
+                <span style="position:absolute;top:-40%;left:0;width:36%;height:180%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);animation:sc-shimmer 3.6s cubic-bezier(.32,.72,0,1) infinite"></span>
+                <span style="position:relative;display:flex;align-items:center;gap:16px">
+                  <span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:18px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);flex-shrink:0">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>
+                  </span>
+                  <span style="min-width:0">
+                    <span style="display:block;font:600 20px/24px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Connect</span>
+                    <span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:rgba(255,255,255,.82);margin-top:2px">Show your code, or scan theirs</span>
+                  </span>
+                </span>
+              </button>
+
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between">
+                  <h2 style="margin:0;font:600 15px/20px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Happening near you</h2>
+                  <button onClick="{{ goEvents }}" style="border:0;background:transparent;color:var(--accent,#0b60ff);font:600 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:0">All events</button>
+                </div>
+                <sc-for list="{{ homeEvents }}" as="ev" hint-placeholder-count="2">
+                  <button onClick="{{ ev.open }}" style="text-align:left;display:flex;gap:14px;align-items:center;padding:12px;cursor:pointer;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.75));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.07));border-radius:22px;transition:transform .3s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-2px)">
+                    <span style="display:flex;flex-direction:column;align-items:center;justify-content:center;width:52px;height:56px;border-radius:16px;background:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.9);flex-shrink:0">
+                      <span style="font:500 10px/12px 'Geist Mono',monospace;color:var(--accent,#0b60ff);letter-spacing:.06em">{{ ev.mon }}</span>
+                      <span style="font:600 20px/24px 'Instrument Sans',sans-serif">{{ ev.day }}</span>
+                    </span>
+                    <span style="min-width:0;flex:1">
+                      <span style="display:block;font:600 15px/20px 'Instrument Sans',sans-serif;letter-spacing:-.01em;color:#0d1220">{{ ev.title }}</span>
+                      <span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478;margin-top:1px">{{ ev.timeVenue }}</span>
+                    </span>
+                    <span style="flex-shrink:0;border-radius:999px;padding:5px 11px;font:600 11px/14px 'Instrument Sans',sans-serif;background:{{ ev.pillBg }};color:{{ ev.pillFg }};border:1px solid {{ ev.pillBd }}">{{ ev.pillLabel }}</span>
+                  </button>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding-bottom:8px">
+                <h2 style="margin:0;font:600 15px/20px 'Instrument Sans',sans-serif;letter-spacing:-.01em">Latest</h2>
+                <div style="display:flex;gap:12px;align-items:center;padding:14px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.75));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.07));border-radius:22px">
+                  <span style="display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));font:600 13px/1 'Instrument Sans',sans-serif;color:#0d1220;flex-shrink:0">AC</span>
+                  <span style="min-width:0;flex:1">
+                    <span style="display:block;font:600 14px/19px 'Instrument Sans',sans-serif">You met Alex Chen</span>
+                    <span style="display:block;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Yesterday, 6:42 PM &middot; Blue Bottle Coffee</span>
+                  </span>
+                  <button onClick="{{ goFeed }}" style="border:0;background:transparent;color:var(--accent,#0b60ff);cursor:pointer;padding:4px;display:flex"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isFeed }}">
+            <div data-screen-label="Feed" style="display:flex;flex-direction:column;gap:18px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;flex-direction:column;gap:5px;padding-top:6px">
+                <h1 style="margin:0;font:600 30px/34px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Feed</h1>
+                <p style="margin:0;font:400 14px/20px 'Instrument Sans',sans-serif;color:#5b6478;max-width:52ch;text-wrap:pretty">Meetings you were part of, and meetings between your mutual connections. Nothing suggested, nothing algorithmic.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:8px">
+                <sc-for list="{{ feedItems }}" as="f" hint-placeholder-count="4">
+                  <div style="position:relative;overflow:hidden;border-radius:26px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.75));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.07))">
+                    <sc-if value="{{ f.hasPhoto }}">
+                      <div style="position:relative;height:{{ f.photoH }}px;background:repeating-linear-gradient(115deg,#dfe5f0 0 10px,#e9edf5 10px 20px)">
+                        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font:400 10px/1 'Geist Mono',monospace;color:#7b8398;background:rgba(255,255,255,.86);border-radius:6px;padding:5px 9px">{{ f.photoLabel }}</span></div>
+                        <sc-if value="{{ f.overlayCaption }}">
+                          <div style="position:absolute;left:12px;right:12px;bottom:12px;display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:19px;background:rgba(255,255,255,.62);backdrop-filter:blur(18px) saturate(1.7);-webkit-backdrop-filter:blur(18px) saturate(1.7);border:1px solid rgba(255,255,255,.7)">
+                            <span style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.18),rgba(124,58,237,.14));font:600 12px/1 'Instrument Sans',sans-serif;flex-shrink:0">{{ f.initials }}</span>
+                            <span style="min-width:0;flex:1">
+                              <span style="display:block;font:600 14px/19px 'Instrument Sans',sans-serif">{{ f.title }}</span>
+                              <span style="display:block;font:400 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">{{ f.meta }}</span>
+                            </span>
+                            <sc-if value="{{ f.isMine }}">
+                              <span style="flex-shrink:0;display:flex;align-items:center;gap:5px;border-radius:999px;padding:5px 10px;background:var(--accent-tint,rgba(11,96,255,.12));color:var(--accent-deep,#0847c4);font:600 11px/14px 'Instrument Sans',sans-serif"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Verified</span>
+                            </sc-if>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ f.showBody }}">
+                      <div style="padding:{{ f.bodyPad }}px;display:flex;gap:13px;align-items:flex-start">
+                        <sc-if value="{{ f.isMutual }}">
+                          <span style="display:flex;flex-shrink:0">
+                            <span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.13));font:600 13px/1 'Instrument Sans',sans-serif;box-shadow:0 0 0 2.5px rgba(255,255,255,.9)">{{ f.initialsA }}</span>
+                            <span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:linear-gradient(140deg,rgba(124,58,237,.16),rgba(11,96,255,.13));font:600 13px/1 'Instrument Sans',sans-serif;box-shadow:0 0 0 2.5px rgba(255,255,255,.9);margin-left:-13px">{{ f.initialsB }}</span>
+                          </span>
+                        </sc-if>
+                        <sc-if value="{{ f.soloAvatar }}">
+                          <span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));font:600 13px/1 'Instrument Sans',sans-serif;flex-shrink:0">{{ f.initials }}</span>
+                        </sc-if>
+                        <span style="min-width:0;flex:1">
+                          <span style="display:block;font:600 16px/21px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ f.title }}</span>
+                          <span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478;margin-top:2px">{{ f.meta }}</span>
+                          <sc-if value="{{ f.place }}">
+                            <span style="display:flex;align-items:center;gap:5px;margin-top:8px;font:500 12px/16px 'Instrument Sans',sans-serif;color:#5b6478"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>{{ f.place }}</span>
+                          </sc-if>
+                          <sc-if value="{{ f.footnote }}">
+                            <span style="display:block;margin-top:8px;font:400 12px/16px 'Instrument Sans',sans-serif;color:#8b93a5">{{ f.footnote }}</span>
+                          </sc-if>
+                        </span>
+                        <sc-if value="{{ f.linkable }}">
+                          <button onClick="{{ f.open }}" style="flex-shrink:0;border:1px solid rgba(13,18,32,.08);background:rgba(255,255,255,.6);border-radius:999px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;color:#5b6478;cursor:pointer;transition:all .25s ease" style-hover="color:#0b60ff;border-color:rgba(11,96,255,.35)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></button>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isConnect }}">
+            <div data-screen-label="Connect" style="display:flex;flex-direction:column;align-items:center;gap:20px;padding-top:8px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;background:rgba(255,255,255,.6);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.8);border-radius:999px;padding:4px;gap:2px">
+                <button onClick="{{ setPresent }}" style="border:0;border-radius:999px;padding:9px 20px;font:600 13px/16px 'Instrument Sans',sans-serif;cursor:pointer;background:{{ presentBtnBg }};color:{{ presentBtnFg }};box-shadow:{{ presentBtnSh }};transition:all .3s cubic-bezier(.32,.72,0,1)">Show my code</button>
+                <button onClick="{{ setScan }}" style="border:0;border-radius:999px;padding:9px 20px;font:600 13px/16px 'Instrument Sans',sans-serif;cursor:pointer;background:{{ scanBtnBg }};color:{{ scanBtnFg }};box-shadow:{{ scanBtnSh }};transition:all .3s cubic-bezier(.32,.72,0,1)">Scan a code</button>
+              </div>
+
+              <sc-if value="{{ showQr }}">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
+                  <p style="margin:0;font:400 14px/20px 'Instrument Sans',sans-serif;color:#5b6478;text-align:center">Have the other person scan this with SmartCard.</p>
+                  <div style="position:relative;padding:20px;border-radius:34px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.75));box-shadow:0 26px 60px -20px rgba(11,96,255,.35),0 4px 14px rgba(16,24,40,.08)">
+                    <div style="position:absolute;inset:-26px;border-radius:50px;background:radial-gradient(circle at 50% 50%,var(--accent-tint,rgba(11,96,255,.12)),transparent 70%);animation:sc-halo 4.5s ease-in-out infinite;z-index:-1"></div>
+                    <div style="width:248px;height:248px;padding:14px;border-radius:22px;background:#fff">
+                      <div style="display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);width:100%;height:100%;opacity:{{ qrOpacity }};filter:blur({{ qrBlur }}px);transition:opacity .55s cubic-bezier(.32,.72,0,1),filter .55s cubic-bezier(.32,.72,0,1)">
+                        <sc-for list="{{ qrCells }}" as="cell" hint-placeholder-count="441"><div style="background:{{ cell.c }};border-radius:{{ cell.r }}"></div></sc-for>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;font:500 12px/16px 'Instrument Sans',sans-serif;color:#8b93a5">
+                    <span style="width:6px;height:6px;border-radius:999px;background:var(--accent,#0b60ff);animation:sc-halo 2s ease-in-out infinite"></span>
+                    Code refreshes on its own &mdash; nothing to tap
+                  </div>
+                  <button onClick="{{ simulateScan }}" style="border:1px dashed rgba(11,96,255,.4);background:rgba(11,96,255,.06);color:var(--accent-deep,#0847c4);border-radius:999px;padding:9px 18px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer">Simulate a successful scan &rarr;</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showScanner }}">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:18px">
+                  <p style="margin:0;font:400 14px/20px 'Instrument Sans',sans-serif;color:#5b6478;text-align:center">Point your camera at the code they&rsquo;re showing.</p>
+                  <div style="position:relative;width:288px;height:288px;border-radius:34px;overflow:hidden;border:1px solid var(--g-bd,rgba(255,255,255,.75));box-shadow:0 22px 50px -18px rgba(16,24,40,.4);background:repeating-linear-gradient(120deg,#2a3040 0 12px,#333a4d 12px 24px)">
+                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><span style="font:400 10px/1 'Geist Mono',monospace;color:rgba(255,255,255,.65);background:rgba(0,0,0,.35);border-radius:6px;padding:6px 10px">live camera feed</span></div>
+                    <div style="position:absolute;inset:38px;border-radius:22px;border:2px solid rgba(255,255,255,.7);box-shadow:0 0 0 999px rgba(10,14,24,.28)"></div>
+                    <div style="position:absolute;left:38px;right:38px;top:38px;height:2px;background:linear-gradient(90deg,transparent,var(--accent,#0b60ff),transparent);animation:sc-scanline 2.6s cubic-bezier(.4,0,.6,1) infinite"></div>
+                  </div>
+                  <button onClick="{{ simulateScan }}" style="border:0;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));color:#fff;border-radius:999px;padding:13px 26px;font:600 14px/18px 'Instrument Sans',sans-serif;cursor:pointer;box-shadow:0 14px 30px -10px rgba(11,96,255,.6)">Simulate scanning Alex&rsquo;s code</button>
+                  <button onClick="{{ simulateFailure }}" style="border:0;background:transparent;color:#8b93a5;font:500 12px/16px 'Instrument Sans',sans-serif;cursor:pointer">Show the failure state instead</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showConnected }}">
+                <div data-screen-label="Connected" style="display:flex;flex-direction:column;align-items:center;gap:24px;padding:10px 0 6px">
+                  <div style="position:relative;display:flex;align-items:center;justify-content:center">
+                    <div style="animation:sc-merge .9s cubic-bezier(.32,.72,0,1) both">
+                      <div style="position:relative;width:150px;height:150px">
+                        <div style="position:absolute;inset:0;animation:sc-orbit 60s linear infinite"><sc-for list="{{ cmA }}" as="d" hint-placeholder-count="12"><span style="position:absolute;top:50%;left:50%;width:2px;height:8px;margin:-4px -1px;border-radius:1px;background:var(--accent,#0b60ff);transform:{{ d.t }}"></span></sc-for></div>
+                        <div style="position:absolute;inset:0;animation:sc-orbit-rev 90s linear infinite"><sc-for list="{{ cmB }}" as="d" hint-placeholder-count="6"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:11px;margin:-5.5px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for></div>
+                        <div style="position:absolute;top:50%;left:50%;width:76px;height:76px;margin:-38px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(11,96,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font:600 20px/1 'Instrument Sans',sans-serif">JM</div>
+                      </div>
+                    </div>
+                    <div style="animation:sc-merge-l .9s cubic-bezier(.32,.72,0,1) both;margin-left:-18px">
+                      <div style="position:relative;width:150px;height:150px">
+                        <div style="position:absolute;inset:0;animation:sc-orbit-rev 70s linear infinite"><sc-for list="{{ cmC }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2px;height:8px;margin:-4px -1px;border-radius:1px;background:var(--accent,#0b60ff);transform:{{ d.t }}"></span></sc-for></div>
+                        <div style="position:absolute;inset:0;animation:sc-orbit 100s linear infinite"><sc-for list="{{ cmD }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:11px;margin:-5.5px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for></div>
+                        <div style="position:absolute;top:50%;left:50%;width:76px;height:76px;margin:-38px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(124,58,237,.2),rgba(11,96,255,.16));border:1px solid rgba(255,255,255,.92);font:600 20px/1 'Instrument Sans',sans-serif">AC</div>
+                      </div>
+                    </div>
+                    <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px">
+                      <span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));box-shadow:0 10px 24px -8px rgba(11,96,255,.8),0 0 0 5px #f1f4fa;animation:sc-spring-in .7s cubic-bezier(.34,1.56,.64,1) .5s both">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" style="stroke-dasharray:36;animation:sc-draw .5s cubic-bezier(.32,.72,0,1) .75s both"></path></svg>
+                      </span>
+                    </span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:6px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) .55s both">
+                    <h2 style="margin:0;font:600 28px/32px 'Instrument Sans',sans-serif;letter-spacing:-.035em">You&rsquo;re connected</h2>
+                    <p style="margin:0;font:600 15px/21px 'Instrument Sans',sans-serif;color:#0d1220">Alex Chen</p>
+                    <div style="margin-top:4px;text-align:center">
+                      <div style="font:500 10px/14px 'Geist Mono',monospace;letter-spacing:.14em;color:#5b6478">VERIFIED IN PERSON</div>
+                      <div style="margin-top:5px;font:500 12px/17px 'Geist Mono',monospace;color:#0d1220">BLUE BOTTLE COFFEE &middot; 6:42 PM</div>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:9px;width:100%;max-width:320px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) .7s both">
+                    <button onClick="{{ openAlex }}" style="border:0;border-radius:999px;padding:14px;font:600 14px/18px 'Instrument Sans',sans-serif;cursor:pointer;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));color:#fff;box-shadow:0 14px 30px -10px rgba(11,96,255,.55)">See the meeting record</button>
+                    <button onClick="{{ resetConnect }}" style="border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.7);border-radius:999px;padding:13px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Connect again</button>
+                    <button onClick="{{ goHome }}" style="border:0;background:transparent;border-radius:999px;padding:10px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Continue</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showFailure }}">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px 0">
+                  <div style="display:flex;align-items:center;justify-content:center;width:72px;height:72px;border-radius:999px;background:rgba(13,18,32,.05);border:1px solid rgba(13,18,32,.08);animation:sc-rise .4s ease both">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8b93a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                  </div>
+                  <p style="margin:0;font:500 15px/21px 'Instrument Sans',sans-serif;color:#5b6478;text-align:center;max-width:270px">That didn&rsquo;t work. Try again.</p>
+                  <p style="margin:0;font:400 11px/15px 'Geist Mono',monospace;color:#a4abbb;text-align:center;max-width:280px">Deliberately generic &mdash; no distance, no reason, nothing to probe</p>
+                  <button onClick="{{ setScan }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.7);border-radius:999px;padding:12px 22px;font:600 13px/17px 'Instrument Sans',sans-serif;cursor:pointer">Try again</button>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isConnections }}">
+            <div data-screen-label="Connections" style="display:flex;flex-direction:column;gap:16px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;flex-direction:column;gap:5px;padding-top:6px">
+                <h1 style="margin:0;font:600 30px/34px 'Instrument Sans',sans-serif;letter-spacing:-.03em">People</h1>
+                <p style="margin:0;font:400 14px/20px 'Instrument Sans',sans-serif;color:#5b6478">Everyone you&rsquo;ve met in person. There&rsquo;s no way to browse anyone else&rsquo;s.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;border-radius:24px;overflow:hidden;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                <sc-for list="{{ connectionRows }}" as="c" hint-placeholder-count="6">
+                  <button onClick="{{ c.open }}" style="text-align:left;display:flex;align-items:center;gap:13px;padding:13px 16px;border:0;border-bottom:1px solid rgba(13,18,32,.055);background:transparent;cursor:pointer;transition:background .2s ease" style-hover="background:rgba(255,255,255,.55)">
+                    <span style="display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));font:600 13px/1 'Instrument Sans',sans-serif;color:#0d1220;flex-shrink:0">{{ c.initials }}</span>
+                    <span style="min-width:0;flex:1">
+                      <span style="display:block;font:600 15px/20px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ c.name }}</span>
+                      <span style="display:block;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">{{ c.meta }}</span>
+                    </span>
+                    <span style="flex-shrink:0;display:flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;background:rgba(13,18,32,.04);font:500 10px/14px 'Geist Mono',monospace;color:#5b6478;letter-spacing:.03em">
+                      <sc-if value="{{ c.isNfc }}">NFC</sc-if>
+                      <sc-if value="{{ c.isQr }}">QR</sc-if>
+                    </span>
+                  </button>
+                </sc-for>
+              </div>
+              <p style="margin:0 0 8px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#a4abbb">No location on most of these &mdash; that&rsquo;s normal. It only appears when both people agreed to share it.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isConnectionDetail }}">
+            <div data-screen-label="Connection detail" style="display:flex;flex-direction:column;gap:18px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <button onClick="{{ backConnections }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:6px 0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People
+              </button>
+              <div style="position:relative;height:206px;display:flex;align-items:center;justify-content:center">
+                <div style="position:relative;width:220px;height:220px">
+                  <div style="position:absolute;inset:0;animation:sc-orbit 80s linear infinite"><sc-for list="{{ hRA }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:9px;margin:-4.5px -1.25px;border-radius:1px;background:var(--accent,#0b60ff);transform:{{ d.t }}"></span></sc-for></div>
+                  <div style="position:absolute;inset:0;animation:sc-orbit-rev 110s linear infinite"><sc-for list="{{ hRB }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:12px;margin:-6px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for></div>
+                  <div style="position:absolute;inset:0;animation:sc-orbit 140s linear infinite"><sc-for list="{{ hRC }}" as="d" hint-placeholder-count="3"><span style="position:absolute;top:50%;left:50%;width:3px;height:15px;margin:-7.5px -1.5px;border-radius:1.5px;background:#0a3fb0;transform:{{ d.t }}"></span></sc-for></div>
+                  <div style="position:absolute;top:50%;left:50%;width:92px;height:92px;margin:-46px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(11,96,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font:600 25px/1 'Instrument Sans',sans-serif;animation:sc-blurup .9s cubic-bezier(.32,.72,0,1) both">AC</div>
+                </div>
+              </div>
+              <div style="text-align:center">
+                <h1 style="margin:0;font:600 25px/29px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Alex Chen</h1>
+                <p style="margin:3px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">Design lead, Figma &middot; 9 connections &middot; 4 events &middot; 3 cities</p>
+              </div>
+              <div style="padding:15px 16px;border-radius:24px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08));display:flex;flex-direction:column;gap:11px">
+                <div style="display:grid;grid-template-columns:60px 1fr;row-gap:7px;column-gap:12px;font:400 12.5px/17px 'Instrument Sans',sans-serif">
+                  <span style="color:#8b93a5">Who</span><span>You and Alex Chen</span>
+                  <span style="color:#8b93a5">When</span><span>Aug 13, 2026, 6:42 PM</span>
+                  <span style="color:#8b93a5">How</span><span>QR code, verified by location</span>
+                  <span style="color:#8b93a5">Where</span><span>Blue Bottle Coffee</span>
+                </div>
+                <div style="height:1px;background:rgba(13,18,32,.08)"></div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><span style="font:600 12.5px/17px 'Instrument Sans',sans-serif">Location sharing</span><span style="font:500 10px/14px 'Geist Mono',monospace;color:#7a5c00">WAITING ON ALEX</span></div>
+                <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Visible to mutual connections<span style="width:40px;height:24px;border-radius:999px;background:var(--accent,#0b60ff);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+                <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">You agree to share it<span style="width:40px;height:24px;border-radius:999px;background:var(--accent,#0b60ff);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+                <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Mark this meeting private<span style="width:40px;height:24px;border-radius:999px;background:rgba(13,18,32,.14);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+              </div>
+              <div style="display:flex;gap:8px;padding-bottom:8px">
+                <button onClick="{{ goHome }}" style="flex:1;padding:12px;border-radius:16px;border:0;background:#0d1220;font:600 13px/17px 'Instrument Sans',sans-serif;color:#fff;cursor:pointer">Continue</button>
+                <button onClick="{{ askRemove }}" style="flex:1;padding:12px;border-radius:16px;border:1px solid rgba(180,35,24,.4);background:rgba(180,35,24,.05);font:600 13px/17px 'Instrument Sans',sans-serif;color:#b42318;cursor:pointer">Remove connection</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isConnectionRemoved }}">
+            <div data-screen-label="Connection removed" style="display:flex;flex-direction:column;gap:16px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <button onClick="{{ backConnections }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:6px 0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People
+              </button>
+              <div style="display:flex;align-items:center;gap:16px;opacity:.6">
+                <div style="position:relative;width:120px;height:120px;flex-shrink:0">
+                  <div style="position:absolute;top:50%;left:50%;width:68px;height:68px;margin:-34px;border-radius:999px;border:1px dashed rgba(13,18,32,.16)"></div>
+                  <div style="position:absolute;top:50%;left:50%;width:94px;height:94px;margin:-47px;border-radius:999px;border:1px dashed rgba(13,18,32,.13)"></div>
+                  <div style="position:absolute;top:50%;left:50%;width:118px;height:118px;margin:-59px;border-radius:999px;border:1px dashed rgba(13,18,32,.1)"></div>
+                  <div style="position:absolute;top:50%;left:50%;width:52px;height:52px;margin:-26px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:rgba(13,18,32,.06);border:1px solid rgba(13,18,32,.1);font:600 15px/1 'Instrument Sans',sans-serif;color:#8b93a5">AC</div>
+                </div>
+                <div style="min-width:0">
+                  <h1 style="margin:0;font:600 23px/27px 'Instrument Sans',sans-serif;letter-spacing:-.03em;color:#5b6478">Alex Chen</h1>
+                  <p style="margin:3px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#8b93a5">Connection removed</p>
+                </div>
+              </div>
+              <div style="border-radius:22px;background:rgba(255,255,255,.6);border:1px solid rgba(13,18,32,.07);padding:16px;display:flex;flex-direction:column;gap:10px">
+                <p style="margin:0;font:400 13.5px/20px 'Instrument Sans',sans-serif;color:#0d1220;text-wrap:pretty">The record of the meeting stays here as your history &mdash; Aug 13, Blue Bottle Coffee, verified by location. Nothing about it is shared any more, and Alex can no longer see your profile.</p>
+                <div style="height:1px;background:rgba(13,18,32,.07)"></div>
+                <p style="margin:0;font:400 12.5px/18px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">There&rsquo;s no button that undoes this. Connecting again means being in the same place again &mdash; a tap or a scan, like the first time.</p>
+              </div>
+              <button onClick="{{ goConnect }}" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:999px;padding:14px;font:600 14px/18px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));color:#fff;box-shadow:0 14px 30px -10px rgba(11,96,255,.55);cursor:pointer">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>Connect again in person
+              </button>
+              <button onClick="{{ goHome }}" style="border:0;background:transparent;font:600 14px/18px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer;padding:6px">Continue</button>
+              <p style="margin:0 0 8px;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478;text-align:center;text-wrap:pretty">Opens Connect &mdash; it doesn&rsquo;t notify Alex or restore anything on its own.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isActivity }}">
+            <div data-screen-label="Activity" style="display:flex;flex-direction:column;gap:20px;animation:sc-rise .45s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;flex-direction:column;gap:5px;padding-top:6px">
+                <h1 style="margin:0;font:600 30px/34px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Activity</h1>
+                <p style="margin:0;font:400 14px/20px 'Instrument Sans',sans-serif;color:#5b6478;max-width:54ch">A log of every tap of your cards, in case you missed the push. Deliberately plainer than the rest of the app.</p>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font:500 11px/15px 'Geist Mono',monospace;letter-spacing:.06em;color:#8b93a5">YOUR CARDS</div>
+                <sc-for list="{{ cardRows }}" as="card" hint-placeholder-count="2">
+                  <div style="display:flex;align-items:center;gap:12px;padding:13px 15px;background:rgba(255,255,255,.82);border:1px solid rgba(13,18,32,.08);border-radius:14px">
+                    <span style="font:500 13px/18px 'Geist Mono',monospace;color:#0d1220;letter-spacing:.02em">{{ card.code }}</span>
+                    <span style="font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5;flex:1">{{ card.label }}</span>
+                    <sc-if value="{{ card.revoked }}">
+                      <span style="border-radius:8px;padding:5px 10px;background:rgba(13,18,32,.05);color:#8b93a5;font:600 11px/14px 'Instrument Sans',sans-serif">Revoked</span>
+                    </sc-if>
+                    <button onClick="{{ card.revoke }}" style="border:1px solid rgba(13,18,32,.12);background:#fff;border-radius:10px;padding:7px 12px;font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer;transition:all .2s ease" style-hover="color:#b42318;border-color:rgba(180,35,24,.35)">Revoke</button>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:8px;padding-bottom:8px">
+                <div style="font:500 11px/15px 'Geist Mono',monospace;letter-spacing:.06em;color:#8b93a5">RECENT TAPS</div>
+                <sc-for list="{{ tapRows }}" as="t" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 15px;background:rgba(255,255,255,.82);border:1px solid rgba(13,18,32,.08);border-radius:14px">
+                    <span style="display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(13,18,32,.05);font:600 11px/1 'Instrument Sans',sans-serif;color:#5b6478;flex-shrink:0">{{ t.initials }}</span>
+                    <span style="min-width:0;flex:1">
+                      <span style="display:block;font:500 13px/18px 'Instrument Sans',sans-serif">{{ t.name }} tapped {{ t.card }}</span>
+                      <span style="display:block;font:400 11px/15px 'Geist Mono',monospace;color:#a4abbb">{{ t.when }}</span>
+                    </span>
+                    <sc-if value="{{ t.active }}">
+                      <button onClick="{{ t.remove }}" style="border:1px solid rgba(13,18,32,.12);background:#fff;border-radius:10px;padding:7px 12px;font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer;flex-shrink:0;transition:all .2s ease" style-hover="color:#b42318;border-color:rgba(180,35,24,.35)">Remove connection</button>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isProfile }}">
+            <div data-screen-label="Profile" style="display:flex;flex-direction:column;gap:14px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+
+                <div style="position:relative;height:262px;display:flex;align-items:center;justify-content:center">
+                  <div style="position:relative;width:256px;height:256px">
+                    <div style="position:absolute;top:50%;left:50%;width:124px;height:124px;margin:-62px;border-radius:999px;border:1px solid rgba(11,96,255,.2)"></div>
+                    <div style="position:absolute;top:50%;left:50%;width:176px;height:176px;margin:-88px;border-radius:999px;border:1px solid rgba(13,18,32,.12)"></div>
+                    <div style="position:absolute;top:50%;left:50%;width:224px;height:224px;margin:-112px;border-radius:999px;border:1px solid rgba(10,63,176,.18)"></div>
+                    <sc-for list="{{ ringP }}" as="d" hint-placeholder-count="12"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:9px;margin:-4.5px -1.25px;border-radius:1px;background:var(--accent,#0b60ff);transform:{{ d.t }}"></span></sc-for>
+                    <sc-for list="{{ ringE }}" as="d" hint-placeholder-count="6"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:12px;margin:-6px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+                    <sc-for list="{{ ringC }}" as="d" hint-placeholder-count="2"><span style="position:absolute;top:50%;left:50%;width:3px;height:16px;margin:-8px -1.5px;border-radius:1.5px;background:#0a3fb0;transform:{{ d.t }}"></span></sc-for>
+                    <div style="position:absolute;top:50%;left:50%;width:96px;height:96px;margin:-48px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(11,96,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font:600 26px/1 'Instrument Sans',sans-serif;animation:sc-blurup 1s cubic-bezier(.32,.72,0,1) both">JM</div>
+                    
+                    
+                    
+                  </div>
+                </div>
+              <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px">
+                <span style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);border-radius:999px;padding:5px 10px"><span style="width:2.5px;height:9px;border-radius:1px;background:var(--accent,#0b60ff);flex-shrink:0"></span>12 connections</span>
+                <span style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);border-radius:999px;padding:5px 10px"><span style="width:2.5px;height:12px;border-radius:1px;background:#0d1220;flex-shrink:0"></span>6 events</span>
+                <span style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);border-radius:999px;padding:5px 10px"><span style="width:3px;height:15px;border-radius:1.5px;background:#0a3fb0;flex-shrink:0"></span>2 cities</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:13px">
+                <div>
+                  <h1 style="margin:0;font:600 27px/31px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Jacob McKanry</h1>
+                  <p style="margin:3px 0 0;font:400 13.5px/19px 'Instrument Sans',sans-serif;color:#5b6478">Founder, SmartCard &middot; @jacob</p>
+                </div>
+                <p style="margin:0;font:400 14.5px/22px 'Instrument Sans',sans-serif;color:#0d1220;max-width:52ch;text-wrap:pretty">Building a network you can only join by meeting someone.</p>
+                <div style="border-radius:20px;padding:2px 0;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 15px;border-bottom:1px solid rgba(13,18,32,.055)"><span style="flex:1;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Phone</span><span style="font:500 12.5px/17px 'Geist Mono',monospace">+1 415 555 0148</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 15px;border-bottom:1px solid rgba(13,18,32,.055)"><span style="flex:1;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Email</span><span style="font:500 12.5px/17px 'Geist Mono',monospace">jacob@smartcard.tech</span></div>
+                  <div style="display:flex;align-items:center;gap:10px;padding:10px 15px"><span style="flex:1;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Occasional emails</span><span style="width:40px;height:24px;border-radius:999px;background:var(--accent,#0b60ff);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></div>
+                </div>
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+                  <span style="font:500 10px/14px 'Geist Mono',monospace;letter-spacing:.12em;color:#a4abbb">LINKS</span>
+                  <span style="font:400 11px/15px 'Instrument Sans',sans-serif;color:#a4abbb">7 &middot; swipe for more</span>
+                </div>
+                <div style="display:flex;gap:8px;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding:1px 1px 4px">
+                  <sc-for list="{{ profileTiles }}" as="t" hint-placeholder-count="7"><button style="flex:0 0 auto;width:184px;scroll-snap-align:start;display:flex;align-items:center;gap:10px;text-align:left;padding:11px 12px;border-radius:18px;background:rgba(255,255,255,.78);border:1px solid rgba(13,18,32,.08);box-shadow:0 2px 8px rgba(16,24,40,.05);cursor:pointer;transition:transform .28s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-2px)">
+                    <span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:11px;background:{{ t.tint }};color:{{ t.color }};padding:8px;flex-shrink:0"><svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor" style="display:block"><path d="{{ t.d }}"></path></svg></span>
+                    <span style="min-width:0;display:block">
+                      <span style="display:block;font:600 12.5px/16px 'Instrument Sans',sans-serif;color:#0d1220">{{ t.name }}</span>
+                      <span style="display:block;font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.handle }}</span>
+                    </span>
+                  </button></sc-for>
+                  <button style="flex:0 0 auto;width:120px;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;gap:6px;padding:11px 12px;border-radius:18px;background:transparent;border:1px dashed rgba(13,18,32,.18);font:500 12px/16px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>Add link</button>
+                </div>
+                <p style="margin:0;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#a4abbb;max-width:52ch;text-wrap:pretty">One identity, shown identically to every connection. No public view, no profile link, no way for a stranger to reach this page.</p>
+              </div>
+              <div style="position:sticky;bottom:6px;display:flex;justify-content:flex-end;pointer-events:none">
+                <button style="pointer-events:auto;display:flex;align-items:center;gap:8px;border:0;border-radius:999px;padding:14px 20px;font:600 13.5px/18px 'Instrument Sans',sans-serif;background:#0d1220;color:#fff;box-shadow:0 14px 30px -10px rgba(13,18,32,.6);cursor:pointer">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"></path></svg>Edit profile
+                </button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isVisitorProfile }}">
+            <div data-screen-label="Profile (as a connection sees it)" style="display:flex;flex-direction:column;gap:12px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <button onClick="{{ backConnections }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:4px 0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People
+              </button>
+              <div style="position:relative;height:238px;display:flex;align-items:center;justify-content:center">
+                <div style="position:relative;width:256px;height:256px">
+                  <div style="position:absolute;top:50%;left:50%;width:124px;height:124px;margin:-62px;border-radius:999px;border:1px solid rgba(11,96,255,.2)"></div>
+                  <div style="position:absolute;top:50%;left:50%;width:176px;height:176px;margin:-88px;border-radius:999px;border:1px solid rgba(13,18,32,.12)"></div>
+                  <div style="position:absolute;top:50%;left:50%;width:224px;height:224px;margin:-112px;border-radius:999px;border:1px solid rgba(10,63,176,.18)"></div>
+                  <sc-for list="{{ vRingP }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:9px;margin:-4.5px -1.25px;border-radius:1px;background:var(--accent,#0b60ff);transform:{{ d.t }}"></span></sc-for>
+                  <sc-for list="{{ vRingE }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:12px;margin:-6px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+                  <sc-for list="{{ vRingC }}" as="d" hint-placeholder-count="3"><span style="position:absolute;top:50%;left:50%;width:3px;height:16px;margin:-8px -1.5px;border-radius:1.5px;background:#0a3fb0;transform:{{ d.t }}"></span></sc-for>
+                  <div style="position:absolute;top:50%;left:50%;width:96px;height:96px;margin:-48px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(11,96,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font:600 26px/1 'Instrument Sans',sans-serif;animation:sc-blurup 1s cubic-bezier(.32,.72,0,1) both">AC</div>
+                  
+                  
+                  
+                </div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px">
+                <span style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);border-radius:999px;padding:5px 10px"><span style="width:2.5px;height:9px;border-radius:1px;background:var(--accent,#0b60ff);flex-shrink:0"></span>9 connections</span>
+                <span style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);border-radius:999px;padding:5px 10px"><span style="width:2.5px;height:12px;border-radius:1px;background:#0d1220;flex-shrink:0"></span>4 events</span>
+                <span style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);border-radius:999px;padding:5px 10px"><span style="width:3px;height:15px;border-radius:1.5px;background:#0a3fb0;flex-shrink:0"></span>3 cities</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:11px;padding-bottom:8px">
+                <div>
+                  <h1 style="margin:0;font:600 27px/31px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Alex Chen</h1>
+                  <p style="margin:3px 0 0;font:400 13.5px/19px 'Instrument Sans',sans-serif;color:#5b6478">Design lead, Figma &middot; @alexchen</p>
+                </div>
+                <p style="margin:0;font:400 14.5px/22px 'Instrument Sans',sans-serif;color:#0d1220;max-width:52ch;text-wrap:pretty">Ten years of design systems. Currently thinking about how tokens survive contact with real teams.</p>
+                <button onClick="{{ goConnectionDetail }}" style="display:flex;align-items:center;gap:11px;text-align:left;width:100%;padding:12px 14px;border-radius:18px;background:linear-gradient(150deg,rgba(11,96,255,.1),rgba(124,58,237,.07));border:1px solid rgba(11,96,255,.2);cursor:pointer">
+                  <span style="display:flex;width:17px;height:17px;color:#0847c4;flex-shrink:0"><svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg></span>
+                  <span style="min-width:0;flex:1">
+                    <span style="display:block;font:600 12.5px/17px 'Instrument Sans',sans-serif;color:#0d1220">You met at Blue Bottle Coffee</span>
+                    <span style="display:block;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478">Aug 13, 6:42 PM &middot; QR, verified by location</span>
+                    <span style="display:block;margin-top:3px;font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">This meeting is why you can see the page &mdash; there&rsquo;s no link to it and no way to search for it.</span>
+                  </span>
+                  <span style="display:flex;color:#0847c4;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span>
+                </button>
+                <div style="display:flex;gap:8px">
+                  <button style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);font:600 13px/17px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.832 16.568a1 1 0 0 0 1.213-.303l.355-.465A2 2 0 0 1 17 15h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2A18 18 0 0 1 2 4a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v3a2 2 0 0 1-.8 1.6l-.468.351a1 1 0 0 0-.292 1.233 14 14 0 0 0 6.392 6.384"></path></svg>Call</button>
+                  <button style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:13px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);font:600 13px/17px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"></path><rect x="2" y="4" width="20" height="16" rx="2"></rect></svg>Email</button>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                  <sc-for list="{{ visitorTiles }}" as="t" hint-placeholder-count="3"><button style="display:flex;align-items:center;gap:10px;text-align:left;padding:11px 12px;border-radius:18px;background:rgba(255,255,255,.78);border:1px solid rgba(13,18,32,.08);box-shadow:0 2px 8px rgba(16,24,40,.05);cursor:pointer;transition:transform .28s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-2px)">
+                    <span style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:11px;background:{{ t.tint }};color:{{ t.color }};padding:8px;flex-shrink:0"><svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor" style="display:block"><path d="{{ t.d }}"></path></svg></span>
+                    <span style="min-width:0;display:block">
+                      <span style="display:block;font:600 12.5px/16px 'Instrument Sans',sans-serif;color:#0d1220">{{ t.name }}</span>
+                      <span style="display:block;font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ t.handle }}</span>
+                    </span>
+                  </button></sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isEvents }}">
+            <div data-screen-label="Events browse" style="display:flex;flex-direction:column;gap:16px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-top:6px">
+                <div style="display:flex;flex-direction:column;gap:4px">
+                  <h1 style="margin:0;font:600 30px/34px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Events</h1>
+                  <p style="margin:0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#8b93a5">{{ eventCount }}</p>
+                </div>
+                <button onClick="{{ goCreate }}" style="display:flex;align-items:center;gap:7px;border:0;border-radius:999px;padding:11px 17px;font:600 13px/17px 'Instrument Sans',sans-serif;background:#0d1220;color:#fff;cursor:pointer;flex-shrink:0;box-shadow:0 8px 20px -8px rgba(13,18,32,.5)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>Host</button>
+              </div>
+
+              <div style="display:flex;gap:7px;overflow-x:auto;padding-bottom:2px">
+                <sc-for list="{{ cityPills }}" as="c" hint-placeholder-count="5">
+                  <button onClick="{{ c.set }}" style="flex-shrink:0;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};border-radius:999px;padding:8px 15px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer;transition:all .25s cubic-bezier(.32,.72,0,1)">{{ c.label }}</button>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;align-self:flex-start;background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.85);border-radius:999px;padding:3px;gap:2px">
+                <button onClick="{{ tabUpcoming }}" style="border:0;border-radius:999px;padding:7px 16px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer;background:{{ upcomingBg }};color:{{ upcomingFg }};transition:all .25s ease">Upcoming</button>
+                <button onClick="{{ tabPast }}" style="border:0;border-radius:999px;padding:7px 16px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer;background:{{ pastBg }};color:{{ pastFg }};transition:all .25s ease">Past</button>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:14px;padding-bottom:8px">
+                <sc-for list="{{ eventCards }}" as="e" hint-placeholder-count="4">
+                  <button onClick="{{ e.open }}" style="text-align:left;border:1px solid var(--g-bd,rgba(255,255,255,.78));border-radius:26px;overflow:hidden;padding:0;cursor:pointer;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08));transition:transform .32s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-3px)">
+                    <span style="position:relative;display:block;height:132px;background:repeating-linear-gradient(115deg,#dfe5f0 0 10px,#e9edf5 10px 20px)">
+                      <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:400 10px/1 'Geist Mono',monospace;color:#7b8398"><span style="background:rgba(255,255,255,.86);border-radius:6px;padding:5px 9px">{{ e.coverLabel }}</span></span>
+                      <span style="position:absolute;top:12px;left:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;width:48px;height:52px;border-radius:15px;background:rgba(255,255,255,.82);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.9)">
+                        <span style="font:500 9px/12px 'Geist Mono',monospace;color:var(--accent,#0b60ff);letter-spacing:.06em">{{ e.mon }}</span>
+                        <span style="font:600 19px/22px 'Instrument Sans',sans-serif;color:#0d1220">{{ e.day }}</span>
+                      </span>
+                      <span style="position:absolute;top:14px;right:12px;display:flex;gap:6px">
+                        <sc-if value="{{ e.isHosting }}">
+                          <span style="display:flex;align-items:center;gap:5px;border-radius:999px;padding:5px 10px;background:rgba(13,18,32,.78);color:#fff;font:600 10px/13px 'Instrument Sans',sans-serif;backdrop-filter:blur(10px)">Hosting</span>
+                        </sc-if>
+                        <sc-if value="{{ e.isPrivate }}">
+                          <span style="display:flex;align-items:center;gap:4px;border-radius:999px;padding:5px 9px;background:rgba(255,255,255,.85);color:#5b6478;font:600 10px/13px 'Instrument Sans',sans-serif;backdrop-filter:blur(10px)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Private</span>
+                        </sc-if>
+                      </span>
+                    </span>
+                    <span style="display:block;padding:15px 17px 16px">
+                      <span style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                        <span style="min-width:0;flex:1">
+                          <span style="display:block;font:600 17px/22px 'Instrument Sans',sans-serif;letter-spacing:-.02em;color:#0d1220">{{ e.title }}</span>
+                          <span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478;margin-top:2px">{{ e.when }}</span>
+                          <span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:#8b93a5">{{ e.venue }}</span>
+                        </span>
+                        <sc-if value="{{ e.hasAnswer }}">
+                          <span style="flex-shrink:0;border-radius:999px;padding:6px 12px;font:600 11px/15px 'Instrument Sans',sans-serif;background:{{ e.pillBg }};color:{{ e.pillFg }};border:1px solid {{ e.pillBd }}">{{ e.pillLabel }}</span>
+                        </sc-if>
+                      </span>
+                      <span style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:12px;font:500 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">
+                        <span>{{ e.counts }}</span>
+                        <span style="width:3px;height:3px;border-radius:999px;background:#c3c9d6"></span>
+                        <span>{{ e.seats }}</span>
+                        <span style="width:3px;height:3px;border-radius:999px;background:#c3c9d6"></span>
+                        <span style="color:var(--accent-deep,#0847c4)">{{ e.knowLine }}</span>
+                      </span>
+                    </span>
+                  </button>
+                </sc-for>
+              </div>
+              <sc-if value="{{ eventsEmpty }}">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:10px;padding:34px 24px;border-radius:26px;border:1px dashed rgba(13,18,32,.16);background:rgba(255,255,255,.45);text-align:center">
+                  <span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:16px;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.07);color:#8b93a5"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v3"></path><path d="M16 2v3"></path><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path></svg></span>
+                  <p style="margin:0;font:600 14px/19px 'Instrument Sans',sans-serif;color:#0d1220">{{ eventsEmptyTitle }}</p>
+                  <p style="margin:0;max-width:38ch;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">{{ eventsEmptyBody }}</p>
+                  <button onClick="{{ goCreate }}" style="margin-top:2px;display:flex;align-items:center;gap:7px;border:0;border-radius:999px;padding:11px 18px;font:600 13px/17px 'Instrument Sans',sans-serif;background:#0d1220;color:#fff;cursor:pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>Host one here</button>
+                </div>
+              </sc-if>
+              <p style="margin:0 0 8px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#a4abbb;max-width:54ch">Counts are visible to everyone who can see the event. The actual guest list never is &mdash; not to attendees, not to you.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isEventDetail }}">
+            <div data-screen-label="Event detail" style="display:flex;flex-direction:column;gap:18px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <button onClick="{{ backEvents }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:6px 0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Events
+              </button>
+
+              <sc-if value="{{ evImmersive }}">
+                <div style="position:relative;border-radius:30px;overflow:hidden;border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:0 22px 50px -18px rgba(16,24,40,.28)">
+                  <div style="height:246px;background:repeating-linear-gradient(115deg,#d8dfec 0 12px,#e6ebf4 12px 24px);display:flex;align-items:center;justify-content:center"><span style="font:400 10px/1 'Geist Mono',monospace;color:#7b8398;background:rgba(255,255,255,.86);border-radius:6px;padding:6px 10px">{{ ev.coverLabel }}</span></div>
+                  <div style="position:absolute;left:14px;right:14px;bottom:14px;padding:17px;border-radius:23px;background:rgba(255,255,255,.66);backdrop-filter:blur(22px) saturate(1.7);-webkit-backdrop-filter:blur(22px) saturate(1.7);border:1px solid rgba(255,255,255,.8)">
+                    <div style="display:flex;align-items:center;gap:8px;font:500 11px/15px 'Geist Mono',monospace;color:var(--accent-deep,#0847c4);letter-spacing:.04em">{{ ev.when }}</div>
+                    <h1 style="margin:6px 0 0;font:600 25px/29px 'Instrument Sans',sans-serif;letter-spacing:-.03em">{{ ev.title }}</h1>
+                    <p style="margin:5px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">{{ ev.venue }} &middot; {{ ev.city }}</p>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ evSplit }}">
+                <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
+                  <div style="flex:0 0 200px;min-width:180px;border-radius:24px;overflow:hidden;border:1px solid var(--g-bd,rgba(255,255,255,.78));background:repeating-linear-gradient(115deg,#d8dfec 0 12px,#e6ebf4 12px 24px);min-height:168px;display:flex;align-items:center;justify-content:center"><span style="font:400 10px/1 'Geist Mono',monospace;color:#7b8398;background:rgba(255,255,255,.86);border-radius:6px;padding:5px 9px">cover 3:2</span></div>
+                  <div style="flex:1;min-width:240px;display:flex;flex-direction:column;justify-content:center;gap:7px;padding:6px 2px">
+                    <div style="font:500 11px/15px 'Geist Mono',monospace;color:var(--accent-deep,#0847c4);letter-spacing:.04em">{{ ev.when }}</div>
+                    <h1 style="margin:0;font:600 27px/31px 'Instrument Sans',sans-serif;letter-spacing:-.03em">{{ ev.title }}</h1>
+                    <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478">{{ ev.venue }} &middot; {{ ev.city }}</p>
+                  </div>
+                </div>
+              </sc-if>
+
+              <div style="display:flex;align-items:center;gap:11px;padding:13px 15px;border-radius:20px;background:rgba(255,255,255,.6);border:1px solid rgba(13,18,32,.07)">
+                <span style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));font:600 12px/1 'Instrument Sans',sans-serif;flex-shrink:0">{{ ev.hostInitials }}</span>
+                <span style="min-width:0;flex:1">
+                  <span style="display:block;font:600 13px/17px 'Instrument Sans',sans-serif">Hosted by {{ ev.host }}</span>
+                  <span style="display:block;font:400 12px/16px 'Instrument Sans',sans-serif;color:#8b93a5">{{ ev.knowLine }}</span>
+                </span>
+                <sc-if value="{{ evHosting }}">
+                  <span style="flex-shrink:0;display:flex;align-items:center;gap:5px;border-radius:999px;padding:6px 11px;background:#0d1220;color:#fff;font:600 10px/13px 'Instrument Sans',sans-serif">Hosting</span>
+                </sc-if>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:9px">
+                <div style="padding:13px 12px;border-radius:18px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px));-webkit-backdrop-filter:blur(var(--g-blur,22px));border:1px solid var(--g-bd,rgba(255,255,255,.78))"><div style="font:600 21px/25px 'Instrument Sans',sans-serif;letter-spacing:-.02em">{{ ev.going }}</div><div style="font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">going</div></div>
+                <div style="padding:13px 12px;border-radius:18px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px));-webkit-backdrop-filter:blur(var(--g-blur,22px));border:1px solid var(--g-bd,rgba(255,255,255,.78))"><div style="font:600 21px/25px 'Instrument Sans',sans-serif;letter-spacing:-.02em">{{ ev.interested }}</div><div style="font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">interested</div></div>
+                <div style="padding:13px 12px;border-radius:18px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px));-webkit-backdrop-filter:blur(var(--g-blur,22px));border:1px solid var(--g-bd,rgba(255,255,255,.78))"><div style="font:600 21px/25px 'Instrument Sans',sans-serif;letter-spacing:-.02em">{{ ev.waitlist }}</div><div style="font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">waitlisted</div></div>
+                <div style="padding:13px 12px;border-radius:18px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px));-webkit-backdrop-filter:blur(var(--g-blur,22px));border:1px solid var(--g-bd,rgba(255,255,255,.78))"><div style="font:600 21px/25px 'Instrument Sans',sans-serif;letter-spacing:-.02em">{{ ev.seats }}</div><div style="font:400 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">seats left</div></div>
+              </div>
+
+              <p style="margin:0;font:400 14px/22px 'Instrument Sans',sans-serif;color:#0d1220;max-width:58ch;text-wrap:pretty">{{ ev.desc }}</p>
+
+              <sc-if value="{{ evUnanswered }}">
+                <div style="display:flex;flex-direction:column;gap:10px;padding:17px;border-radius:26px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                  <div style="font:600 13px/17px 'Instrument Sans',sans-serif">Are you going?</div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button onClick="{{ askGoing }}" style="flex:1;min-width:110px;display:flex;align-items:center;justify-content:center;gap:7px;border:0;border-radius:999px;padding:14px 18px;font:600 14px/18px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));color:#fff;cursor:pointer;box-shadow:0 12px 26px -10px rgba(11,96,255,.6);transition:transform .3s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-2px)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Going</button>
+                    <button onClick="{{ askInterested }}" style="flex:1;min-width:100px;border:1px solid rgba(11,96,255,.32);background:rgba(11,96,255,.06);border-radius:999px;padding:14px 18px;font:600 14px/18px 'Instrument Sans',sans-serif;color:var(--accent-deep,#0847c4);cursor:pointer">Interested</button>
+                    <button onClick="{{ askNotGoing }}" style="flex:0 0 auto;border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.6);border-radius:999px;padding:14px 18px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Can&rsquo;t make it</button>
+                  </div>
+                  <sc-if value="{{ evNeedsApproval }}">
+                    <div style="display:flex;align-items:center;gap:8px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>The host approves each guest &mdash; tapping Going puts you in their queue, it doesn&rsquo;t seat you.</div>
+                  </sc-if>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ evAnswered }}">
+                <div style="display:flex;flex-direction:column;gap:12px;padding:17px;border-radius:26px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <span style="border-radius:999px;padding:8px 15px;font:600 13px/17px 'Instrument Sans',sans-serif;background:{{ evStatusBg }};color:{{ evStatusFg }};border:1px solid {{ evStatusBd }}">{{ evStatusLabel }}</span>
+                    <sc-if value="{{ evWaitPos }}">
+                      <span style="font:500 12px/16px 'Geist Mono',monospace;color:#5b6478">{{ evWaitPos }}</span>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{ evMismatch }}">
+                    <div style="display:flex;gap:9px;padding:12px 13px;border-radius:17px;background:rgba(13,18,32,.035);font:400 12px/17px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">{{ evMismatchLine }}</div>
+                  </sc-if>
+                  <sc-if value="{{ evPending }}">
+                    <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478">Nothing to do &mdash; you&rsquo;ll know when {{ ev.host }} decides. No nudge, no reminder to send.</p>
+                  </sc-if>
+                  <sc-if value="{{ evWaitlist }}">
+                    <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478">If a seat frees you&rsquo;re moved up automatically, in the same moment it happens. There&rsquo;s no queue to refresh.</p>
+                  </sc-if>
+                  <sc-if value="{{ evDenied }}">
+                    <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478">Not a dead end &mdash; you can ask again and it goes back to the host.</p>
+                  </sc-if>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button onClick="{{ askGoing }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.65);border-radius:999px;padding:11px 17px;font:600 13px/17px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Change answer</button>
+                    <button onClick="{{ withdrawRsvp }}" style="border:0;background:transparent;color:#8b93a5;font:600 13px/17px 'Instrument Sans',sans-serif;cursor:pointer;padding:11px 6px">Withdraw</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ evHosting }}">
+                <div style="display:flex;flex-direction:column;gap:11px;padding:17px;border-radius:26px;background:#0d1220;color:#fff">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                    <div style="font:600 14px/18px 'Instrument Sans',sans-serif">Your hosting view</div>
+                    <span style="border-radius:999px;padding:5px 11px;background:rgba(255,255,255,.14);font:600 11px/14px 'Instrument Sans',sans-serif">{{ evPendingCount }} pending</span>
+                  </div>
+                  <p style="margin:0;font:400 12px/18px 'Instrument Sans',sans-serif;color:rgba(255,255,255,.62);text-wrap:pretty">Only you see the pending count and the names in your queue. Everyone else sees the same counts you do above.</p>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button onClick="{{ goQueue }}" style="border:0;border-radius:999px;padding:12px 18px;font:600 13px/17px 'Instrument Sans',sans-serif;background:#fff;color:#0d1220;cursor:pointer">Approval queue</button>
+                    <button onClick="{{ openInvite }}" style="border:1px solid rgba(255,255,255,.22);background:transparent;border-radius:999px;padding:12px 18px;font:600 13px/17px 'Instrument Sans',sans-serif;color:#fff;cursor:pointer">Invite a connection</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ evIsPrivate }}">
+                <div style="display:flex;gap:11px;align-items:flex-start;padding:15px;border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(13,18,32,.07)">
+                  <span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:rgba(13,18,32,.05);color:#5b6478;flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+                  <span style="min-width:0"><span style="display:block;font:600 13px/17px 'Instrument Sans',sans-serif">Private event</span><span style="display:block;margin-top:3px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Invisible unless you were invited or already answered. Anyone going can invite one of their own connections &mdash; there&rsquo;s no link to share.</span></span>
+                </div>
+              </sc-if>
+
+              <p style="margin:0 0 8px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#a4abbb;max-width:54ch">No guest list, for anyone. &ldquo;{{ ev.knowLine }}&rdquo; is answerable because those are your own connections; a full list of names is not.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isEventQueue }}">
+            <div data-screen-label="Host approval queue" style="display:flex;flex-direction:column;gap:16px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <button onClick="{{ backEvents }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:6px 0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Events
+              </button>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <h1 style="margin:0;font:600 27px/31px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Approval queue</h1>
+                  <span style="border-radius:999px;padding:5px 11px;background:#0d1220;color:#fff;font:600 10px/13px 'Instrument Sans',sans-serif">Host only</span>
+                </div>
+                <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478">SmartCard Pilot Dinner &middot; {{ queueSeats }} &middot; {{ queuePending }} waiting on you</p>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:10px;padding-bottom:8px">
+                <sc-for list="{{ queueRows }}" as="q" hint-placeholder-count="4">
+                  <div style="display:flex;flex-direction:column;gap:12px;padding:15px;border-radius:22px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                    <div style="display:flex;align-items:center;gap:12px">
+                      <span style="display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));font:600 13px/1 'Instrument Sans',sans-serif;flex-shrink:0">{{ q.initials }}</span>
+                      <span style="min-width:0;flex:1">
+                        <span style="display:block;font:600 15px/20px 'Instrument Sans',sans-serif;letter-spacing:-.01em">{{ q.name }}</span>
+                        <span style="display:block;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">{{ q.when }}</span>
+                      </span>
+                      <span style="flex-shrink:0;border-radius:999px;padding:6px 12px;font:600 11px/15px 'Instrument Sans',sans-serif;background:{{ q.statusBg }};color:{{ q.statusFg }};border:1px solid {{ q.statusBd }}">{{ q.statusLabel }}</span>
+                    </div>
+                    <sc-if value="{{ q.note }}">
+                      <div style="font:400 12px/17px 'Instrument Sans',sans-serif;color:#5b6478;padding:10px 12px;border-radius:15px;background:rgba(13,18,32,.035)">{{ q.note }}</div>
+                    </sc-if>
+                    <sc-if value="{{ q.undecided }}">
+                      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <button onClick="{{ q.approve }}" style="display:flex;align-items:center;gap:6px;border:0;border-radius:999px;padding:11px 18px;font:600 13px/17px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));color:#fff;cursor:pointer;box-shadow:0 10px 22px -10px rgba(11,96,255,.55)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Approve</button>
+                        <button onClick="{{ q.deny }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.65);border-radius:999px;padding:11px 17px;font:600 13px/17px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Deny</button>
+                        <sc-if value="{{ q.isWaitlist }}">
+                          <button onClick="{{ q.approveOver }}" style="display:flex;align-items:center;gap:6px;border:1px dashed rgba(180,35,24,.45);background:rgba(180,35,24,.05);border-radius:999px;padding:11px 16px;font:600 12px/16px 'Instrument Sans',sans-serif;color:#b42318;cursor:pointer">Admit past capacity</button>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ q.overrideNote }}">
+                      <div style="display:flex;align-items:center;gap:7px;font:500 11px/15px 'Geist Mono',monospace;color:#b42318">{{ q.overrideNote }} &middot; recorded exception</div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+              <p style="margin:0 0 8px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#a4abbb;max-width:54ch">Only people who asked to go appear here. Anyone who tapped Interested or Can&rsquo;t make it never enters this queue.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isEventCreate }}">
+            <div data-screen-label="Create event" style="display:flex;flex-direction:column;gap:16px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <button onClick="{{ backEvents }}" style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:6px 0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>Events
+              </button>
+              <h1 style="margin:0;font:600 27px/31px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Host an event</h1>
+
+              <div style="display:flex;flex-direction:column;gap:14px;padding:18px;border-radius:26px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                <div style="display:flex;align-items:center;justify-content:center;gap:9px;height:118px;border-radius:20px;border:1px dashed rgba(13,18,32,.18);background:repeating-linear-gradient(115deg,rgba(223,229,240,.6) 0 10px,rgba(233,237,245,.6) 10px 20px);cursor:pointer;color:#7b8398">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+                  <span style="font:500 12px/16px 'Instrument Sans',sans-serif">Add a cover photo &mdash; 1600&times;900</span>
+                </div>
+
+                <label style="display:flex;flex-direction:column;gap:6px"><span style="font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">Title</span><input value="Rooftop Supper Club" style="height:46px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);padding:0 15px;font:500 15px/20px 'Instrument Sans',sans-serif;color:#0d1220;outline:none"></label>
+                <label style="display:flex;flex-direction:column;gap:6px"><span style="font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">Description</span><textarea rows="3" style="border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);padding:12px 15px;font:400 14px/20px 'Instrument Sans',sans-serif;color:#0d1220;outline:none;resize:vertical">Long table, one seating, everyone cooks one thing.</textarea></label>
+
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                  <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:6px"><span style="font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">Starts</span><input value="Sat, Aug 22 &middot; 7:00 PM" style="height:46px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);padding:0 15px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+                  <label style="flex:1;min-width:150px;display:flex;flex-direction:column;gap:6px"><span style="font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">Ends <span style="color:#a4abbb;font-weight:400">optional</span></span><input placeholder="&mdash;" style="height:46px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);padding:0 15px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+                </div>
+
+                <label style="display:flex;flex-direction:column;gap:6px"><span style="font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">Venue</span><input value="Address shared with attendees" style="height:46px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);padding:0 15px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <span style="font:600 12px/16px 'Instrument Sans',sans-serif;color:#5b6478">City <span style="color:#a4abbb;font-weight:400">curated list, not free text</span></span>
+                  <div style="display:flex;gap:7px;flex-wrap:wrap">
+                    <sc-for list="{{ cityPills }}" as="c" hint-placeholder-count="5">
+                      <button onClick="{{ c.set }}" style="border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};border-radius:999px;padding:8px 14px;font:600 12px/16px 'Instrument Sans',sans-serif;cursor:pointer">{{ c.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:2px;border-radius:26px;overflow:hidden;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78));box-shadow:var(--g-sh,0 10px 30px rgba(16,24,40,.08))">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px;border-bottom:1px solid rgba(13,18,32,.055)">
+                  <div style="min-width:0"><div style="font:600 13px/17px 'Instrument Sans',sans-serif">Who can find it</div><div style="font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Private events are invisible until invited</div></div>
+                  <div style="display:flex;background:rgba(13,18,32,.05);border-radius:999px;padding:3px;flex-shrink:0">
+                    <span style="border-radius:999px;padding:7px 14px;font:600 12px/16px 'Instrument Sans',sans-serif;color:#8b93a5">Public</span>
+                    <span style="border-radius:999px;padding:7px 14px;font:600 12px/16px 'Instrument Sans',sans-serif;background:#fff;color:#0d1220;box-shadow:0 1px 4px rgba(16,24,40,.12)">Private</span>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px;border-bottom:1px solid rgba(13,18,32,.055)">
+                  <div style="min-width:0"><div style="font:600 13px/17px 'Instrument Sans',sans-serif">Capacity</div><div style="font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Past this, new answers land on the waitlist</div></div>
+                  <input value="18" style="width:74px;height:40px;text-align:center;border-radius:14px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.85);font:600 15px/20px 'Instrument Sans',sans-serif;outline:none;flex-shrink:0">
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:15px 18px">
+                  <div style="min-width:0"><div style="font:600 13px/17px 'Instrument Sans',sans-serif">Approve each guest</div><div style="font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5">Answers arrive as pending for you to decide</div></div>
+                  <span style="width:46px;height:28px;border-radius:999px;background:var(--accent,#0b60ff);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:21px;width:22px;height:22px;border-radius:999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></span>
+                </div>
+              </div>
+
+              <div style="display:flex;gap:9px;padding-bottom:8px">
+                <button onClick="{{ backEvents }}" style="flex:1;border:0;border-radius:999px;padding:15px;font:600 14px/18px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--accent,#0b60ff),var(--accent-deep,#0847c4));color:#fff;cursor:pointer;box-shadow:0 14px 30px -10px rgba(11,96,255,.55)">Publish event</button>
+                <button onClick="{{ backEvents }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.6);border-radius:999px;padding:15px 22px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Cancel</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isRsvpStates }}">
+            <div data-screen-label="RSVP states" style="display:flex;flex-direction:column;gap:16px;animation:sc-rise .5s cubic-bezier(.32,.72,0,1) both">
+              <div style="display:flex;flex-direction:column;gap:5px;padding-top:6px">
+                <h1 style="margin:0;font:600 27px/31px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Every RSVP state</h1>
+                <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478;max-width:54ch;text-wrap:pretty">Three things a person can say, seven things this screen has to render. Solid accent is reserved for a seat you actually hold.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px;padding-bottom:8px">
+                <sc-for list="{{ rsvpStateCards }}" as="r" hint-placeholder-count="7">
+                  <div style="display:flex;align-items:flex-start;gap:14px;padding:15px 16px;border-radius:22px;background:var(--g-bg,rgba(255,255,255,.7));backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);-webkit-backdrop-filter:blur(var(--g-blur,22px)) saturate(1.6);border:1px solid var(--g-bd,rgba(255,255,255,.78))">
+                    <span style="flex:0 0 auto;display:flex;flex-direction:column;gap:5px;align-items:flex-start;min-width:132px">
+                      <span style="border-radius:999px;padding:8px 15px;font:600 13px/17px 'Instrument Sans',sans-serif;background:{{ r.bg }};color:{{ r.fg }};border:1px solid {{ r.bd }}">{{ r.label }}</span>
+                      <sc-if value="{{ r.pos }}">
+                        <span style="font:500 11px/15px 'Geist Mono',monospace;color:#8b93a5">{{ r.pos }}</span>
+                      </sc-if>
+                    </span>
+                    <span style="min-width:0;flex:1">
+                      <span style="display:block;font:400 13px/19px 'Instrument Sans',sans-serif;color:#0d1220;text-wrap:pretty">{{ r.copy }}</span>
+                      <span style="display:block;margin-top:6px;font:400 10px/14px 'Geist Mono',monospace;color:#a4abbb">{{ r.source }}</span>
+                    </span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- ROUTES-BELOW -->
+
+        </div>
+      </div>
+
+      <sc-if value="{{ isPhone }}">
+        <div style="position:absolute;left:0;right:0;bottom:0;z-index:40;padding:0 14px 14px;pointer-events:none">
+          <div ref="{{ dockRef }}" onPointerDown="{{ onDockDown }}" onPointerMove="{{ onDockMove }}" onPointerUp="{{ onDockUp }}" onPointerCancel="{{ onDockLeave }}" onPointerLeave="{{ onDockLeave }}" style="pointer-events:auto;position:relative;display:flex;align-items:stretch;padding:6px;background:{{ dockBg }};backdrop-filter:blur(26px) saturate(1.7);-webkit-backdrop-filter:blur(26px) saturate(1.7);border:1px solid {{ dockBd }};border-radius:{{ dockRadius }};box-shadow:{{ dockShadow }};touch-action:none;user-select:none">
+            <span style="position:absolute;top:6px;bottom:6px;left:6px;width:{{ pillW }};transform:translateX({{ pillX }}) {{ pillScale }};transition:{{ pillTransition }};border-radius:18px;background:linear-gradient(160deg,rgba(255,255,255,.96),rgba(255,255,255,.78));border:1px solid rgba(255,255,255,.95);box-shadow:0 8px 18px -8px rgba(16,24,40,.4),inset 0 1px 0 rgba(255,255,255,.95);pointer-events:none"></span>
+            <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="7">
+              <button onClick="{{ n.go }}" style="position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:48px;border:0;background:transparent;color:{{ n.dockFg }};border-radius:16px;font:{{ n.dockWeight }} 10px/13px 'Instrument Sans',sans-serif;cursor:pointer;transform:{{ n.dockScale }};transition:transform .3s cubic-bezier(.34,1.56,.64,1),color .2s ease;pointer-events:none">{{ n.icon }}{{ n.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ inviteOpen }}">
+        <div style="position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(13,18,32,.28);backdrop-filter:blur(3px)">
+          <div style="max-height:78%;display:flex;flex-direction:column;border-radius:32px 32px 0 0;background:rgba(255,255,255,.86);backdrop-filter:blur(34px) saturate(1.8);-webkit-backdrop-filter:blur(34px) saturate(1.8);border-top:1px solid rgba(255,255,255,.9);box-shadow:0 -20px 60px rgba(13,18,32,.24);animation:sc-sheet .46s cubic-bezier(.32,.72,0,1) both">
+            <div style="display:flex;align-items:center;gap:12px;padding:20px 22px 14px">
+              <div style="min-width:0;flex:1">
+                <div style="font:600 18px/23px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Give someone access</div>
+                <div style="font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5;margin-top:2px">Your connections only. An invite lets them see it &mdash; they still answer for themselves.</div>
+              </div>
+              <button onClick="{{ closeInvite }}" style="flex-shrink:0;width:34px;height:34px;border-radius:999px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.7);color:#5b6478;display:flex;align-items:center;justify-content:center;cursor:pointer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button>
+            </div>
+            <div style="padding:0 22px 12px">
+              <input value="{{ inviteQuery }}" onInput="{{ setInviteQuery }}" placeholder="Search your connections" style="width:100%;height:44px;border-radius:16px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.85);padding:0 15px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none">
+            </div>
+            <div style="flex:1;overflow-y:auto;padding:0 14px 22px;display:flex;flex-direction:column;gap:4px">
+              <sc-for list="{{ inviteRows }}" as="p" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 10px;border-radius:18px">
+                  <span style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.16),rgba(124,58,237,.14));font:600 13px/1 'Instrument Sans',sans-serif;flex-shrink:0">{{ p.initials }}</span>
+                  <span style="min-width:0;flex:1">
+                    <span style="display:block;font:600 14px/19px 'Instrument Sans',sans-serif">{{ p.name }}</span>
+                    <span style="display:block;font:400 12px/16px 'Instrument Sans',sans-serif;color:#8b93a5">{{ p.role }}</span>
+                  </span>
+                  <sc-if value="{{ p.notInvited }}">
+                    <button onClick="{{ p.invite }}" style="flex-shrink:0;border:0;border-radius:999px;padding:9px 16px;font:600 12px/16px 'Instrument Sans',sans-serif;background:var(--accent,#0b60ff);color:#fff;cursor:pointer">Invite</button>
+                  </sc-if>
+                  <sc-if value="{{ p.invited }}">
+                    <span style="flex-shrink:0;display:flex;align-items:center;gap:5px;border-radius:999px;padding:9px 14px;font:600 12px/16px 'Instrument Sans',sans-serif;background:rgba(11,96,255,.08);color:var(--accent-deep,#0847c4)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Invited</span>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <p style="margin:8px 10px 0;font:400 11px/16px 'Instrument Sans',sans-serif;color:#a4abbb">No invite by link and no search beyond this list &mdash; you can only reach people you&rsquo;ve met.</p>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ confirmOpen }}">
+        <div style="position:absolute;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:26px;background:rgba(13,18,32,.3);backdrop-filter:blur(4px)">
+          <div style="width:100%;max-width:360px;display:flex;flex-direction:column;gap:12px;padding:22px;border-radius:28px;background:rgba(255,255,255,.9);backdrop-filter:blur(30px) saturate(1.7);-webkit-backdrop-filter:blur(30px) saturate(1.7);border:1px solid rgba(255,255,255,.9);box-shadow:0 30px 70px -18px rgba(13,18,32,.4);animation:sc-spring-in .42s cubic-bezier(.34,1.56,.64,1) both">
+            <div style="font:600 17px/22px 'Instrument Sans',sans-serif;letter-spacing:-.02em;text-wrap:pretty">{{ confirmTitle }}</div>
+            <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">{{ confirmBody }}</p>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+              <button onClick="{{ doConfirm }}" style="border:0;border-radius:999px;padding:14px;font:600 14px/18px 'Instrument Sans',sans-serif;background:#b42318;color:#fff;cursor:pointer">{{ confirmLabel }}</button>
+              <button onClick="{{ cancelConfirm }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.7);border-radius:999px;padding:13px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ toastOpen }}">
+        <div style="position:absolute;left:16px;right:16px;bottom:{{ toastBottom }}px;z-index:80;display:flex;justify-content:center;pointer-events:none">
+          <div style="max-width:340px;padding:13px 17px;border-radius:20px;background:rgba(13,18,32,.92);backdrop-filter:blur(20px);color:#fff;font:500 13px/18px 'Instrument Sans',sans-serif;box-shadow:0 18px 40px -12px rgba(13,18,32,.6);animation:sc-rise .4s cubic-bezier(.34,1.56,.64,1) both;text-wrap:pretty">{{ toastMsg }}</div>
+        </div>
+      </sc-if>
+
+      <!-- OVERLAYS-BELOW -->
+
+    </div>
+  </div>
+
+  <div style="max-width:820px;margin-top:26px;display:flex;flex-direction:column;gap:8px">
+    <div style="font:500 11px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8b93a5">Try next</div>
+    <p style="margin:0;font:400 14px/22px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">&ldquo;Make the feed fully editorial&rdquo; &middot; &ldquo;Dial the glass down to subtle&rdquo; &middot; &ldquo;Tab bar instead of the floating dock&rdquo; &middot; &ldquo;Split-layout event detail&rdquo; &mdash; all four live in the Tweaks panel. Or ask for a different accent, a calmer Connect payoff, or Events with real cover photography once you have it.</p>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1080},&quot;glassIntensity&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;subtle&quot;,&quot;standard&quot;,&quot;liquid&quot;],&quot;default&quot;:&quot;standard&quot;,&quot;tsType&quot;:&quot;\&quot;subtle\&quot; | \&quot;standard\&quot; | \&quot;liquid\&quot;&quot;,&quot;section&quot;:&quot;Surface&quot;},&quot;navShell&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dock&quot;,&quot;tabbar&quot;],&quot;default&quot;:&quot;dock&quot;,&quot;tsType&quot;:&quot;\&quot;dock\&quot; | \&quot;tabbar\&quot;&quot;,&quot;section&quot;:&quot;Surface&quot;},&quot;feedCardShape&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;adaptive&quot;,&quot;editorial&quot;],&quot;default&quot;:&quot;adaptive&quot;,&quot;tsType&quot;:&quot;\&quot;adaptive\&quot; | \&quot;editorial\&quot;&quot;,&quot;section&quot;:&quot;Feed&quot;},&quot;eventDetailLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;immersive&quot;,&quot;split&quot;],&quot;default&quot;:&quot;immersive&quot;,&quot;tsType&quot;:&quot;\&quot;immersive\&quot; | \&quot;split\&quot;&quot;,&quot;section&quot;:&quot;Events&quot;},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#0b60ff&quot;,&quot;#1f6feb&quot;,&quot;#0a84ff&quot;,&quot;#3b3bd6&quot;],&quot;default&quot;:&quot;#0b60ff&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Surface&quot;}}">
+/** Brand marks from Simple Icons; UI icons below are Lucide, matching the app. */
+const SI = {
+  instagram: "M7.0301.084c-1.2768.0602-2.1487.264-2.911.5634-.7888.3075-1.4575.72-2.1228 1.3877-.6652.6677-1.075 1.3368-1.3802 2.127-.2954.7638-.4956 1.6365-.552 2.914-.0564 1.2775-.0689 1.6882-.0626 4.947.0062 3.2586.0206 3.6671.0825 4.9473.061 1.2765.264 2.1482.5635 2.9107.308.7889.72 1.4573 1.388 2.1228.6679.6655 1.3365 1.0743 2.1285 1.38.7632.295 1.6361.4961 2.9134.552 1.2773.056 1.6884.069 4.9462.0627 3.2578-.0062 3.668-.0207 4.9478-.0814 1.28-.0607 2.147-.2652 2.9098-.5633.7889-.3086 1.4578-.72 2.1228-1.3881.665-.6682 1.0745-1.3378 1.3795-2.1284.2957-.7632.4966-1.636.552-2.9124.056-1.2809.0692-1.6898.063-4.948-.0063-3.2583-.021-3.6668-.0817-4.9465-.0607-1.2797-.264-2.1487-.5633-2.9117-.3084-.7889-.72-1.4568-1.3876-2.1228C21.2982 1.33 20.628.9208 19.8378.6165 19.074.321 18.2017.1197 16.9244.0645 15.6471.0093 15.236-.005 11.977.0014 8.718.0076 8.31.0215 7.0301.0839m.1402 21.6932c-1.17-.0509-1.8053-.2453-2.2287-.408-.5606-.216-.96-.4771-1.3819-.895-.422-.4178-.6811-.8186-.9-1.378-.1644-.4234-.3624-1.058-.4171-2.228-.0595-1.2645-.072-1.6442-.079-4.848-.007-3.2037.0053-3.583.0607-4.848.05-1.169.2456-1.805.408-2.2282.216-.5613.4762-.96.895-1.3816.4188-.4217.8184-.6814 1.3783-.9003.423-.1651 1.0575-.3614 2.227-.4171 1.2655-.06 1.6447-.072 4.848-.079 3.2033-.007 3.5835.005 4.8495.0608 1.169.0508 1.8053.2445 2.228.408.5608.216.96.4754 1.3816.895.4217.4194.6816.8176.9005 1.3787.1653.4217.3617 1.056.4169 2.2263.0602 1.2655.0739 1.645.0796 4.848.0058 3.203-.0055 3.5834-.061 4.848-.051 1.17-.245 1.8055-.408 2.2294-.216.5604-.4763.96-.8954 1.3814-.419.4215-.8181.6811-1.3783.9-.4224.1649-1.0577.3617-2.2262.4174-1.2656.0595-1.6448.072-4.8493.079-3.2045.007-3.5825-.006-4.848-.0608M16.953 5.5864A1.44 1.44 0 1 0 18.39 4.144a1.44 1.44 0 0 0-1.437 1.4424M5.8385 12.012c.0067 3.4032 2.7706 6.1557 6.173 6.1493 3.4026-.0065 6.157-2.7701 6.1506-6.1733-.0065-3.4032-2.771-6.1565-6.174-6.1498-3.403.0067-6.156 2.771-6.1496 6.1738M8 12.0077a4 4 0 1 1 4.008 3.9921A3.9996 3.9996 0 0 1 8 12.0077",
+  x: "M14.234 10.162 22.977 0h-2.072l-7.591 8.824L7.251 0H.258l9.168 13.343L.258 24H2.33l8.016-9.318L16.749 24h6.993zm-2.837 3.299-.929-1.329L3.076 1.56h3.182l5.965 8.532.929 1.329 7.754 11.09h-3.182z",
+  github: "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12",
+  substack: "M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 18.11 22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z",
+  spotify: "M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z",
+  threads: "M18.263 11.097c-.03-3.486-1.92-5.586-5.111-5.586-2.13 0-3.922.963-4.863 2.499l2.062 1.438c.535-.843 1.272-1.543 2.628-1.543 1.528 0 2.318.85 2.544 2.431a15 15 0 0 0-2.236-.173c-4.125 0-6.068 1.867-6.068 4.336s1.943 3.99 4.804 3.99c3.139 0 5.013-2.115 5.781-4.735.798.361 1.348 1.204 1.348 2.47 0 3.387-3.907 5.232-7.22 5.232-4.885 0-8.077-3.207-8.077-8.424 0-6.392 4.223-10.487 9.9-10.487 3.808 0 5.69 1.671 6.97 3.914l2.108-1.475C21.44 2.078 18.331 0 13.663 0 6.227 0 1.168 5.277 1.168 12.934c0 7 4.953 11.066 10.856 11.066 4.878 0 9.809-2.846 9.809-7.716 0-2.545-1.46-4.231-3.569-5.187m-6.33 4.855c-1.077 0-2.026-.512-2.026-1.453 0-1.483 1.822-1.934 3.606-1.934.678 0 1.34.045 1.927.173-.422 1.927-1.671 3.215-3.508 3.214Z",
+  dribbble: "M12 24C5.385 24 0 18.615 0 12S5.385 0 12 0s12 5.385 12 12-5.385 12-12 12zm10.12-10.358c-.35-.11-3.17-.953-6.384-.438 1.34 3.684 1.887 6.684 1.992 7.308 2.3-1.555 3.936-4.02 4.395-6.87zm-6.115 7.808c-.153-.9-.75-4.032-2.19-7.77l-.066.02c-5.79 2.015-7.86 6.025-8.04 6.4 1.73 1.358 3.92 2.166 6.29 2.166 1.42 0 2.77-.29 4-.814zm-11.62-2.58c.232-.4 3.045-5.055 8.332-6.765.135-.045.27-.084.405-.12-.26-.585-.54-1.167-.832-1.74C7.17 11.775 2.206 11.71 1.756 11.7l-.004.312c0 2.633.998 5.037 2.634 6.855zm-2.42-8.955c.46.008 4.683.026 9.477-1.248-1.698-3.018-3.53-5.558-3.8-5.928-2.868 1.35-5.01 3.99-5.676 7.17zM9.6 2.052c.282.38 2.145 2.914 3.822 6 3.645-1.365 5.19-3.44 5.373-3.702-1.81-1.61-4.19-2.586-6.795-2.586-.825 0-1.63.1-2.4.285zm10.335 3.483c-.218.29-1.935 2.493-5.724 4.04.24.49.47.985.68 1.486.08.18.15.36.22.53 3.41-.43 6.8.26 7.14.33-.02-2.42-.88-4.64-2.31-6.38z",
+};
+
+const ICON = {
+  house: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  news: '<path d="M15 18h-5"/><path d="M18 14h-8"/><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"/><rect width="8" height="4" x="10" y="6" rx="1"/>',
+  qr: '<rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>',
+  ticket: '<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/>',
+  bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+  user: '<path d="M17.925 20.056a6 6 0 0 0-11.851.001"/><circle cx="12" cy="11" r="4"/><circle cx="12" cy="12" r="10"/>',
+};
+
+class Component extends DCLogic {
+  state = {
+    route: "home",
+    surface: "phone",
+    connectMode: "present",
+    connectPhase: "active",
+    qrSeed: 1,
+    qrLive: true,
+    city: "San Francisco",
+    eventTab: "upcoming",
+    openEventId: "e2",
+    rsvps: { e1: null, e2: "pending", e3: "waitlist", e4: "going", e6: "going" },
+    asked: { e2: "going", e3: "going" },
+    waitlistPos: { e3: 4 },
+    queue: [
+      { id: "q1", name: "Nina Kovac", initials: "NK", status: "pending", when: "2 days ago", note: "Met you at Founders Coffee" },
+      { id: "q2", name: "Theo Bright", initials: "TB", status: "pending", when: "2 days ago", note: null },
+      { id: "q3", name: "Yara Haddad", initials: "YH", status: "waitlist", when: "yesterday", note: null },
+      { id: "q4", name: "Marcus Webb", initials: "MW", status: "going", when: "3 days ago", note: null },
+    ],
+    invited: ["c2"],
+    inviteOpen: false,
+    inviteQuery: "",
+    confirm: null,
+    toast: null,
+    revoked: {},
+    photoLoaded: {},
+    dockDrag: null,
+    dockHover: null,
+  };
+
+  dockRef = React.createRef();
+
+  componentDidMount() {
+    this.rotator = setInterval(() => {
+      if (this.state.route !== "connect" || this.state.connectMode !== "present" || this.state.connectPhase !== "active") return;
+      this.setState({ qrLive: false });
+      setTimeout(() => this.setState((s) => ({ qrSeed: s.qrSeed + 1, qrLive: true })), 560);
+    }, 6000);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.rotator);
+  }
+
+  go = (route) => () => this.setState({ route, confirm: null, inviteOpen: false });
+
+  toast(message) {
+    this.setState({ toast: message });
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => this.setState({ toast: null }), 3400);
+  }
+
+  // ---- events data -----------------------------------------------------
+  events() {
+    return [
+      { id: "e1", title: "Founders Coffee, Mission", mon: "AUG", day: "18", when: "Tue, Aug 18 · 9:00 AM", venue: "Ritual Coffee Roasters", city: "San Francisco", visibility: "public", capacity: 40, going: 26, interested: 12, waitlist: 0, approval: false, host: "Priya Raman", hostInitials: "PR", mine: false, past: false, youKnow: 4, desc: "An hour of coffee before the day starts. No agenda, no pitching — just whoever shows up." },
+      { id: "e2", title: "Design Systems Night", mon: "AUG", day: "20", when: "Thu, Aug 20 · 6:30 PM", venue: "Figma HQ, 760 Market St", city: "San Francisco", visibility: "public", capacity: 120, going: 88, interested: 40, waitlist: 3, approval: true, host: "Alex Chen", hostInitials: "AC", mine: false, past: false, youKnow: 7, desc: "Three short talks on tokens, theming and handoff, then an hour of standing around arguing about naming." },
+      { id: "e3", title: "Rooftop Supper Club", mon: "AUG", day: "22", when: "Sat, Aug 22 · 7:00 PM", venue: "Address shared with attendees", city: "San Francisco", visibility: "private", capacity: 18, going: 18, interested: 9, waitlist: 4, approval: false, host: "Dana Ortiz", hostInitials: "DO", mine: false, past: false, youKnow: 3, desc: "Long table, one seating, everyone cooks one thing. Invite-only because the roof is small." },
+      { id: "e4", title: "Morning Run Club", mon: "AUG", day: "16", when: "Sun, Aug 16 · 7:00 AM", venue: "Ferry Building steps", city: "San Francisco", visibility: "public", capacity: null, going: 31, interested: 18, waitlist: 0, approval: false, host: "Sam Iyer", hostInitials: "SI", mine: false, past: false, youKnow: 2, desc: "Five miles along the Embarcadero, back by 8. Slow group and fast group." },
+      { id: "e5", title: "SmartCard Pilot Dinner", mon: "AUG", day: "25", when: "Tue, Aug 25 · 7:30 PM", venue: "Nopa, 560 Divisadero", city: "San Francisco", visibility: "private", capacity: 12, going: 7, interested: 4, waitlist: 2, approval: true, host: "You", hostInitials: "JM", mine: true, past: false, youKnow: 7, desc: "Everyone in the pilot, one table, one evening. I want to hear what's broken." },
+      { id: "e6", title: "Launch Party", mon: "JUL", day: "30", when: "Thu, Jul 30 · 8:00 PM", venue: "Public Works", city: "San Francisco", visibility: "public", capacity: 200, going: 174, interested: 60, waitlist: 0, approval: false, host: "Marcus Webb", hostInitials: "MW", mine: false, past: true, youKnow: 9, desc: "The one that started it." },
+    ];
+  }
+
+  statusPill(status) {
+    const A = this.accent();
+    switch (status) {
+      case "going": return { label: "Going", bg: A.accent, fg: "#ffffff", bd: A.accent };
+      case "interested": return { label: "Interested", bg: "rgba(11,96,255,.08)", fg: A.deep, bd: "rgba(11,96,255,.32)" };
+      case "not_going": return { label: "Not going", bg: "rgba(13,18,32,.04)", fg: "#5b6478", bd: "rgba(13,18,32,.12)" };
+      case "pending": return { label: "Waiting on host", bg: "rgba(255,255,255,.72)", fg: "#5b6478", bd: "rgba(13,18,32,.14)" };
+      case "waitlist": return { label: "Waitlisted", bg: "rgba(11,96,255,.06)", fg: A.deep, bd: "rgba(11,96,255,.22)" };
+      case "denied": return { label: "Not admitted", bg: "rgba(13,18,32,.04)", fg: "#8b93a5", bd: "rgba(13,18,32,.1)" };
+      default: return { label: "RSVP", bg: "rgba(255,255,255,.66)", fg: "#0d1220", bd: "rgba(13,18,32,.12)" };
+    }
+  }
+
+  accent() {
+    const accent = this.props.accentColor ?? "#0b60ff";
+    return { accent, deep: this.mix(accent, "#06225e", 0.42), tint: this.alpha(accent, 0.12) };
+  }
+
+  alpha(hex, a) {
+    const [r, g, b] = this.rgb(hex);
+    return "rgba(" + r + "," + g + "," + b + "," + a + ")";
+  }
+
+  mix(a, b, t) {
+    const x = this.rgb(a), y = this.rgb(b);
+    const c = x.map((v, i) => Math.round(v + (y[i] - v) * t));
+    return "#" + c.map((v) => v.toString(16).padStart(2, "0")).join("");
+  }
+
+  rgb(hex) {
+    const h = hex.replace("#", "");
+    const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)];
+  }
+
+  glass() {
+    const level = this.props.glassIntensity ?? "standard";
+    if (level === "subtle") return { bg: "rgba(255,255,255,.9)", blur: "8px", bd: "rgba(13,18,32,.08)", sh: "0 1px 3px rgba(16,24,40,.06)" };
+    if (level === "liquid") return { bg: "rgba(255,255,255,.52)", blur: "34px", bd: "rgba(255,255,255,.85)", sh: "0 20px 50px -14px rgba(16,24,40,.18), inset 0 1px 0 rgba(255,255,255,.7)" };
+    return { bg: "rgba(255,255,255,.72)", blur: "22px", bd: "rgba(255,255,255,.78)", sh: "0 10px 30px rgba(16,24,40,.08)" };
+  }
+
+  icon(paths, size) {
+    return React.createElement("svg", {
+      width: size, height: size, viewBox: "0 0 24 24", fill: "none",
+      stroke: "currentColor", strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round",
+      dangerouslySetInnerHTML: { __html: paths },
+    });
+  }
+
+  qrCells() {
+    const seed = this.state.qrSeed;
+    const cells = [];
+    const finders = [[0, 0], [14, 0], [0, 14]];
+    for (let y = 0; y < 21; y++) {
+      for (let x = 0; x < 21; x++) {
+        const on = this.moduleOn(x, y, finders, seed);
+        cells.push({ c: on ? "#0d1220" : "transparent", r: on ? "1.5px" : "0" });
+      }
+    }
+    return cells;
+  }
+
+  moduleOn(x, y, finders, seed) {
+    for (const [ox, oy] of finders) {
+      if (x >= ox && x < ox + 7 && y >= oy && y < oy + 7) {
+        const dx = x - ox, dy = y - oy;
+        return dx === 0 || dx === 6 || dy === 0 || dy === 6 || (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4);
+      }
+      if (x >= ox - 1 && x <= ox + 7 && y >= oy - 1 && y <= oy + 7) return false;
+    }
+    if (y === 6 || x === 6) return (x + y) % 2 === 0;
+    const h = Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233 + seed * 4.1) * 43758.5453;
+    return h - Math.floor(h) > 0.48;
+  }
+
+  /**
+   * Home sits dead centre — index 3 of 7 — so the one destination you always
+   * come back to is the easiest thumb target on the bar. Discovery lives to its
+   * left, your own network and identity to its right.
+   */
+  navList() {
+    return [
+      { key: "feed", label: "Feed", route: "feed", paths: ICON.news },
+      { key: "connect", label: "Connect", route: "connect", paths: ICON.qr },
+      { key: "events", label: "Events", route: "events", paths: ICON.ticket },
+      { key: "home", label: "Home", route: "home", paths: ICON.house },
+      { key: "connections", label: "People", route: "connections", paths: ICON.users },
+      { key: "activity", label: "Activity", route: "activity", paths: ICON.bell },
+      { key: "profile", label: "Profile", route: "profile", paths: ICON.user },
+    ];
+  }
+
+  /** Which slot a pointer is over, from the dock's own box rather than a guess. */
+  dockIndexAt(clientX) {
+    const el = this.dockRef && this.dockRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const n = this.navList().length;
+    const inner = r.width - 12;
+    const x = Math.min(Math.max(clientX - r.left - 6, 0), inner - 1);
+    return Math.min(n - 1, Math.max(0, Math.floor((x / inner) * n)));
+  }
+
+  navItems() {
+    const A = this.accent();
+    const items = this.navList();
+    const active = this.activeNav();
+    const activeIdx = Math.max(0, items.findIndex((i) => i.key === active));
+    const dockStyle = this.props.navShell ?? "dock";
+    // The pill follows your finger while dragging; hover only magnifies.
+    const focus = this.state.dockDrag !== null ? this.state.dockDrag
+      : this.state.dockHover !== null ? this.state.dockHover : -1;
+    return items.map((i, idx) => {
+      const on = i.key === active;
+      const lifted = idx === focus;
+      const under = idx === (this.state.dockDrag !== null ? this.state.dockDrag : activeIdx);
+      return {
+        label: i.label,
+        icon: this.icon(i.paths, lifted ? 23 : dockStyle === "tabbar" ? 21 : 20),
+        go: this.go(i.route),
+        topBg: on ? A.tint : "transparent",
+        topFg: on ? A.deep : "#5b6478",
+        topWeight: on ? 600 : 500,
+        dockFg: under || lifted ? A.deep : "#8b93a5",
+        dockWeight: under || lifted ? 600 : 500,
+        dockScale: lifted ? "scale(1.18) translateY(-3px)" : "scale(1)",
+      };
+    });
+  }
+
+  activeNav() {
+    const r = this.state.route;
+    if (r === "connectionDetail" || r === "visitorProfile" || r === "connectionRemoved") return "connections";
+    if (r === "eventDetail" || r === "eventCreate" || r === "eventQueue" || r === "rsvpStates") return "events";
+    return r;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const A = this.accent();
+    const g = this.glass();
+    const phone = s.surface === "phone";
+    const dockStyle = this.props.navShell ?? "dock";
+    const feedShape = this.props.feedCardShape ?? "adaptive";
+    const events = this.events();
+    const open = events.find((e) => e.id === s.openEventId) ?? events[0];
+
+    const jump = [
+      { key: "events", label: "Events browse", route: "events" },
+      { key: "eventDetail", label: "Event detail", route: "eventDetail" },
+      { key: "eventQueue", label: "Host queue", route: "eventQueue" },
+      { key: "eventCreate", label: "Create event", route: "eventCreate" },
+      { key: "rsvpStates", label: "RSVP states", route: "rsvpStates" },
+    ].map((j) => ({
+      label: j.label,
+      go: this.go(j.route),
+      bg: s.route === j.route ? A.accent : "rgba(255,255,255,.6)",
+      fg: s.route === j.route ? "#fff" : "#5b6478",
+      bd: s.route === j.route ? A.accent : "rgba(13,18,32,.1)",
+    }));
+
+    return {
+      gBg: g.bg, gBlur: g.blur, gBd: g.bd, gSh: g.sh,
+      accent: A.accent, accentDeep: A.deep, accentTint: A.tint,
+
+      isPhone: phone, isDesktop: !phone,
+      frameW: phone ? 402 : 1100, frameH: phone ? 858 : 800,
+      frameR: phone ? 52 : 18, framePad: phone ? 11 : 10,
+      screenR: phone ? 42 : 10,
+      frameBezel: phone ? "linear-gradient(160deg,#2b3140,#12151c)" : "linear-gradient(160deg,#dfe3ec,#c9cfdd)",
+      contentMax: phone ? 999 : 940,
+      contentPad: phone ? 22 : 28,
+      scrollPadTop: phone ? 58 : 76,
+      scrollPadBottom: phone ? 104 : 44,
+
+      setPhone: () => this.setState({ surface: "phone" }),
+      setDesktop: () => this.setState({ surface: "desktop" }),
+      phoneBtnBg: phone ? "#0d1220" : "transparent",
+      phoneBtnFg: phone ? "#fff" : "#5b6478",
+      deskBtnBg: phone ? "transparent" : "#0d1220",
+      deskBtnFg: phone ? "#5b6478" : "#fff",
+      jumpLinks: jump,
+
+      navItems: this.navItems(),
+      dockRef: this.dockRef,
+      // Pill width is one slot of the padded track; the transform moves it in
+      // whole slots, so it can never drift out of alignment with the buttons.
+      pillW: "calc((100% - 12px) / 7)",
+      pillX: ((s.dockDrag !== null ? s.dockDrag : Math.max(0, this.navList().findIndex((i) => i.key === this.activeNav()))) * 100) + "%",
+      pillTransition: s.dockDrag !== null ? "transform .18s cubic-bezier(.32,.72,0,1)" : "transform .44s cubic-bezier(.34,1.56,.64,1)",
+      pillScale: s.dockDrag !== null ? "scaleY(1.06)" : "scaleY(1)",
+      onDockDown: (e) => {
+        const i = this.dockIndexAt(e.clientX);
+        if (e.currentTarget.setPointerCapture) e.currentTarget.setPointerCapture(e.pointerId);
+        this.setState({ dockDrag: i, dockHover: i });
+      },
+      onDockMove: (e) => {
+        const i = this.dockIndexAt(e.clientX);
+        if (i === null) return;
+        if (s.dockDrag !== null) {
+          if (i !== s.dockDrag) this.setState({ dockDrag: i, dockHover: i });
+        } else if (i !== s.dockHover) {
+          this.setState({ dockHover: i });
+        }
+      },
+      onDockUp: () => {
+        const i = s.dockDrag;
+        this.setState({ dockDrag: null });
+        if (i !== null) this.go(this.navList()[i].route)();
+      },
+      onDockLeave: () => this.setState({ dockDrag: null, dockHover: null }),
+      dockPad: dockStyle === "tabbar" ? "2px" : "6px",
+      dockBg: dockStyle === "tabbar" ? "rgba(255,255,255,.94)" : g.bg,
+      dockBd: dockStyle === "tabbar" ? "rgba(13,18,32,.08)" : g.bd,
+      dockRadius: dockStyle === "tabbar" ? "18px" : "26px",
+      dockShadow: dockStyle === "tabbar" ? "0 -1px 0 rgba(13,18,32,.06)" : "0 16px 40px -12px rgba(16,24,40,.28)",
+
+      isHome: s.route === "home",
+      isFeed: s.route === "feed",
+      isConnect: s.route === "connect",
+
+      goConnect: this.go("connect"), goFeed: this.go("feed"), goEvents: this.go("events"),
+      goProfile: this.go("profile"),
+      goHome: this.go("home"),
+
+      homeEvents: events.filter((e) => e.id === "e1" || e.id === "e2").map((e) => {
+        const p = this.statusPill(s.rsvps[e.id]);
+        return { mon: e.mon, day: e.day, title: e.title, timeVenue: e.when + " · " + e.venue, pillLabel: p.label, pillBg: p.bg, pillFg: p.fg, pillBd: p.bd, open: () => this.setState({ route: "eventDetail", openEventId: e.id }) };
+      }),
+
+      feedItems: this.feedItems(feedShape),
+
+      setPresent: () => this.setState({ connectMode: "present", connectPhase: "active" }),
+      setScan: () => this.setState({ connectMode: "scan", connectPhase: "scanning" }),
+      presentBtnBg: s.connectMode === "present" ? "#ffffff" : "transparent",
+      presentBtnFg: s.connectMode === "present" ? "#0d1220" : "#8b93a5",
+      presentBtnSh: s.connectMode === "present" ? "0 2px 8px rgba(16,24,40,.12)" : "none",
+      scanBtnBg: s.connectMode === "scan" ? "#ffffff" : "transparent",
+      scanBtnFg: s.connectMode === "scan" ? "#0d1220" : "#8b93a5",
+      scanBtnSh: s.connectMode === "scan" ? "0 2px 8px rgba(16,24,40,.12)" : "none",
+      showQr: s.connectMode === "present" && s.connectPhase === "active",
+      showScanner: s.connectMode === "scan" && s.connectPhase === "scanning",
+      showConnected: s.connectPhase === "connected",
+      showFailure: s.connectPhase === "failed",
+      qrCells: this.qrCells(),
+      qrOpacity: s.qrLive ? 1 : 0.12,
+      qrBlur: s.qrLive ? 0 : 7,
+      simulateScan: () => this.setState({ connectPhase: "connected" }),
+      simulateFailure: () => this.setState({ connectPhase: "failed" }),
+      resetConnect: () => this.setState({ connectMode: "present", connectPhase: "active" }),
+      openAlex: () => this.setState({ route: "connectionDetail" }),
+
+      ...this.moreVals(s, A, g, events, open, phone),
+    };
+  }
+
+  /**
+   * Evenly spaced tick marks on a ring. `gapCenter`/`gapDeg` reserve the arc a
+   * ring label occupies — every tick is still generated, they just redistribute
+   * across the rest, so the visible count always equals the real count. A label
+   * needs roughly 2·atan(labelWidth/2 / radius) of gap or it clips its own ticks.
+   */
+  ring(count, radius, gapCenter, gapDeg) {
+    const gap = gapDeg || 0;
+    const step = (360 - gap) / count;
+    const start = (gapCenter || 0) + gap / 2 + step / 2;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      out.push({ t: "rotate(" + (start + i * step).toFixed(2) + "deg) translateY(-" + radius + "px)" });
+    }
+    return out;
+  }
+
+  /**
+   * Social links as labelled tiles. Past four they scroll horizontally rather
+   * than wrapping — a fifth row of tiles would push the profile's own fields
+   * below the fold, and these are links you scan, not a list you read.
+   */
+  socialTiles() {
+    return [
+      { name: "Instagram", handle: "@jacob", color: "#E4405F", tint: "rgba(228,64,95,.1)", d: SI.instagram },
+      { name: "X", handle: "@jacobmck", color: "#0d1220", tint: "rgba(13,18,32,.07)", d: SI.x },
+      { name: "GitHub", handle: "jacob-mckanry", color: "#181717", tint: "rgba(24,23,23,.07)", d: SI.github },
+      { name: "Substack", handle: "smartcard", color: "#FF6719", tint: "rgba(255,103,25,.1)", d: SI.substack },
+      { name: "Spotify", handle: "jacob", color: "#1DB954", tint: "rgba(29,185,84,.1)", d: SI.spotify },
+      { name: "Threads", handle: "@jacob", color: "#0d1220", tint: "rgba(13,18,32,.07)", d: SI.threads },
+      { name: "Dribbble", handle: "jacobmck", color: "#EA4C89", tint: "rgba(234,76,137,.1)", d: SI.dribbble },
+    ];
+  }
+
+  connections() {
+    return [
+      { id: "c1", name: "Alex Chen", initials: "AC", role: "Design lead, Figma", method: "QR code, verified by location", when: "Yesterday, 6:42 PM" },
+      { id: "c2", name: "Dana Ortiz", initials: "DO", role: "Chef, Rooftop Supper Club", method: "NFC card tap", when: "Aug 12, 11:05 AM" },
+      { id: "c3", name: "Priya Raman", initials: "PR", role: "Partner, Aperture", method: "QR code, verified by location", when: "Aug 9, 7:20 PM" },
+      { id: "c4", name: "Marcus Webb", initials: "MW", role: "Founder, Loop", method: "NFC card tap", when: "Aug 4, 9:02 AM" },
+      { id: "c5", name: "Sam Iyer", initials: "SI", role: "Engineer, Vercel", method: "QR code, verified by location", when: "Jul 28, 1:44 PM" },
+      { id: "c6", name: "Nina Kovac", initials: "NK", role: "Photographer", method: "QR code, verified by location", when: "Jul 21, 5:10 PM" },
+    ];
+  }
+
+  /** Mirrors the backend rule: a button expresses intent, the system stores a status. */
+  storedStatusFor(ev, intent) {
+    if (intent !== "going") return intent;
+    if (ev.approval) return "pending";
+    const full = ev.capacity !== null && ev.going >= ev.capacity;
+    return full ? "waitlist" : "going";
+  }
+
+  ask(ev, intent) {
+    return () => {
+      const stored = this.storedStatusFor(ev, intent);
+      this.setState((s) => ({
+        rsvps: { ...s.rsvps, [ev.id]: stored },
+        asked: { ...s.asked, [ev.id]: intent },
+      }));
+      if (stored === "pending") this.toast("You asked to go \u2014 stored as pending. " + ev.host + " decides.");
+      else if (stored === "waitlist") this.toast("Event is full \u2014 you\u2019re on the waitlist. A seat frees, you\u2019re in.");
+      else if (stored === "going") this.toast("You\u2019re going.");
+      else if (stored === "interested") this.toast("Marked interested \u2014 that\u2019s not a seat.");
+      else this.toast("Marked not going.");
+    };
+  }
+
+  decide(id, decision, override) {
+    return () => {
+      this.setState((s) => ({
+        queue: s.queue.map((q) => (q.id === id ? { ...q, status: decision === "approve" ? "going" : "denied", override: !!override } : q)),
+      }));
+      const who = this.state.queue.find((q) => q.id === id);
+      if (decision === "deny") this.toast(who.name + " denied. They can ask again.");
+      else if (override) this.toast(who.name + " admitted past capacity \u2014 recorded as an exception.");
+      else this.toast(who.name + " approved.");
+    };
+  }
+
+  moreVals(s, A, g, events, open, phone) {
+    const layout = this.props.eventDetailLayout ?? "immersive";
+    const upcoming = events.filter((e) => !e.past);
+    const past = events.filter((e) => e.past);
+    const shown = (s.eventTab === "upcoming" ? upcoming : past).filter((e) => e.city === s.city);
+    const cities = ["San Francisco", "New York", "Austin", "Seattle", "Chicago"];
+    const rsvp = s.rsvps[open.id] ?? null;
+    const asked = s.asked[open.id] ?? null;
+    const pill = this.statusPill(rsvp);
+    const seatsLeft = open.capacity === null ? null : Math.max(0, open.capacity - open.going);
+    const pendingQ = s.queue.filter((q) => q.status === "pending").length;
+    const cons = this.connections();
+    const q = s.inviteQuery.trim().toLowerCase();
+
+    const stateGallery = ["not_answered", "going", "interested", "not_going", "pending", "waitlist", "denied"].map((k) => {
+      const p = this.statusPill(k === "not_answered" ? null : k);
+      const copy = {
+        not_answered: "No answer yet. The three intents sit side by side, nothing preselected.",
+        going: "The only state that earns solid accent. A seat you actually hold.",
+        interested: "An outline pill \u2014 real signal, not a seat. Counts publicly.",
+        not_going: "An answer, not an absence. Neutral, no red.",
+        pending: "You tapped going; the host hasn\u2019t decided. Quiet, not celebratory.",
+        waitlist: "Full when you asked. Auto-promotes the instant a seat frees.",
+        denied: "Not a dead end \u2014 asking again is allowed and goes back to pending.",
+      }[k];
+      const source = {
+        not_answered: "no row in event_rsvps",
+        going: "asked going, seats free, no approval",
+        interested: "asked interested",
+        not_going: "asked not going",
+        pending: "asked going + requires_approval",
+        waitlist: "asked going + at capacity",
+        denied: "host decided deny",
+      }[k];
+      return { label: p.label, bg: p.bg, fg: p.fg, bd: p.bd, copy, source, pos: k === "waitlist" ? "#4 in line" : null };
+    });
+
+    return {
+      isConnections: s.route === "connections",
+      isConnectionDetail: s.route === "connectionDetail",
+      isActivity: s.route === "activity",
+      isProfile: s.route === "profile",
+      isVisitorProfile: s.route === "visitorProfile",
+      goVisitorProfile: () => this.setState({ route: "visitorProfile" }),
+      goConnectionDetail: () => this.setState({ route: "connectionDetail" }),
+      // Own profile: 12 connections, 6 events, 2 cities — pilot numbers, so
+      // every tick is one real record with no ratio to explain.
+      ringP: this.ring(12, 62), ringE: this.ring(6, 88), ringC: this.ring(2, 112),
+      vRingP: this.ring(9, 62), vRingE: this.ring(4, 88), vRingC: this.ring(3, 112),
+      isConnectionRemoved: s.route === "connectionRemoved",
+      // Connect payoff: your rings beside theirs, both in a 150px box.
+      cmA: this.ring(12, 52), cmB: this.ring(6, 70, 14),
+      cmC: this.ring(9, 52, 12), cmD: this.ring(4, 70, 26),
+      // Meeting-record hero: their rings, >=8px between bands, staggered starts.
+      hRA: this.ring(9, 62), hRB: this.ring(4, 84, 22), hRC: this.ring(3, 106, 41),
+      profileTiles: this.socialTiles(),
+      visitorTiles: this.socialTiles().slice(0, 3),
+      isEvents: s.route === "events",
+      isEventDetail: s.route === "eventDetail",
+      isEventCreate: s.route === "eventCreate",
+      isEventQueue: s.route === "eventQueue",
+      isRsvpStates: s.route === "rsvpStates",
+
+      connectionRows: cons.map((c) => ({
+        name: c.name, initials: c.initials, role: c.role,
+        meta: c.method + " \u00b7 " + c.when,
+        isNfc: c.method.indexOf("NFC") === 0,
+        isQr: c.method.indexOf("NFC") !== 0,
+        open: () => this.setState({ route: "visitorProfile" }),
+      })),
+
+      backConnections: this.go("connections"),
+      backEvents: this.go("events"),
+      goQueue: () => this.setState({ route: "eventQueue" }),
+      goCreate: () => this.setState({ route: "eventCreate" }),
+      goStates: this.go("rsvpStates"),
+
+      askRemove: () => this.setState({ confirm: { kind: "removeConnection", name: "Alex Chen" } }),
+      askRevoke: (code) => () => this.setState({ confirm: { kind: "revokeCard", code } }),
+      cardRows: [
+        { code: "SC-4F2A91", label: "Metal card \u00b7 assigned to you", revoked: !!s.revoked["SC-4F2A91"], revoke: () => this.setState({ confirm: { kind: "revokeCard", code: "SC-4F2A91" } }) },
+        { code: "SC-88C013", label: "Paper card \u00b7 assigned to you", revoked: !!s.revoked["SC-88C013"], revoke: () => this.setState({ confirm: { kind: "revokeCard", code: "SC-88C013" } }) },
+      ],
+      tapRows: [
+        { name: "Dana Ortiz", initials: "DO", when: "Aug 12, 2026 \u00b7 11:05:12 AM", card: "SC-4F2A91", active: true, remove: () => this.setState({ confirm: { kind: "removeConnection", name: "Dana Ortiz" } }) },
+        { name: "Marcus Webb", initials: "MW", when: "Aug 4, 2026 \u00b7 9:02:44 AM", card: "SC-88C013", active: true, remove: () => this.setState({ confirm: { kind: "removeConnection", name: "Marcus Webb" } }) },
+        { name: "Nina Kovac", initials: "NK", when: "Jul 21, 2026 \u00b7 5:10:03 PM", card: "SC-4F2A91", active: false, remove: null },
+      ],
+
+      socialPills: [
+        { platform: "Instagram", handle: "@jacob" },
+        { platform: "LinkedIn", handle: "in/jacobmckanry" },
+        { platform: "Website", handle: "smartcard.tech" },
+      ],
+
+      cityPills: cities.map((c) => ({
+        label: c,
+        set: () => this.setState({ city: c }),
+        bg: c === s.city ? A.accent : "rgba(255,255,255,.6)",
+        fg: c === s.city ? "#fff" : "#5b6478",
+        bd: c === s.city ? A.accent : "rgba(13,18,32,.1)",
+      })),
+      tabUpcoming: () => this.setState({ eventTab: "upcoming" }),
+      tabPast: () => this.setState({ eventTab: "past" }),
+      upcomingBg: s.eventTab === "upcoming" ? "#ffffff" : "transparent",
+      upcomingFg: s.eventTab === "upcoming" ? "#0d1220" : "#8b93a5",
+      pastBg: s.eventTab === "past" ? "#ffffff" : "transparent",
+      pastFg: s.eventTab === "past" ? "#0d1220" : "#8b93a5",
+      eventCount: shown.length + (shown.length === 1 ? " event" : " events") + " in " + s.city,
+      // A list with zero rows and no explanation reads as broken — same reasoning
+      // as EmptyFeedState in the shipped feed page.
+      eventsEmpty: shown.length === 0,
+      eventsEmptyTitle: s.eventTab === "upcoming" ? "Nothing coming up in " + s.city : "No past events in " + s.city,
+      eventsEmptyBody: s.eventTab === "upcoming"
+        ? "Public events show up here as soon as someone hosts one. Private ones stay invisible until you\u2019re invited, so an empty list doesn\u2019t mean nothing is happening."
+        : "Once you\u2019ve been to something here, it stays in this list as a record.",
+      eventCards: shown.map((e) => {
+        const p = this.statusPill(s.rsvps[e.id] ?? null);
+        const left = e.capacity === null ? "Unlimited" : Math.max(0, e.capacity - e.going) + " of " + e.capacity + " left";
+        return {
+          mon: e.mon, day: e.day, title: e.title, when: e.when, venue: e.venue,
+          counts: e.going + " going \u00b7 " + e.interested + " interested",
+          seats: left,
+          isPrivate: e.visibility === "private",
+          isHosting: e.mine,
+          pillLabel: p.label, pillBg: p.bg, pillFg: p.fg, pillBd: p.bd,
+          hasAnswer: (s.rsvps[e.id] ?? null) !== null,
+          knowLine: "You know " + e.youKnow + " people going",
+          coverLabel: "event cover \u2014 1200\u00d7675",
+          open: () => this.setState({ route: "eventDetail", openEventId: e.id }),
+        };
+      }),
+
+      evImmersive: layout === "immersive",
+      evSplit: layout === "split",
+      ev: {
+        title: open.title, when: open.when, venue: open.venue, city: open.city,
+        desc: open.desc, host: open.host, hostInitials: open.hostInitials,
+        going: String(open.going), interested: String(open.interested),
+        waitlist: String(open.waitlist),
+        seats: seatsLeft === null ? "Unlimited" : String(seatsLeft),
+        capacityLine: open.capacity === null ? "No cap on this one" : seatsLeft + " of " + open.capacity + " seats left",
+        knowLine: "You know " + open.youKnow + " people going",
+        coverLabel: "event cover \u2014 1600\u00d7900",
+      },
+      evIsPrivate: open.visibility === "private",
+      evIsPublic: open.visibility === "public",
+      evHosting: open.mine,
+      evNeedsApproval: open.approval,
+      evPendingCount: String(pendingQ),
+      evStatusLabel: pill.label,
+      evStatusBg: pill.bg, evStatusFg: pill.fg, evStatusBd: pill.bd,
+      evAnswered: rsvp !== null,
+      evUnanswered: rsvp === null,
+      evGoing: rsvp === "going",
+      evPending: rsvp === "pending",
+      evWaitlist: rsvp === "waitlist",
+      evDenied: rsvp === "denied",
+      evInterested: rsvp === "interested",
+      evNotGoing: rsvp === "not_going",
+      evMismatch: asked !== null && rsvp !== asked,
+      evMismatchLine: asked !== null && rsvp !== asked ? "You tapped \u201c" + (asked === "going" ? "Going" : asked) + "\u201d \u2014 the system stored \u201c" + pill.label + "\u201d. This screen always shows what\u2019s stored." : null,
+      evWaitPos: s.waitlistPos[open.id] ? "#" + s.waitlistPos[open.id] + " in line" : null,
+      askGoing: this.ask(open, "going"),
+      askInterested: this.ask(open, "interested"),
+      askNotGoing: this.ask(open, "not_going"),
+      withdrawRsvp: () => {
+        this.setState((st) => ({ rsvps: { ...st.rsvps, [open.id]: null }, asked: { ...st.asked, [open.id]: null } }));
+        this.toast("Answer withdrawn. One person promoted off the waitlist.");
+      },
+      openInvite: () => this.setState({ inviteOpen: true }),
+
+      queueRows: s.queue.map((qq) => {
+        const p = this.statusPill(qq.status);
+        return {
+          name: qq.name, initials: qq.initials, when: "Asked " + qq.when, note: qq.note,
+          statusLabel: p.label, statusBg: p.bg, statusFg: p.fg, statusBd: p.bd,
+          undecided: qq.status === "pending" || qq.status === "waitlist",
+          decided: qq.status === "going" || qq.status === "denied",
+          isWaitlist: qq.status === "waitlist",
+          overrideNote: qq.override ? "Admitted past capacity" : null,
+          approve: this.decide(qq.id, "approve", false),
+          approveOver: this.decide(qq.id, "approve", true),
+          deny: this.decide(qq.id, "deny", false),
+        };
+      }),
+      queuePending: String(pendingQ),
+      queueSeats: "7 of 12 seats taken",
+
+      rsvpStateCards: stateGallery,
+
+      inviteOpen: s.inviteOpen,
+      closeInvite: () => this.setState({ inviteOpen: false, inviteQuery: "" }),
+      inviteQuery: s.inviteQuery,
+      setInviteQuery: (e) => this.setState({ inviteQuery: e.target.value }),
+      inviteRows: cons
+        .filter((c) => q === "" || c.name.toLowerCase().indexOf(q) >= 0)
+        .map((c) => ({
+          name: c.name, initials: c.initials, role: c.role,
+          invited: s.invited.indexOf(c.id) >= 0,
+          notInvited: s.invited.indexOf(c.id) < 0,
+          invite: () => {
+            this.setState((st) => ({ invited: st.invited.concat([c.id]) }));
+            this.toast(c.name + " can now see this event. They still answer for themselves.");
+          },
+        })),
+
+      confirmOpen: s.confirm !== null,
+      confirmTitle: s.confirm === null ? "" : s.confirm.kind === "revokeCard" ? "Revoke card " + s.confirm.code + "?" : "Remove your connection with " + s.confirm.name + "?",
+      confirmBody: s.confirm === null ? "" : s.confirm.kind === "revokeCard"
+        ? "It stops working immediately \u2014 nobody, including you, can tap it to connect. There\u2019s no restore button in the app, so treat this as permanent."
+        : "This can\u2019t be undone from here. Reconnecting means meeting them in person again and going through Connect, not tapping a button.",
+      confirmLabel: s.confirm === null ? "" : s.confirm.kind === "revokeCard" ? "Yes, revoke card" : "Yes, remove connection",
+      doConfirm: () => {
+        const c = s.confirm;
+        if (c === null) return;
+        if (c.kind === "revokeCard") {
+          this.setState((st) => ({ revoked: { ...st.revoked, [c.code]: true }, confirm: null }));
+          this.toast("Card " + c.code + " revoked.");
+        } else {
+          this.setState({ confirm: null, route: "connectionRemoved" });
+          this.toast("Connection with " + c.name + " removed.");
+        }
+      },
+      cancelConfirm: () => this.setState({ confirm: null }),
+
+      toastOpen: s.toast !== null,
+      toastMsg: s.toast ?? "",
+      toastBottom: s.surface === "phone" ? 104 : 28,
+    };
+  }
+
+  feedItems(shape) {
+    const editorial = shape === "editorial";
+    const raw = [
+      { kind: "mine", title: "You met Alex Chen", meta: "QR code, verified by location · Yesterday, 6:42 PM", place: "Blue Bottle Coffee", initials: "AC", photo: !editorial, photoH: 200, photoLabel: "meeting moment — 1200×800" },
+      { kind: "mutual", title: "Priya Raman met Marcus Webb", meta: "Yesterday, 2:15 PM", place: null, footnote: "You\u2019re connected to both", initialsA: "PR", initialsB: "MW", photo: false },
+      { kind: "mine", title: "You met Dana Ortiz", meta: "NFC card tap · Aug 12, 11:05 AM", place: null, initials: "DO", photo: false },
+      { kind: "mutual", title: "Alex Chen met Sam Iyer", meta: "Aug 11, 8:30 PM", place: "Mission District, San Francisco", footnote: "You\u2019re connected to both", initialsA: "AC", initialsB: "SI", photo: !editorial, photoH: 168, photoLabel: "shared place — 1200×800" },
+    ];
+    return raw.map((f) => {
+      const overlay = f.photo && !editorial;
+      return {
+        hasPhoto: !!f.photo,
+        photoH: f.photoH ?? 180,
+        photoLabel: f.photoLabel ?? "photo",
+        overlayCaption: overlay,
+        showBody: !overlay,
+        bodyPad: editorial ? 22 : 16,
+        isMutual: f.kind === "mutual",
+        soloAvatar: f.kind === "mine",
+        isMine: f.kind === "mine",
+        linkable: f.kind === "mine",
+        initials: f.initials, initialsA: f.initialsA, initialsB: f.initialsB,
+        title: f.title, meta: f.meta, place: f.place, footnote: f.footnote,
+        open: () => this.setState({ route: "connectionDetail" }),
+      };
+    });
+  }
+}
+</script>
+</body>
+</html>
