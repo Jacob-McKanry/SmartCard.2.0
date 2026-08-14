@@ -42,6 +42,13 @@ import {
 export function PresenterFlow() {
   const [state, dispatch] = useReducer(presenterReducer, initialPresenterState);
   const wakeLockSentinelRef = useRef<WakeLockSentinelLike | null>(null);
+  /**
+   * Identifies the one session-creation attempt whose result is still allowed
+   * to be dispatched. Bumped when a new attempt starts, and on unmount. See
+   * the long comment on the requesting-location effect below for why this is a
+   * ref rather than the usual `cancelled` flag set from an effect cleanup.
+   */
+  const sessionAttemptRef = useRef(0);
   // `window.location.origin` is unavailable during SSR; the lazy initializer
   // resolves to `null` there and to the real origin on the client's first
   // render, with no effect needed to reconcile the two — the QR only ever
@@ -56,14 +63,46 @@ export function PresenterFlow() {
 
   // ---------------------------------------------------------------------
   // requesting-location -> starting -> active
+  //
+  // WHY THIS DOESN'T USE THE USUAL `cancelled` CLEANUP FLAG
+  // This effect dispatches `starting` PARTWAY THROUGH its own async sequence
+  // and then keeps working (`createQrSession`). Its dependency is
+  // `state.phase`, so that dispatch changes this effect's own dependency —
+  // React therefore tears this very instance down, running its cleanup, while
+  // its `createQrSession` call is still in flight. The usual
+  // `let cancelled = false; return () => { cancelled = true; };` pattern reads
+  // as "a newer attempt has taken over, drop what you were doing", but here it
+  // fired for a phase change this instance caused ON PURPOSE. In production
+  // that meant: the session was created (the API returned 201), the
+  // `session-started` dispatch that renders the QR was then dropped by
+  // `if (cancelled) return`, and the screen sat on "Setting up your code…"
+  // forever with nothing thrown and nothing logged. The `failed` dispatch in
+  // the catch below was swallowed by the same race, so a create that actually
+  // failed hung on that message too instead of showing the error panel.
+  //
+  // The ref pulls apart the two different questions the old flag was being
+  // asked to answer at once:
+  //   - "has a NEWER attempt started?" — the only thing that should ever
+  //     invalidate work already in flight, and the only thing the ref tracks.
+  //     It changes when an attempt actually begins, which is when this effect
+  //     runs AND the phase is `requesting-location`: the initial mount, or a
+  //     genuine `restart` from "Try again" / "Show a new code". That is why
+  //     the dependency array stays `[state.phase]` — a real restart must still
+  //     cancel a truly stale attempt, and it does.
+  //   - "did `state.phase` change at all?" — also true for this effect's own
+  //     `starting` dispatch, which is an expected step of the sequence and was
+  //     never a reason to abandon it.
   // ---------------------------------------------------------------------
   useEffect(() => {
     if (state.phase !== "requesting-location") return;
 
-    let cancelled = false;
+    sessionAttemptRef.current += 1;
+    const attempt = sessionAttemptRef.current;
+    const isCurrentAttempt = () => sessionAttemptRef.current === attempt;
+
     void (async () => {
       const location = await getFreshLocation();
-      if (cancelled) return;
+      if (!isCurrentAttempt()) return;
 
       if (!location.ok) {
         dispatch({ type: "location-denied", reason: location.reason });
@@ -74,7 +113,7 @@ export function PresenterFlow() {
       try {
         const deviceId = getOrCreateDeviceId(window.localStorage);
         const session = await createQrSession({ deviceId });
-        if (cancelled) return;
+        if (!isCurrentAttempt()) return;
         dispatch({
           type: "session-started",
           sessionId: session.sessionId,
@@ -82,15 +121,23 @@ export function PresenterFlow() {
           rotateAfterSeconds: session.rotateAfterSeconds,
         });
       } catch (error) {
-        if (cancelled) return;
+        if (!isCurrentAttempt()) return;
         dispatch({ type: "failed", message: apiErrorMessage(error) });
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [state.phase]);
+
+  // Unmount is the one other thing that invalidates an in-flight attempt:
+  // leaving the screen should not dispatch a session into a component that is
+  // gone. It needs its own `[]` effect because the attempt guard above
+  // deliberately does not hang off the phase-keyed effect's cleanup — that
+  // cleanup also runs on this component's own phase transitions, which is the
+  // whole bug. This cleanup only ever runs on unmount.
+  useEffect(() => {
+    return () => {
+      sessionAttemptRef.current += 1;
+    };
+  }, []);
 
   // ---------------------------------------------------------------------
   // active -> active | connected | ended | location-denied | error
