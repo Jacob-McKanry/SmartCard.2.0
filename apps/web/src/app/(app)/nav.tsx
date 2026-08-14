@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CircleUserRound, House, Newspaper, QrCode, Users } from "lucide-react";
+import { Bell, CircleUserRound, House, Newspaper, QrCode, Users } from "lucide-react";
 import type { ComponentType } from "react";
 
 import { cn } from "@/lib/utils";
@@ -39,6 +39,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/feed", label: "Feed", icon: Newspaper },
   { href: "/connect", label: "Connect", icon: QrCode },
   { href: "/connections", label: "Connections", icon: Users },
+  { href: "/activity", label: "Activity", icon: Bell },
   { href: "/profile", label: "Profile", icon: CircleUserRound },
 ];
 

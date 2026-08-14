@@ -258,6 +258,34 @@ export function connectIpHashSalt(): string {
 }
 
 /**
+ * The Mapbox access token used to reverse-geocode a meeting's GPS fix into
+ * `meeting_locations.place_label` (§2.4, Q25).
+ *
+ * OPTIONAL, for the same reason `expoAccessToken()` is: §2.4's amendment is
+ * explicit that a failed or missing geocode must leave `place_label` null and
+ * show the meeting without a place name, never fail or delay the connection
+ * that already committed by the time this runs. "A missing label is a
+ * cosmetic loss, not a security one."
+ *
+ * WHY MAPBOX. Checked against each candidate's terms of service before
+ * picking one, because this project *retains* the label rather than
+ * displaying and discarding it: Google's Geocoding API terms only allow
+ * indefinite storage of `place_id`, not the formatted result — storing
+ * `place_label` as designed would not be compliant. OSM Nominatim's usage
+ * policy doesn't address storage either way, and its public instance expects
+ * self-hosting past casual volume. Mapbox has an explicit `permanent=true`
+ * storage tier built for exactly this. Recorded as Q25's resolution in the
+ * architecture doc.
+ *
+ * Returns null when unset. `geocode.ts` treats null the same as any other
+ * geocoding failure: log and move on.
+ */
+export function geocodingApiKey(): string | null {
+  const value = process.env.GEOCODING_API_KEY?.trim();
+  return value === undefined || value === "" ? null : value;
+}
+
+/**
  * The credential our server presents to Expo's push API (§7.5).
  *
  * OPTIONAL, and that is a deliberate difference from every other secret here.

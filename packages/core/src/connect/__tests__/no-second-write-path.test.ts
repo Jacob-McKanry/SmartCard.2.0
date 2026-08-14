@@ -79,7 +79,14 @@ const ALLOWED_NARROW_UPDATERS: Record<string, string[]> = {
   meeting_participants: [
     join("apps", "web", "src", "server", "connections", "connections-service.ts"),
   ],
-  meeting_locations: [],
+  meeting_locations: [
+    // Q25's reverse-geocoding job. Unlike every other entry in this map, this
+    // one is NOT RLS-scoped: `meeting_locations` has no UPDATE policy for any
+    // client role at all, so this file runs with the service role and RLS
+    // provides no backstop — the only thing keeping the write narrow is the
+    // code itself only ever setting `place_label`. See its own header.
+    join("apps", "web", "src", "server", "connect", "geocode.ts"),
+  ],
 };
 
 function* walk(dir: string): Generator<string> {
@@ -210,6 +217,7 @@ describe("there is exactly one path that writes the social graph", () => {
       [
         join("apps", "web", "src", "server", "auth", "ensure-user.ts"),
         join("apps", "web", "src", "server", "connect", "connect-service.ts"),
+        join("apps", "web", "src", "server", "connect", "geocode.ts"),
         join("apps", "web", "src", "server", "connect", "push.ts"),
         join("apps", "web", "src", "server", "connect", "supabase-connect-store.ts"),
       ].sort(),

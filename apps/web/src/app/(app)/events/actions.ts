@@ -7,12 +7,14 @@ import {
   eventUpdateSchema,
   rsvpDecisionSchema,
   rsvpIntentSchema,
+  uuidSchema,
 } from "@smartcard/types";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
 import {
   createEvent,
   decideRsvp,
+  inviteToEvent,
   requestRsvp,
   updateOwnEvent,
   withdrawRsvp,
@@ -231,6 +233,74 @@ export async function updateEventAction(
   }
 
   revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+  return { success: true };
+}
+
+// -----------------------------------------------------------------------
+// Inviting somebody to a private event
+// -----------------------------------------------------------------------
+
+/**
+ * Turns a refused invite into a sentence.
+ *
+ * A policy refusal arrives as a thrown `42501` rather than as one of the RPC
+ * reason codes `rsvpRefusalMessage` handles, because inviting is an ordinary
+ * RLS-checked insert rather than an RPC (see `inviteToEvent`).
+ *
+ * The message deliberately does not say *which* condition failed, and that is
+ * the same reasoning `rsvp_not_found` gets above. Splitting it into "you aren't
+ * connected to them" versus "you're not going to this event" would answer two
+ * questions the caller has not earned an answer to — the first of which reports
+ * whether a given user id exists and is connected to somebody, which is a probe
+ * against the graph rather than a nicer error.
+ */
+function inviteFailureMessage(error: unknown): string {
+  const cause = error instanceof Error ? (error.cause as { code?: string } | undefined) : undefined;
+  if (cause?.code === "42501") {
+    return "You can only invite people you're connected to, to events you host or are going to.";
+  }
+  return messageOf(error);
+}
+
+/**
+ * Invites one of the caller's connections to see a private event.
+ *
+ * `invited_by_user_id` is not read from the form — it comes from the session
+ * inside `inviteToEvent`, and the INSERT policy's `with check` refuses anything
+ * else, so there is no field a request could edit to invite as somebody else.
+ * `invited_user_id` *is* client-supplied and is treated as untrusted: the
+ * database independently requires it to be an active connection of the caller
+ * (`private.are_connected`), so a forged or guessed id is refused rather than
+ * merely unhelpful.
+ *
+ * Nothing here checks whether the caller is the host or holds a `going` RSVP,
+ * deliberately. That is the policy's job, it is re-derived from the JWT on every
+ * call, and a copy of it in this file would only be a second place to get it
+ * wrong.
+ *
+ * Succeeding here grants the invitee *visibility* of the event. It does not RSVP
+ * them — they still answer for themselves — so a UI built on this should say
+ * "invited", never "added".
+ */
+export async function inviteToEventAction(
+  eventId: string,
+  _prevState: EventActionState,
+  formData: FormData,
+): Promise<EventActionState> {
+  const context = await requireContext();
+
+  const parsed = uuidSchema.safeParse(textOrNull(formData, "invited_user_id"));
+  if (!parsed.success) {
+    return { error: "Choose somebody to invite." };
+  }
+
+  try {
+    await inviteToEvent(context.supabase, eventId, context.userId, parsed.data);
+  } catch (error) {
+    return { error: inviteFailureMessage(error) };
+  }
+
   revalidatePath(`/events/${eventId}`);
   return { success: true };
 }

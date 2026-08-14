@@ -1,0 +1,167 @@
+import "server-only";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { geocodingApiKey } from "@/server/env";
+import { serviceRoleClient } from "@/server/supabase/service-role-client";
+
+/**
+ * Reverse-geocoding a QR/GPS meeting's captured fix into
+ * `meeting_locations.place_label` (§2.4, Q25).
+ *
+ * THE ONE INPUT THIS USES IS ONE ALREADY SPENT. §2.4's amendment is explicit
+ * that this decision spends privacy budget already spent by the GPS proximity
+ * gate — the same lat/lng that unlocked the connection, nothing new collected.
+ *
+ * WHY THIS FAILS OPEN, NOT CLOSED. §2.4: "if geocoding fails, `place_label`
+ * stays null and the meeting is simply shown without a place name... a missing
+ * label is a cosmetic loss, not a security one." This is the one place in the
+ * connect path where degrading is correct — matches `push.ts`'s posture
+ * exactly, down to the shape: every function here resolves rather than
+ * throws, and the caller (`redeemQr`) awaits without letting any failure here
+ * touch the HTTP response.
+ *
+ * WHY THIS RUNS AFTER THE COMMIT, NOT INSIDE IT. A slow or down geocoding
+ * vendor must never turn "your connection failed" into the user-visible
+ * outcome of a real, physically-verified meeting.
+ *
+ * WHY MAPBOX, AND WHY `permanent=true`. Checked against the terms of service
+ * of each candidate before picking one, because this design retains the label
+ * rather than displaying and discarding it (§2.4's own flag: check storage
+ * terms first). Google's Geocoding API terms permit indefinite storage of
+ * `place_id` only, not the formatted result. OSM Nominatim's policy is silent
+ * on storage and expects self-hosting past casual volume. Mapbox has an
+ * explicit permanent-storage tier built for exactly this, so every request
+ * below carries `permanent=true` — see Q25's resolution in the architecture
+ * doc for the full comparison.
+ *
+ * WHY ONE HTTP CALL, NOT TWO. Mapbox's reverse geocoding returns one feature
+ * per requested `types` entry when a match exists near the point (not one
+ * combined "best" guess), so requesting `poi,neighborhood,place` in a single
+ * call gets the venue-name candidate and the generalized-area candidate in one
+ * round trip — the label decision below just picks between features already
+ * in hand, rather than making a second network call to decide it needs one.
+ *
+ * WHY POI BEATS THE GENERALIZED LABEL WHEN BOTH EXIST. §2.4's judgment call:
+ * "store a POI/venue name when the provider returns one; when it only returns
+ * a street address, store a coarser label instead." A `poi` match near the
+ * exact fix is the venue-name case; falling back to neighborhood+city is the
+ * generalization for everything else, including a bare street address, which
+ * this module never stores at all — `types` never includes `address`, so a
+ * street-level result is not a shape the response can even take.
+ */
+
+const MAPBOX_REVERSE_ENDPOINT = "https://api.mapbox.com/geocoding/v5/mapbox.places";
+
+interface MapboxFeature {
+  text?: string;
+  place_name?: string;
+  place_type?: string[];
+}
+
+interface MapboxResponse {
+  features?: MapboxFeature[];
+}
+
+/**
+ * Picks the label from a set of Mapbox reverse-geocoding features, per §2.4's
+ * generalization rule. Pure and unit-tested on its own — the only part of
+ * this module with a decision worth testing independently of a real HTTP call.
+ */
+export function chooseLabel(features: MapboxFeature[]): string | null {
+  const poi = features.find((f) => f.place_type?.includes("poi") && f.text);
+  if (poi?.text) {
+    return poi.text;
+  }
+
+  const neighborhood = features.find((f) => f.place_type?.includes("neighborhood"));
+  const place = features.find((f) => f.place_type?.includes("place"));
+
+  const parts = [neighborhood?.text, place?.text].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+async function reverseGeocode(
+  latitude: number,
+  longitude: number,
+  accessToken: string,
+): Promise<string | null> {
+  const url = new URL(`${MAPBOX_REVERSE_ENDPOINT}/${longitude},${latitude}.json`);
+  url.searchParams.set("types", "poi,neighborhood,place");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("permanent", "true");
+  url.searchParams.set("access_token", accessToken);
+
+  const response = await fetch(url.toString(), {
+    // Bounded so a slow vendor cannot hold the already-committed redeem
+    // response open indefinitely — this is awaited by the caller (Vercel
+    // serverless functions can freeze once a response is sent, so an
+    // un-awaited call after `return` is not guaranteed to finish), but it
+    // must stay short since the caller's HTTP response is waiting on it.
+    signal: AbortSignal.timeout(4000),
+  });
+
+  if (!response.ok) {
+    console.error("[geocode] Mapbox reverse geocoding returned an error status", {
+      status: response.status,
+    });
+    return null;
+  }
+
+  const payload = (await response.json()) as MapboxResponse;
+  return chooseLabel(payload.features ?? []);
+}
+
+/**
+ * Reverse-geocodes one meeting's captured fix and writes the result to
+ * `meeting_locations.place_label`. Never throws — every failure path is
+ * logged and swallowed, matching `sendCardTapNotification`'s contract.
+ *
+ * Service-role only: `meeting_locations` has no client UPDATE policy at all
+ * (§3.2) — rows are written by the verification service alone, and this is
+ * the second and last thing that writes to them after the initial insert.
+ */
+export async function geocodeMeetingLocation(
+  meetingId: string,
+  latitude: number,
+  longitude: number,
+  client: SupabaseClient = serviceRoleClient(),
+): Promise<void> {
+  try {
+    const accessToken = geocodingApiKey();
+    if (accessToken === null) {
+      // Expected in any environment that hasn't set GEOCODING_API_KEY yet —
+      // logged for the same reason push.ts logs a missing Expo token: "no
+      // credential" and "broken" look identical from outside unless this
+      // line exists.
+      console.info("[geocode] GEOCODING_API_KEY is not set; place_label left null", { meetingId });
+      return;
+    }
+
+    const label = await reverseGeocode(latitude, longitude, accessToken);
+    if (label === null) {
+      console.info("[geocode] no usable Mapbox result; place_label left null", { meetingId });
+      return;
+    }
+
+    const { error } = await client
+      .from("meeting_locations")
+      .update({ place_label: label })
+      .eq("meeting_id", meetingId);
+
+    if (error) {
+      console.error("[geocode] failed to write place_label", {
+        meetingId,
+        message: error.message,
+      });
+    }
+  } catch (error) {
+    // Catch-all, same contract as push.ts: never propagate, always log.
+    console.error("[geocode] reverse geocoding failed", {
+      meetingId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
