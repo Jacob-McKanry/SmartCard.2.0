@@ -1,4 +1,4 @@
-import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
+import { redirect } from "next/navigation";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import {
@@ -33,10 +33,14 @@ import { PhotoUploader } from "./photo-uploader";
  * route now would be scope invented ahead of what the product can actually
  * use it for.
  *
- * WHY A SIGNED-OUT VISITOR IS SENT TO SIGN IN, NOT SHOWN AN ERROR
+ * WHY THERE'S NO SIGN-IN SCREEN HERE ANYMORE
  *
- * A missing session here is an expected, ordinary state — the same posture
- * `/auth-check` used — not a failure to report.
+ * `(app)/layout.tsx` now runs this exact check once for every page in this
+ * group and redirects a signed-out visitor to `/sign-in` before this
+ * component ever runs. The `context === null` branch below is TypeScript
+ * narrowing, not a reachable UI state — `getAuthenticatedContext()` is
+ * `cache()`-memoized (see its header), so this is the same call the layout
+ * already made, not a second verify-and-mint.
  */
 export const dynamic = "force-dynamic";
 
@@ -44,20 +48,7 @@ export default async function ProfilePage() {
   const context = await getAuthenticatedContext();
 
   if (context === null) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <h1 className="text-xl font-semibold">Sign in to view your profile</h1>
-        <p className="text-sm text-muted-foreground">
-          SmartCard connections only happen through an in-person tap or scan — sign in to see and
-          edit the profile the people you meet in person will see.
-        </p>
-        <LoginLink postLoginRedirectURL="/profile">
-          <span className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90">
-            Sign in with Kinde
-          </span>
-        </LoginLink>
-      </main>
-    );
+    redirect("/sign-in");
   }
 
   const { supabase, userId } = context;

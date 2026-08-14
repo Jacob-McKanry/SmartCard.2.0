@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -42,8 +43,16 @@ export interface AuthenticatedContext {
  * page, not an error. Anything else that goes wrong throws, because a partial
  * or unverifiable session must never degrade into "treat them as a guest and
  * carry on": on this codepath, silence is indistinguishable from a bypass.
+ *
+ * Wrapped in React's `cache()` so the (app) route group's layout (the auth
+ * gate) and the page it renders can each call this and only pay for one
+ * verify-and-mint per request, not two — `cache()` memoizes by identical
+ * arguments for the lifetime of a single render pass, which this function's
+ * zero arguments make automatic. Never reaches across requests: a fresh cache
+ * is created per request by the framework, which is exactly what a function
+ * whose result depends on "who is calling right now" needs.
  */
-export async function getAuthenticatedContext(): Promise<AuthenticatedContext | null> {
+export const getAuthenticatedContext = cache(async (): Promise<AuthenticatedContext | null> => {
   const session = getKindeServerSession();
 
   const rawAccessToken = await session.getAccessTokenRaw();
@@ -62,7 +71,7 @@ export async function getAuthenticatedContext(): Promise<AuthenticatedContext | 
     kindeUserId: identity.kindeUserId,
     supabase: rlsClient(supabaseAccessToken),
   };
-}
+});
 
 /**
  * Fills in profile claims that Kinde puts in the ID token rather than the

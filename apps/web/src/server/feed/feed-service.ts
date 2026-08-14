@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MeetingLocationRow, UserRow, VerificationMethod } from "@smartcard/types";
 
-import { classifyFeedMeeting } from "@/app/feed/classify";
+import { classifyFeedMeeting } from "@/app/(app)/feed/classify";
 
 /**
  * The service layer (§1.7) for the meeting feed (README build order item 4).

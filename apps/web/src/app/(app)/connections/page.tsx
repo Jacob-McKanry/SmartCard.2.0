@@ -1,4 +1,4 @@
-import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
+import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
 
@@ -31,20 +31,7 @@ export default async function ConnectionsPage() {
   const context = await getAuthenticatedContext();
 
   if (context === null) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <h1 className="text-xl font-semibold">Sign in to see your connections</h1>
-        <p className="text-sm text-muted-foreground">
-          Every connection here came from an in-person tap or a GPS-verified scan — sign in to see who
-          you&rsquo;ve met.
-        </p>
-        <LoginLink postLoginRedirectURL="/connections">
-          <span className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90">
-            Sign in with Kinde
-          </span>
-        </LoginLink>
-      </main>
-    );
+    redirect("/sign-in");
   }
 
   const { supabase, userId } = context;

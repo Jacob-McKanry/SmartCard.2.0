@@ -1,6 +1,5 @@
-import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
@@ -59,19 +58,7 @@ export default async function ConnectionDetailPage({
   const context = await getAuthenticatedContext();
 
   if (context === null) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <h1 className="text-xl font-semibold">Sign in to view this connection</h1>
-        <p className="text-sm text-muted-foreground">
-          Meeting records are only visible to the two people who were actually there.
-        </p>
-        <LoginLink postLoginRedirectURL={`/connections/${connectionId}`}>
-          <span className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90">
-            Sign in with Kinde
-          </span>
-        </LoginLink>
-      </main>
-    );
+    redirect("/sign-in");
   }
 
   const { supabase, userId } = context;

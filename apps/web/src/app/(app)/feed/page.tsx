@@ -1,4 +1,4 @@
-import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
@@ -32,20 +32,7 @@ export default async function FeedPage() {
   const context = await getAuthenticatedContext();
 
   if (context === null) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 p-8 text-center">
-        <h1 className="text-xl font-semibold">Sign in to see your feed</h1>
-        <p className="text-sm text-muted-foreground">
-          Meetings you were part of, and meetings between people you&rsquo;re mutually connected to —
-          nothing else.
-        </p>
-        <LoginLink postLoginRedirectURL="/feed">
-          <span className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-xs hover:bg-primary/90">
-            Sign in with Kinde
-          </span>
-        </LoginLink>
-      </main>
-    );
+    redirect("/sign-in");
   }
 
   const { supabase, userId } = context;

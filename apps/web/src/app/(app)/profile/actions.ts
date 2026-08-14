@@ -9,7 +9,7 @@ import {
 } from "@smartcard/types";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
-import type { ActionState } from "@/app/profile/action-state";
+import type { ActionState } from "./action-state";
 import {
   addOwnSocialLink,
   deleteOwnSocialLink,
