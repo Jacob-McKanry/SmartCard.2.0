@@ -26,6 +26,8 @@ Follow `README.md`'s "Documentation standards" section on every change, no excep
 - **Explain security decisions in plain language**, not just in code comments — in commit messages / PR descriptions / chat, spell out what an attack would look like and how the change stops it.
 - **Never commit secrets.** Environment variables only. `.env*` is gitignored from commit one — keep it that way.
 - **Fail closed** on anything connection/verification-related: if a check can't be completed (GPS unavailable, permission denied, stale data), reject the action rather than let it through.
+- **Ask clarifying questions as multiple choice**, via the AskUserQuestion tool — never as open-ended prose. If a question genuinely needs free text (e.g. "which cities"), still use AskUserQuestion with an "Other" — style option rather than asking in plain chat.
+- **Independent verification before reporting done**, especially after delegating to a subagent: read the actual diff, re-run type-check/lint/test/build yourself, and check runtime logs / DB advisors / grants directly rather than trusting a self-reported summary. This project's owner expects this by default, not on request.
 
 ## Model and effort guidance
 
