@@ -30,6 +30,7 @@ import {
   qrSessionCreateRequestSchema,
 } from "@smartcard/types";
 
+import { geocodeMeetingLocation } from "@/server/connect/geocode";
 import { sendCardTapNotification } from "@/server/connect/push";
 import { supabaseConnectStore } from "@/server/connect/supabase-connect-store";
 import { qrSigningSecret } from "@/server/env";
@@ -311,6 +312,21 @@ export async function redeemQr(
 
   try {
     const created = await createVerifiedConnection(deps.store, outcome);
+
+    // AFTER the commit, never inside it — same rule §4.5's amendment sets for
+    // the card-tap notification below, for the same reason: a slow or down
+    // geocoding vendor must never turn a real, physically-verified connection
+    // into a failure. Awaited (not detached) because Vercel serverless
+    // functions can freeze once this response is sent; `geocodeMeetingLocation`
+    // itself never throws, so this cannot fail the redeem.
+    if (outcome.location) {
+      await geocodeMeetingLocation(
+        created.meetingId,
+        outcome.location.latitude,
+        outcome.location.longitude,
+      );
+    }
+
     return { ok: true, connectionId: created.connectionId, meetingId: created.meetingId };
   } catch (error) {
     return handleCommitFailure(deps.store, ctx, "qr_gps", outcome, error);
