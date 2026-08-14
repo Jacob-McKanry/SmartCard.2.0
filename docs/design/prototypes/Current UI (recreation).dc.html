@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>body{margin:0;background:#e9e9ec;font-family:Geist,ui-sans-serif,system-ui,sans-serif}a{color:#18181b}a:hover{color:#09090b}</style></helmet>
+
+<div style="padding:44px 48px 64px;display:flex;flex-direction:column;gap:36px">
+
+  <div style="max-width:760px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:inline-flex;align-self:flex-start;gap:8px;align-items:center;background:#18181b;color:#fafafa;border-radius:999px;padding:5px 12px;font:500 11px/1 'Geist Mono',ui-monospace,monospace;letter-spacing:.04em;text-transform:uppercase">Before &middot; recreated from source</div>
+    <h1 style="margin:0;font:600 30px/36px Geist,sans-serif;color:#09090b">SmartCard 2.0 as it ships today</h1>
+    <p style="margin:0;font:400 15px/24px Geist,sans-serif;color:#52525b;text-wrap:pretty">Every frame below is rebuilt from <code style="font:400 13px/1 'Geist Mono',monospace;background:#fff;border:1px solid #d9d9de;border-radius:5px;padding:2px 5px">apps/web/src</code> on <code style="font:400 13px/1 'Geist Mono',monospace;background:#fff;border:1px solid #d9d9de;border-radius:5px;padding:2px 5px">claude/smartcard-rebuild-a5u95y</code> &mdash; the shadcn zinc/new-york tokens from <code style="font:400 13px/1 'Geist Mono',monospace;background:#fff;border:1px solid #d9d9de;border-radius:5px;padding:2px 5px">globals.css</code>, Geist from <code style="font:400 13px/1 'Geist Mono',monospace;background:#fff;border:1px solid #d9d9de;border-radius:5px;padding:2px 5px">layout.tsx</code>, the real Lucide nav icons, and each page's own spacing and copy verbatim. Avatars render as initial fallbacks because most migrated users still have no photo, which is the honest current state.</p>
+    <p style="margin:0;font:400 15px/24px Geist,sans-serif;color:#52525b;text-wrap:pretty"><strong style="font-weight:600;color:#09090b">Where this is going:</strong> the glass/light redesign lives in a separate file so this stays a clean reference. Events has no screens at all today &mdash; there is nothing to recreate, only backend to design onto.</p>
+  </div>
+
+  <div style="display:flex;align-items:baseline;gap:10px"><span style="font:500 11px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#71717b">Desktop &mdash; top bar renders above 640px</span><span style="height:1px;flex:1;background:#d4d4d8"></span></div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/ &mdash; Home</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:448px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;padding:96px 40px;text-align:center">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Hey, Jacob</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">12 connections, all made in person.</p>
+          </div>
+          <button style="display:inline-flex;align-items:center;justify-content:center;gap:8px;height:56px;padding:0 32px;border:0;border-radius:8px;background:#18181b;color:#fafafa;font:500 16px/24px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>
+            Connect
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/feed &mdash; both post shapes</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:672px;display:flex;flex-direction:column;gap:24px;padding:40px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Feed</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Meetings you were part of, and meetings between your mutual connections. Nothing suggested, nothing algorithmic &mdash; just what actually happened, most recent first.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+
+            <a href="#" style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">AC</div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">You met Alex Chen</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">QR code, verified by location &middot; Aug 13, 2026, 6:42 PM</p>
+                <p style="margin:4px 0 0;font:400 14px/20px Geist,sans-serif;color:#71717b">Blue Bottle Coffee</p>
+              </div>
+            </a>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex">
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif;box-shadow:0 0 0 2px #fff">PR</div>
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif;box-shadow:0 0 0 2px #fff;margin-left:-12px">MW</div>
+              </div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">Priya Raman met Marcus Webb</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Aug 13, 2026, 2:15 PM</p>
+                <p style="margin:4px 0 0;font:400 12px/16px Geist,sans-serif;color:#71717b">You&rsquo;re connected to both Priya Raman and Marcus Webb</p>
+              </div>
+            </div>
+
+            <a href="#" style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">DO</div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">You met Dana Ortiz</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">NFC card tap &middot; Aug 12, 2026, 11:05 AM</p>
+              </div>
+            </a>
+
+            <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex">
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif;box-shadow:0 0 0 2px #fff">AC</div>
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif;box-shadow:0 0 0 2px #fff;margin-left:-12px">SI</div>
+              </div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">Alex Chen met Sam Iyer</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Aug 11, 2026, 8:30 PM</p>
+                <p style="margin:4px 0 0;font:400 12px/16px Geist,sans-serif;color:#71717b">You&rsquo;re connected to both Alex Chen and Sam Iyer</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/feed &mdash; empty state (most pilot users land here)</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:672px;display:flex;flex-direction:column;gap:24px;padding:40px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Feed</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Meetings you were part of, and meetings between your mutual connections. Nothing suggested, nothing algorithmic &mdash; just what actually happened, most recent first.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px;border:1px dashed #e4e4e7;border-radius:10px;padding:40px;text-align:center">
+            <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">Nothing here yet &mdash; and that&rsquo;s expected</p>
+            <p style="margin:0;max-width:384px;font:400 14px/20px Geist,sans-serif;color:#71717b">This feed only shows meetings verified in person. It stays quiet until one actually happens &mdash; there&rsquo;s nothing to fill the space with in the meantime.</p>
+            <a href="#" style="margin-top:8px;font:400 14px/20px Geist,sans-serif;color:#18181b;text-decoration:underline;text-underline-offset:4px">Connect with someone</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/connections</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:672px;display:flex;flex-direction:column;gap:24px;padding:40px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Your connections</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Everyone you&rsquo;ve connected with in person. There&rsquo;s no way to browse anyone else&rsquo;s.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <a href="#" style="display:flex;align-items:center;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">AC</div>
+              <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Alex Chen</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">QR code, verified by location &middot; Aug 13, 2026, 6:42 PM</div></div>
+            </a>
+            <a href="#" style="display:flex;align-items:center;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">DO</div>
+              <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Dana Ortiz</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">NFC card tap &middot; Aug 12, 2026, 11:05 AM</div></div>
+            </a>
+            <a href="#" style="display:flex;align-items:center;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">PR</div>
+              <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Priya Raman</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">QR code, verified by location &middot; Aug 9, 2026, 7:20 PM</div></div>
+            </a>
+            <a href="#" style="display:flex;align-items:center;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">MW</div>
+              <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Marcus Webb</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">NFC card tap &middot; Aug 4, 2026, 9:02 AM</div></div>
+            </a>
+            <a href="#" style="display:flex;align-items:center;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;text-decoration:none;color:inherit">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">SI</div>
+              <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Sam Iyer</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">QR code, verified by location &middot; Jul 28, 2026, 1:44 PM</div></div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/connections/[connectionId] &mdash; meeting record</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:672px;display:flex;flex-direction:column;gap:32px;padding:40px">
+          <div><a href="#" style="font:400 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">&larr; Your connections</a></div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="display:flex;align-items:center;justify-content:center;width:56px;height:56px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">AC</div>
+            <div>
+              <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Alex Chen</h1>
+              <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Active connection</p>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font:500 14px/20px Geist,sans-serif;color:#71717b">How you connected</h2>
+            <div style="display:grid;grid-template-columns:auto 1fr;column-gap:16px;row-gap:4px;font:400 14px/20px Geist,sans-serif;color:#09090b">
+              <div style="color:#71717b">Who</div><div>You and Alex Chen</div>
+              <div style="color:#71717b">When</div><div>Aug 13, 2026, 6:42 PM</div>
+              <div style="color:#71717b">How</div><div>QR code, verified by location</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font:500 14px/20px Geist,sans-serif;color:#71717b">Location</h2>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#09090b">Blue Bottle Coffee</p>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Private to you and Alex Chen by default. Nobody else &mdash; including mutual connections &mdash; can see this unless you both choose to share it below.</p>
+            <div style="display:flex;flex-direction:column;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px;margin-top:4px">
+              <label style="display:flex;align-items:center;gap:8px;font:400 14px/20px Geist,sans-serif;color:#09090b"><input type="checkbox" checked style="width:16px;height:16px"> Share with mutual connections</label>
+              <label style="display:flex;align-items:center;gap:8px;font:400 14px/20px Geist,sans-serif;color:#09090b"><input type="checkbox" checked style="width:16px;height:16px"> I agree to share this location</label>
+              <p style="margin:0;font:400 12px/16px Geist,sans-serif;color:#71717b">Waiting on Alex Chen &mdash; they haven&rsquo;t agreed yet, so nothing is shared.</p>
+              <label style="display:flex;align-items:center;gap:8px;font:400 14px/20px Geist,sans-serif;color:#09090b"><input type="checkbox" style="width:16px;height:16px"> Mark this meeting private</label>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;border-top:1px solid #e4e4e7;padding-top:24px">
+            <h2 style="margin:0;font:500 14px/20px Geist,sans-serif;color:#71717b">Remove connection</h2>
+            <div style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(231,0,11,.4);border-radius:8px;padding:12px">
+              <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#09090b">Remove your connection with Alex Chen? This can&rsquo;t be undone from here &mdash; reconnecting means meeting Alex Chen in person again and going through Connect Flow, not tapping a button.</p>
+              <div style="display:flex;gap:8px">
+                <button style="display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:0;border-radius:8px;background:#e7000b;color:#fafafa;font:500 12px/16px Geist,sans-serif;cursor:pointer">Yes, remove connection</button>
+                <button style="display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#09090b;font:500 12px/16px Geist,sans-serif;cursor:pointer">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/connect &mdash; presenting (active) and scanning</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div style="width:418px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+          <div style="border-bottom:1px solid #e4e4e7;padding:8px 16px;display:flex;align-items:center;gap:4px"><span style="font:600 14px/20px Geist,sans-serif">SmartCard</span><a href="#" style="margin-left:12px;border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Connect</a></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:24px;padding:40px 24px">
+            <h1 style="margin:0;font:600 20px/28px Geist,sans-serif;color:#09090b">Connect</h1>
+            <div style="display:inline-flex;border:1px solid #e4e4e7;border-radius:8px;background:#f4f4f5;padding:4px">
+              <button style="border:0;border-radius:6px;padding:6px 16px;font:500 14px/20px Geist,sans-serif;background:#fff;color:#09090b;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Show my code</button>
+              <button style="border:0;border-radius:6px;padding:6px 16px;font:500 14px/20px Geist,sans-serif;background:transparent;color:#71717b;cursor:pointer">Scan a code</button>
+            </div>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b;text-align:center">Have the other person scan this with SmartCard.</p>
+            <div style="border:1px solid #e4e4e7;border-radius:10px;background:#fff;padding:16px">
+              <div style="width:240px;height:240px;padding:19px;box-sizing:border-box;background:#fff">
+                <div style="display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);width:100%;height:100%">
+                  <sc-for list="{{ qrCells }}" as="cell" hint-placeholder-count="441"><div style="background:{{ cell.c }}"></div></sc-for>
+                </div>
+              </div>
+            </div>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Hold this up for them to scan.</p>
+          </div>
+        </div>
+        <div style="width:418px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+          <div style="border-bottom:1px solid #e4e4e7;padding:8px 16px;display:flex;align-items:center;gap:4px"><span style="font:600 14px/20px Geist,sans-serif">SmartCard</span><a href="#" style="margin-left:12px;border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Connect</a></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:24px;padding:40px 24px">
+            <h1 style="margin:0;font:600 20px/28px Geist,sans-serif;color:#09090b">Connect</h1>
+            <div style="display:inline-flex;border:1px solid #e4e4e7;border-radius:8px;background:#f4f4f5;padding:4px">
+              <button style="border:0;border-radius:6px;padding:6px 16px;font:500 14px/20px Geist,sans-serif;background:transparent;color:#71717b;cursor:pointer">Show my code</button>
+              <button style="border:0;border-radius:6px;padding:6px 16px;font:500 14px/20px Geist,sans-serif;background:#fff;color:#09090b;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Scan a code</button>
+            </div>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b;text-align:center">Point your camera at the code they&rsquo;re showing.</p>
+            <div style="border:1px solid #e4e4e7;border-radius:10px;overflow:hidden;background:#fff">
+              <div style="width:288px;height:288px;background:repeating-linear-gradient(135deg,#e4e4e7 0 8px,#eeeef0 8px 16px);display:flex;align-items:center;justify-content:center">
+                <span style="font:400 11px/1 'Geist Mono',monospace;color:#71717b;background:#fff;border-radius:4px;padding:4px 8px">live camera feed</span>
+              </div>
+            </div>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Point your camera at their code.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/activity &mdash; reads as a security log</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:672px;display:flex;flex-direction:column;gap:32px;padding:40px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Activity</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Every time one of your cards was tapped, in case you missed the push notification.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font:600 14px/20px Geist,sans-serif;color:#71717b">Your cards</h2>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <span style="font:500 14px/20px Geist,sans-serif;color:#09090b">SC-4F2A91</span>
+              <button style="display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:1px solid #e4e4e7;border-radius:8px;background:#fff;color:#09090b;font:500 12px/16px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Revoke card</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px;border:1px solid rgba(231,0,11,.4);border-radius:8px;padding:12px">
+              <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#09090b">Revoke card SC-88C013? It will stop working immediately &mdash; nobody, including you, will be able to tap it to connect. There&rsquo;s no restore button in the app yet, so treat this as permanent for now.</p>
+              <div style="display:flex;gap:8px">
+                <button style="display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:0;border-radius:8px;background:#e7000b;color:#fafafa;font:500 12px/16px Geist,sans-serif;cursor:pointer">Yes, revoke card</button>
+                <button style="display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#09090b;font:500 12px/16px Geist,sans-serif;cursor:pointer">Cancel</button>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <h2 style="margin:0;font:600 14px/20px Geist,sans-serif;color:#71717b">Recent taps</h2>
+            <div style="display:flex;flex-direction:column;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">DO</div>
+                <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Dana Ortiz tapped your card</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">Aug 12, 2026, 11:05 AM</div></div>
+              </div>
+              <button style="display:inline-flex;align-self:flex-start;align-items:center;justify-content:center;height:32px;padding:0 12px;border:1px solid #e4e4e7;border-radius:8px;background:#fff;color:#09090b;font:500 12px/16px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Remove connection</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex;align-items:center;gap:12px">
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">MW</div>
+                <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Marcus Webb tapped your card</div><div style="font:400 14px/20px Geist,sans-serif;color:#71717b">Aug 4, 2026, 9:02 AM</div></div>
+              </div>
+              <button style="display:inline-flex;align-self:flex-start;align-items:center;justify-content:center;height:32px;padding:0 12px;border:1px solid #e4e4e7;border-radius:8px;background:#fff;color:#09090b;font:500 12px/16px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Remove connection</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/profile</div>
+      <div style="width:860px;border:1px solid #d4d4d8;border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="border-bottom:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:672px;display:flex;align-items:center;gap:4px;padding:8px 24px">
+            <span style="margin-right:16px;font:600 14px/20px Geist,sans-serif;color:#09090b">SmartCard</span>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Home</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Feed</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connect</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Connections</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">Activity</a>
+            <a href="#" style="border-radius:8px;padding:6px 12px;font:500 14px/20px Geist,sans-serif;background:#f4f4f5;color:#18181b;text-decoration:none">Profile</a>
+          </div>
+        </div>
+        <div style="margin:0 auto;max-width:672px;display:flex;flex-direction:column;gap:40px;padding:40px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Your profile</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Shown identically to every connection &mdash; there&rsquo;s no separate public view, and no way for a stranger to find this page.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <h2 style="margin:0;font:500 14px/20px Geist,sans-serif;color:#71717b">Photo</h2>
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="display:flex;align-items:center;justify-content:center;width:80px;height:80px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 18px/28px Geist,sans-serif">JM</div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;gap:8px">
+                  <button style="display:inline-flex;align-items:center;justify-content:center;height:32px;padding:0 12px;border:1px solid #e4e4e7;border-radius:8px;background:#fff;color:#09090b;font:500 12px/16px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Upload photo</button>
+                </div>
+                <p style="margin:0;font:400 12px/16px Geist,sans-serif;color:#71717b">WEBP only, up to 5MB.</p>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <h2 style="margin:0;font:500 14px/20px Geist,sans-serif;color:#71717b">Details</h2>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Signed in as <span style="font-weight:500;color:#09090b">jacob@smartcard.tech</span> &mdash; tied to your sign-in, not editable here.</p>
+            <div style="display:flex;flex-direction:column;gap:20px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">First name</label><input value="Jacob" style="height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box"></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Last name</label><input value="McKanry" style="height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box"></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Username</label><input value="jacob" style="height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box"><p style="margin:0;font:400 12px/16px Geist,sans-serif;color:#71717b">Optional. There&rsquo;s no public search or profile URL &mdash; this is just a label.</p></div>
+              <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Phone number</label><input value="+1 415 555 0148" style="height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box"></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+                <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Company</label><input value="SmartCard" style="height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box"></div>
+                <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Role</label><input value="Founder" style="height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box"></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px"><label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Bio</label><textarea rows="4" style="border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:8px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box;resize:vertical">Building a network you can only join by meeting someone.</textarea></div>
+              <label style="display:flex;align-items:center;gap:8px;font:400 14px/20px Geist,sans-serif;color:#09090b"><input type="checkbox" checked style="width:16px;height:16px"> Email me occasional updates</label>
+              <div style="display:flex;align-items:center;gap:12px">
+                <button style="display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;border:0;border-radius:8px;background:#18181b;color:#fafafa;font:500 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Save changes</button>
+                <span style="font:400 14px/20px Geist,sans-serif;color:#71717b">Saved.</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <h2 style="margin:0;font:500 14px/20px Geist,sans-serif;color:#71717b">Social links</h2>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:8px 12px">
+                <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">Instagram</div><a href="#" style="display:block;font:400 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">https://instagram.com/jacob</a></div>
+                <div style="display:flex;flex-shrink:0;gap:4px">
+                  <button style="height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#09090b;font:500 12px/16px Geist,sans-serif;cursor:pointer">Edit</button>
+                  <button style="height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#09090b;font:500 12px/16px Geist,sans-serif;cursor:pointer">Remove</button>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:8px 12px">
+                <div style="min-width:0"><div style="font:500 14px/20px Geist,sans-serif;color:#09090b">LinkedIn</div><a href="#" style="display:block;font:400 14px/20px Geist,sans-serif;color:#71717b;text-decoration:none">https://linkedin.com/in/jacobmckanry</a></div>
+                <div style="display:flex;flex-shrink:0;gap:4px">
+                  <button style="height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#09090b;font:500 12px/16px Geist,sans-serif;cursor:pointer">Edit</button>
+                  <button style="height:32px;padding:0 12px;border:0;border-radius:8px;background:transparent;color:#09090b;font:500 12px/16px Geist,sans-serif;cursor:pointer">Remove</button>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;border:1px dashed #e4e4e7;border-radius:8px;padding:12px">
+                <label style="font:500 14px/20px Geist,sans-serif;color:#09090b">Add a link</label>
+                <div style="display:flex;gap:8px">
+                  <input placeholder="Platform (e.g. Instagram)" style="flex:1;height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box">
+                  <input placeholder="https://…" style="flex:1;height:36px;border:1px solid #e4e4e7;border-radius:8px;background:transparent;padding:4px 12px;font:400 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);box-sizing:border-box">
+                  <button style="flex-shrink:0;height:36px;padding:0 16px;border:0;border-radius:8px;background:#18181b;color:#fafafa;font:500 14px/20px Geist,sans-serif;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Add link</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="display:flex;align-items:baseline;gap:10px"><span style="font:500 11px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#71717b">Mobile &mdash; bottom tab bar renders below 640px</span><span style="height:1px;flex:1;background:#d4d4d8"></span></div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start">
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/ &mdash; Home</div>
+      <div style="width:390px;height:844px;border:1px solid #d4d4d8;border-radius:20px;overflow:hidden;background:#fff;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:32px;padding:24px;height:100%;box-sizing:border-box;text-align:center">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Hey, Jacob</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">12 connections, all made in person.</p>
+          </div>
+          <button style="display:inline-flex;align-items:center;justify-content:center;gap:8px;height:56px;padding:0 32px;border:0;border-radius:8px;background:#18181b;color:#fafafa;font:500 16px/24px Geist,sans-serif;cursor:pointer">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>
+            Connect
+          </button>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:0;border-top:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:448px;display:flex;align-items:stretch;justify-content:space-around">
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#09090b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>Home</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18h-5"></path><path d="M18 14h-8"></path><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"></path><rect width="8" height="4" x="10" y="6" rx="1"></rect></svg>Feed</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>Connect</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M16 3.128a4 4 0 0 1 0 7.744"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><circle cx="9" cy="7" r="4"></circle></svg>Connections</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>Activity</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.925 20.056a6 6 0 0 0-11.851.001"></path><circle cx="12" cy="11" r="4"></circle><circle cx="12" cy="12" r="10"></circle></svg>Profile</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/feed</div>
+      <div style="width:390px;height:844px;border:1px solid #d4d4d8;border-radius:20px;overflow:hidden;background:#fff;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="display:flex;flex-direction:column;gap:24px;padding:24px 24px 80px">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <h1 style="margin:0;font:600 24px/32px Geist,sans-serif;color:#09090b">Feed</h1>
+            <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Meetings you were part of, and meetings between your mutual connections. Nothing suggested, nothing algorithmic &mdash; just what actually happened, most recent first.</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">AC</div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">You met Alex Chen</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">QR code, verified by location &middot; Aug 13, 2026, 6:42 PM</p>
+                <p style="margin:4px 0 0;font:400 14px/20px Geist,sans-serif;color:#71717b">Blue Bottle Coffee</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex">
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif;box-shadow:0 0 0 2px #fff">PR</div>
+                <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif;box-shadow:0 0 0 2px #fff;margin-left:-12px">MW</div>
+              </div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Priya Raman met Marcus Webb</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Aug 13, 2026, 2:15 PM</p>
+                <p style="margin:4px 0 0;font:400 12px/16px Geist,sans-serif;color:#71717b">You&rsquo;re connected to both Priya Raman and Marcus Webb</p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:12px;border:1px solid #e4e4e7;border-radius:8px;padding:12px">
+              <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:999px;background:#f4f4f5;color:#71717b;font:400 14px/20px Geist,sans-serif">DO</div>
+              <div style="min-width:0;flex:1">
+                <p style="margin:0;font:500 14px/20px Geist,sans-serif;color:#09090b">You met Dana Ortiz</p>
+                <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">NFC card tap &middot; Aug 12, 2026, 11:05 AM</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:0;border-top:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:448px;display:flex;align-items:stretch;justify-content:space-around">
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>Home</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#09090b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18h-5"></path><path d="M18 14h-8"></path><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"></path><rect width="8" height="4" x="10" y="6" rx="1"></rect></svg>Feed</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>Connect</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M16 3.128a4 4 0 0 1 0 7.744"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><circle cx="9" cy="7" r="4"></circle></svg>Connections</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>Activity</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.925 20.056a6 6 0 0 0-11.851.001"></path><circle cx="12" cy="11" r="4"></circle><circle cx="12" cy="12" r="10"></circle></svg>Profile</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:9px">
+      <div style="font:500 12px/16px Geist,sans-serif;color:#52525b">/connect &mdash; presenting</div>
+      <div style="width:390px;height:844px;border:1px solid #d4d4d8;border-radius:20px;overflow:hidden;background:#fff;position:relative;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px;height:100%;box-sizing:border-box">
+          <h1 style="margin:0;font:600 20px/28px Geist,sans-serif;color:#09090b">Connect</h1>
+          <div style="display:inline-flex;border:1px solid #e4e4e7;border-radius:8px;background:#f4f4f5;padding:4px">
+            <button style="border:0;border-radius:6px;padding:6px 16px;font:500 14px/20px Geist,sans-serif;background:#fff;color:#09090b;box-shadow:0 1px 2px rgba(0,0,0,.05);cursor:pointer">Show my code</button>
+            <button style="border:0;border-radius:6px;padding:6px 16px;font:500 14px/20px Geist,sans-serif;background:transparent;color:#71717b;cursor:pointer">Scan a code</button>
+          </div>
+          <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b;text-align:center">Have the other person scan this with SmartCard.</p>
+          <div style="border:1px solid #e4e4e7;border-radius:10px;background:#fff;padding:16px">
+            <div style="width:240px;height:240px;padding:19px;box-sizing:border-box">
+              <div style="display:grid;grid-template-columns:repeat(21,1fr);grid-template-rows:repeat(21,1fr);width:100%;height:100%">
+                <sc-for list="{{ qrCells }}" as="cell" hint-placeholder-count="441"><div style="background:{{ cell.c }}"></div></sc-for>
+              </div>
+            </div>
+          </div>
+          <p style="margin:0;font:400 14px/20px Geist,sans-serif;color:#71717b">Hold this up for them to scan.</p>
+        </div>
+        <div style="position:absolute;left:0;right:0;bottom:0;border-top:1px solid #e4e4e7;background:rgba(255,255,255,.95)">
+          <div style="margin:0 auto;max-width:448px;display:flex;align-items:stretch;justify-content:space-around">
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg>Home</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18h-5"></path><path d="M18 14h-8"></path><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-4 0v-9a2 2 0 0 1 2-2h2"></path><rect width="8" height="4" x="10" y="6" rx="1"></rect></svg>Feed</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#09090b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>Connect</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M16 3.128a4 4 0 0 1 0 7.744"></path><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><circle cx="9" cy="7" r="4"></circle></svg>Connections</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>Activity</a>
+            <a href="#" style="display:flex;flex:1;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:500 11px/16px Geist,sans-serif;color:#71717b;text-decoration:none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.925 20.056a6 6 0 0 0-11.851.001"></path><circle cx="12" cy="11" r="4"></circle><circle cx="12" cy="12" r="10"></circle></svg>Profile</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="max-width:760px;display:flex;flex-direction:column;gap:10px;border-top:1px solid #d4d4d8;padding-top:24px">
+    <div style="font:500 11px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#71717b">What the redesign has to fix</div>
+    <p style="margin:0;font:400 15px/24px Geist,sans-serif;color:#52525b;text-wrap:pretty">Read as a whole, today's app is a well-built admin console: one border weight, one radius, one grey, no hierarchy between the emotional moment (a successful connection) and a form field. Nothing here is wrong &mdash; it just doesn't feel like the product the brief describes. The redesign keeps every rule this code enforces (no directory, no guest list, stored-state-not-tapped-state, two-step destructive confirms) and changes only the surface, the shape language, and the motion.</p>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { qrCells: this.qrCells() };
+  }
+
+  /**
+   * A structurally plausible 21x21 (version 1) QR: real finder patterns,
+   * timing rows, and a deterministic data field. Stands in for the live
+   * `QRCodeSVG` the presenter screen renders at 240px, level M.
+   */
+  qrCells() {
+    const n = 21;
+    const cells = [];
+    const finders = [[0, 0], [14, 0], [0, 14]];
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        cells.push({ c: this.moduleOn(x, y, finders) ? "#09090b" : "#ffffff" });
+      }
+    }
+    return cells;
+  }
+
+  moduleOn(x, y, finders) {
+    for (const [ox, oy] of finders) {
+      if (x >= ox && x < ox + 7 && y >= oy && y < oy + 7) {
+        const dx = x - ox;
+        const dy = y - oy;
+        const ring = dx === 0 || dx === 6 || dy === 0 || dy === 6;
+        const core = dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4;
+        return ring || core;
+      }
+      if (x >= ox - 1 && x <= ox + 7 && y >= oy - 1 && y <= oy + 7) return false;
+    }
+    if (y === 6 || x === 6) return (x + y) % 2 === 0;
+    const h = Math.sin((x + 1) * 12.9898 + (y + 1) * 78.233) * 43758.5453;
+    return (h - Math.floor(h)) > 0.48;
+  }
+}
+</script>
+</body>
+</html>

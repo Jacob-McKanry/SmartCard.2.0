@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#e9ecf3;font-family:'Instrument Sans',ui-sans-serif,system-ui,sans-serif}
+a{color:#0a84ff;text-decoration:none}a:hover{color:#0866cc}
+*{box-sizing:border-box}
+.dv-turn{padding:40px 44px 34px;border-bottom:1px solid rgba(13,18,32,.08);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.dv-tid{font:600 10px/1 'Geist Mono',monospace;padding:4px 8px;background:#0d1220;color:#fff;border-radius:5px;text-decoration:none}
+.dv-tname{font:600 13px/1.2 'Instrument Sans',sans-serif;color:#0d1220}
+.dv-tsub{margin:0 0 22px;font:400 13px/20px 'Instrument Sans',sans-serif;color:#5b6478;max-width:76ch;text-wrap:pretty}
+.dv-grp{margin:26px 0 14px;font:500 11px/1 'Geist Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#8b93a5}
+.dv-opts{display:flex;flex-wrap:wrap;gap:26px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px;width:402px}
+.dv-oid{font:600 10.5px/1 'Geist Mono',monospace;padding:4px 8px;background:rgba(13,18,32,.08);color:#0d1220;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:500 12px/17px 'Instrument Sans',sans-serif;color:#0d1220}
+.dv-onote{margin:0;font:400 12px/17px 'Instrument Sans',sans-serif;color:#8b93a5;text-wrap:pretty;min-height:34px}
+.dv-card{width:402px;height:790px;position:relative;overflow:hidden;border-radius:38px;border:1px solid rgba(13,18,32,.1);box-shadow:0 20px 44px -18px rgba(13,18,32,.3);background:radial-gradient(600px 420px at 15% -5%,rgba(10,132,255,.13),transparent 60%),radial-gradient(520px 380px at 95% 6%,rgba(124,58,237,.08),transparent 62%),#f1f4fa}
+.dv-opt:target .dv-oid{background:#0a84ff;color:#fff}
+.dv-next{margin:24px 0 0;font:400 13px/20px 'Instrument Sans',sans-serif;color:#5b6478}
+.sb{position:absolute;top:0;left:0;right:0;height:50px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;font:600 13px/16px 'Instrument Sans',sans-serif;color:#0d1220;z-index:30;pointer-events:none}
+.dock{position:absolute;left:14px;right:14px;bottom:14px;z-index:30;display:flex;gap:2px;padding:6px;background:rgba(255,255,255,.72);backdrop-filter:blur(26px) saturate(1.7);-webkit-backdrop-filter:blur(26px) saturate(1.7);border:1px solid rgba(255,255,255,.78);border-radius:26px;box-shadow:0 16px 40px -12px rgba(16,24,40,.28)}
+.dk{flex:1;display:flex;align-items:center;justify-content:center;min-height:44px;border:0;background:transparent;color:#8b93a5;border-radius:16px;font:500 10px/13px 'Instrument Sans',sans-serif}
+.dk.on{background:rgba(10,132,255,.12);color:#0866cc;font-weight:600}
+.scr{position:absolute;inset:0;overflow:hidden;padding:54px 0 96px}
+.pad{padding:0 22px}
+.gl{background:rgba(255,255,255,.72);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);border:1px solid rgba(255,255,255,.78);box-shadow:0 10px 30px rgba(16,24,40,.08)}
+.av{display:flex;align-items:center;justify-content:center;border-radius:999px;background:linear-gradient(140deg,rgba(10,132,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font-family:'Instrument Sans',sans-serif;font-weight:600;color:#0d1220}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:999px;padding:14px 20px;font:600 14px/18px 'Instrument Sans',sans-serif;cursor:pointer}
+.mono{font:500 12px/17px 'Geist Mono',monospace}
+@keyframes spring{0%{transform:scale(.4);opacity:0}55%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes rise{0%{transform:translateY(14px);opacity:0}100%{transform:translateY(0);opacity:1}}
+@keyframes shimmer{0%{transform:translateX(-130%) rotate(8deg)}100%{transform:translateX(240%) rotate(8deg)}}
+@keyframes halo{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(1.07);opacity:.9}}
+@keyframes draw{0%{stroke-dashoffset:36}100%{stroke-dashoffset:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes spinr{to{transform:rotate(-360deg)}}
+@keyframes merge{0%{transform:translateX(26px)}100%{transform:translateX(0)}}
+@keyframes mergeL{0%{transform:translateX(-26px)}100%{transform:translateX(0)}}
+</style></helmet>
+
+<section class="dv-turn" id="t1">
+  <div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">The payoff moment, and the record it leads to</span></div>
+  <p class="dv-tsub">Three takes on &ldquo;you&rsquo;re connected&rdquo; and three on the meeting record, each carrying a smaller version of the ring diagram so the person you just met arrives with their own shape. One constraint worth stating plainly, because it changes the copy: <strong style="font-weight:600;color:#0d1220">there is no reconnect action in the backend</strong> &mdash; removing a connection is one-way, and getting it back means meeting in person again. So the button after a removal can&rsquo;t restore anything; what it can honestly do is take you to Connect, which is what <a class="dv-oid" href="#1g">1g</a> does.</p>
+
+  <div class="dv-grp">You&rsquo;re connected</div>
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="1a">
+      <div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Two orbits, joined</div>
+      <p class="dv-onote">Both rings slide in from opposite sides and settle side by side, one tick heavier on each now that the meeting exists. The most on-brand flourish, and it explains the diagram the first time you ever see it.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px">
+          <div style="position:relative;display:flex;align-items:center;justify-content:center;gap:-8px">
+            <div style="animation:merge .9s cubic-bezier(.32,.72,0,1) both">
+              <div style="position:relative;width:150px;height:150px">
+                <div style="position:absolute;inset:0;animation:spin 60s linear infinite"><sc-for list="{{ mA }}" as="d" hint-placeholder-count="12"><span style="position:absolute;top:50%;left:50%;width:2px;height:8px;margin:-4px -1px;border-radius:1px;background:#0a84ff;transform:{{ d.t }}"></span></sc-for></div>
+                <div style="position:absolute;inset:0;animation:spinr 90s linear infinite"><sc-for list="{{ mB }}" as="d" hint-placeholder-count="6"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:11px;margin:-5.5px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for></div>
+                <div class="av" style="position:absolute;top:50%;left:50%;width:76px;height:76px;margin:-38px;font-size:20px">JM</div>
+              </div>
+            </div>
+            <div style="animation:mergeL .9s cubic-bezier(.32,.72,0,1) both;margin-left:-18px">
+              <div style="position:relative;width:150px;height:150px">
+                <div style="position:absolute;inset:0;animation:spinr 70s linear infinite"><sc-for list="{{ mC }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2px;height:8px;margin:-4px -1px;border-radius:1px;background:#0a84ff;transform:{{ d.t }}"></span></sc-for></div>
+                <div style="position:absolute;inset:0;animation:spin 100s linear infinite"><sc-for list="{{ mD }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:11px;margin:-5.5px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for></div>
+                <div class="av" style="position:absolute;top:50%;left:50%;width:76px;height:76px;margin:-38px;font-size:20px;background:linear-gradient(140deg,rgba(124,58,237,.2),rgba(10,132,255,.16))">AC</div>
+              </div>
+            </div>
+            <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:44px;height:44px">
+              <span style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:linear-gradient(150deg,#0a84ff,#0b4fd6);box-shadow:0 10px 24px -8px rgba(10,132,255,.8),0 0 0 5px #f1f4fa;animation:spring .7s cubic-bezier(.34,1.56,.64,1) .5s both">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" style="stroke-dasharray:36;animation:draw .5s cubic-bezier(.32,.72,0,1) .75s both"></path></svg>
+              </span>
+            </span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:7px;animation:rise .5s cubic-bezier(.32,.72,0,1) .55s both">
+            <h2 style="margin:0;font:600 28px/32px 'Instrument Sans',sans-serif;letter-spacing:-.035em">You&rsquo;re connected</h2>
+            <p style="margin:0;font:600 15px/21px 'Instrument Sans',sans-serif;color:#0d1220">Alex Chen</p>
+            <div style="margin-top:4px;text-align:center">
+              <div class="mono" style="font-size:10px;letter-spacing:.14em;color:#5b6478">VERIFIED IN PERSON</div>
+              <div class="mono" style="margin-top:5px;font-size:12px;color:#0d1220">BLUE BOTTLE COFFEE &middot; 6:42 PM</div>
+            </div>
+          </div>
+          <div class="pad" style="display:flex;flex-direction:column;gap:9px;width:100%;animation:rise .5s cubic-bezier(.32,.72,0,1) .7s both">
+            <button class="btn" style="background:linear-gradient(150deg,#0a84ff,#0b4fd6);color:#fff;box-shadow:0 14px 30px -10px rgba(10,132,255,.6)">See the meeting record</button>
+            <button class="btn" style="background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.1);color:#0d1220">Connect again</button>
+            <button class="btn" style="background:transparent;color:#5b6478;padding:10px">Continue</button>
+          </div>
+        </div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk on">Connect</button><button class="dk">Events</button><button class="dk">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1b">
+      <div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Stamped</div>
+      <p class="dv-onote">Full cobalt field, one enormous check, and the meeting facts set as a stamp underneath. The loudest option &mdash; a screen you&rsquo;d hold up and show the other person.</p>
+      <div class="dv-card" style="background:linear-gradient(165deg,#0a84ff 0%,#0b4fd6 54%,#0a2c8f 100%)">
+        <div class="sb" style="color:#fff"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #fff;border-radius:3px;position:relative;opacity:.9"><span style="position:absolute;inset:1.5px;right:5px;background:#fff;border-radius:1px"></span></span></div>
+        <div style="position:absolute;top:-80px;right:-90px;width:300px;height:300px;border-radius:999px;background:radial-gradient(circle,rgba(255,255,255,.2),transparent 65%)"></div>
+        <div class="scr" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px">
+          <div style="position:relative;display:flex;align-items:center;justify-content:center;width:150px;height:150px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);overflow:hidden;animation:spring .75s cubic-bezier(.34,1.56,.64,1) both">
+            <span style="position:absolute;top:-40%;left:0;width:40%;height:180%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);animation:shimmer 1.6s cubic-bezier(.32,.72,0,1) .4s both"></span>
+            <svg width="74" height="74" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" style="stroke-dasharray:36;animation:draw .55s cubic-bezier(.32,.72,0,1) .3s both"></path></svg>
+            <span style="position:absolute;inset:-16px;border-radius:999px;border:1px solid rgba(255,255,255,.3);animation:halo 2.6s ease-in-out infinite"></span>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px;animation:rise .5s cubic-bezier(.32,.72,0,1) .2s both">
+            <h2 style="margin:0;font:600 34px/36px 'Instrument Sans',sans-serif;letter-spacing:-.04em;color:#fff">Connected</h2>
+            <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:999px;background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28)">
+              <span class="av" style="width:28px;height:28px;font-size:11px;background:rgba(255,255,255,.9);border-color:transparent">AC</span>
+              <span style="font:600 14px/18px 'Instrument Sans',sans-serif;color:#fff">Alex Chen</span>
+            </div>
+            <div style="margin-top:6px;text-align:center">
+              <div class="mono" style="color:rgba(255,255,255,.7);font-size:10.5px;letter-spacing:.14em">VERIFIED IN PERSON</div>
+              <div class="mono" style="margin-top:5px;color:#fff;font-size:12px">BLUE BOTTLE COFFEE &middot; 6:42 PM</div>
+            </div>
+          </div>
+          <div class="pad" style="display:flex;flex-direction:column;gap:9px;width:100%;animation:rise .5s cubic-bezier(.32,.72,0,1) .35s both">
+            <button class="btn" style="background:#fff;color:#0b4fd6">See the meeting record</button>
+            <button class="btn" style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.32);color:#fff">Show another code</button>
+          </div>
+        </div>
+        <div class="dock" style="background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.28);box-shadow:none"><button class="dk" style="color:rgba(255,255,255,.62)">Home</button><button class="dk" style="color:rgba(255,255,255,.62)">Feed</button><button class="dk" style="background:rgba(255,255,255,.9);color:#0b4fd6;font-weight:600">Connect</button><button class="dk" style="color:rgba(255,255,255,.62)">Events</button><button class="dk" style="color:rgba(255,255,255,.62)">People</button><button class="dk" style="color:rgba(255,255,255,.62)">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1c">
+      <div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Quiet receipt</div>
+      <p class="dv-onote">The restrained one: a small check, their card sliding up as a glass receipt with the facts already filled in. Reads as confirmation rather than celebration &mdash; better if this happens to you five times an evening.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px">
+          <div style="display:flex;align-items:center;justify-content:center;width:64px;height:64px;border-radius:999px;background:rgba(10,132,255,.1);border:1px solid rgba(10,132,255,.28);animation:spring .6s cubic-bezier(.34,1.56,.64,1) both">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0a84ff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" style="stroke-dasharray:36;animation:draw .45s cubic-bezier(.32,.72,0,1) .25s both"></path></svg>
+          </div>
+          <p style="margin:0;font:600 19px/24px 'Instrument Sans',sans-serif;letter-spacing:-.02em;animation:rise .45s cubic-bezier(.32,.72,0,1) .1s both">You&rsquo;re connected</p>
+          <div class="pad" style="width:100%;animation:rise .55s cubic-bezier(.32,.72,0,1) .2s both">
+            <div class="gl" style="border-radius:26px;padding:18px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;gap:13px">
+                <span class="av" style="width:52px;height:52px;font-size:15px">AC</span>
+                <span style="min-width:0">
+                  <span style="display:block;font:600 17px/22px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Alex Chen</span>
+                  <span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">Design lead, Figma</span>
+                </span>
+              </div>
+              <div style="height:1px;background:rgba(13,18,32,.08)"></div>
+              <div style="display:grid;grid-template-columns:64px 1fr;row-gap:8px;column-gap:12px;font:400 13px/18px 'Instrument Sans',sans-serif">
+                <span style="color:#8b93a5">When</span><span>Just now &middot; 6:42 PM</span>
+                <span style="color:#8b93a5">How</span><span>QR, verified by location</span>
+                <span style="color:#8b93a5">Where</span><span>Blue Bottle Coffee</span>
+              </div>
+            </div>
+          </div>
+          <div class="pad" style="display:flex;flex-direction:column;gap:9px;width:100%;animation:rise .5s cubic-bezier(.32,.72,0,1) .3s both">
+            <button class="btn" style="background:#0d1220;color:#fff">See the meeting record</button>
+            <button class="btn" style="background:transparent;color:#5b6478;padding:10px">Show another code</button>
+          </div>
+        </div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk on">Connect</button><button class="dk">Events</button><button class="dk">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="dv-grp">The meeting record</div>
+  <div class="dv-opts">
+
+    <div class="dv-opt" id="1d">
+      <div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Their rings, inline</div>
+      <p class="dv-onote">A compact three-band diagram sits under their name as an identity crest, then the record proper. The rings are theirs &mdash; 9 connections, 4 events, 3 cities &mdash; so the screen answers &ldquo;who is this&rdquo; before &ldquo;when did we meet&rdquo;.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr"><div class="pad" style="display:flex;flex-direction:column;gap:12px">
+          <button style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:2px 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People</button>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="position:relative;width:150px;height:150px;flex-shrink:0">
+              <div style="position:absolute;top:50%;left:50%;width:64px;height:64px;margin:-32px;border-radius:999px;border:1px solid rgba(10,132,255,.18)"></div>
+              <div style="position:absolute;top:50%;left:50%;width:96px;height:96px;margin:-48px;border-radius:999px;border:1px solid rgba(13,18,32,.1)"></div>
+              <div style="position:absolute;top:50%;left:50%;width:132px;height:132px;margin:-66px;border-radius:999px;border:1px solid rgba(10,63,176,.14)"></div>
+              <sc-for list="{{ sA }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2px;height:6px;margin:-3px -1px;border-radius:1px;background:#0a84ff;transform:{{ d.t }}"></span></sc-for>
+              <sc-for list="{{ sB }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2px;height:9px;margin:-4.5px -1px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+              <sc-for list="{{ sC }}" as="d" hint-placeholder-count="3"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:10px;margin:-5px -1.25px;border-radius:1.5px;background:#0a3fb0;transform:{{ d.t }}"></span></sc-for>
+              <div class="av" style="position:absolute;top:50%;left:50%;width:48px;height:48px;margin:-24px;font-size:14px">AC</div>
+            </div>
+            <div style="min-width:0;display:flex;flex-direction:column;gap:6px">
+              <div>
+                <h1 style="margin:0;font:600 23px/27px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Alex Chen</h1>
+                <p style="margin:2px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">Design lead, Figma</p>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:3px;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478">
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:2px;height:8px;border-radius:1px;background:#0a84ff"></span>9 connections</span>
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:2px;height:9px;border-radius:1px;background:#0d1220"></span>4 events</span>
+                <span style="display:flex;align-items:center;gap:6px"><span style="width:2.5px;height:11px;border-radius:1.5px;background:#0a3fb0"></span>3 cities</span>
+              </div>
+            </div>
+          </div>
+          <div class="gl" style="border-radius:22px;padding:15px;display:flex;flex-direction:column;gap:11px">
+            <div style="font:600 13px/17px 'Instrument Sans',sans-serif">How you connected</div>
+            <div style="display:grid;grid-template-columns:66px 1fr;row-gap:8px;column-gap:12px;font:400 12.5px/17px 'Instrument Sans',sans-serif">
+              <span style="color:#8b93a5">Who</span><span>You and Alex Chen</span>
+              <span style="color:#8b93a5">When</span><span>Aug 13, 2026, 6:42 PM</span>
+              <span style="color:#8b93a5">How</span><span>QR code, verified by location</span>
+              <span style="color:#8b93a5">Where</span><span>Blue Bottle Coffee</span>
+            </div>
+          </div>
+          <div style="border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(13,18,32,.07);padding:15px;display:flex;flex-direction:column;gap:10px">
+            <div style="font:600 13px/17px 'Instrument Sans',sans-serif">Location sharing</div>
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Visible to mutual connections<span style="width:42px;height:25px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:20px;width:19px;height:19px;border-radius:999px;background:#fff"></span></span></label>
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">You agree to share it<span style="width:42px;height:25px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:20px;width:19px;height:19px;border-radius:999px;background:#fff"></span></span></label>
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:14px;background:rgba(13,18,32,.035);font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478"><span style="width:6px;height:6px;border-radius:999px;background:#c9a227;flex-shrink:0"></span>Waiting on Alex &mdash; both of you have to agree, so nothing is shared yet.</div>
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Mark this meeting private<span style="width:42px;height:25px;border-radius:999px;background:rgba(13,18,32,.14);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:999px;background:#fff"></span></span></label>
+            <p style="margin:0;font:400 11px/15px 'Instrument Sans',sans-serif;color:#5b6478">Your own veto &mdash; Alex can&rsquo;t see or undo it.</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button style="flex:1;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.8);border-radius:999px;padding:12px;font:600 13px/17px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Their profile</button>
+            <button style="flex:1;border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.6);border-radius:999px;padding:12px;font:600 13px/17px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Remove connection</button>
+          </div>
+        </div></div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk">Connect</button><button class="dk">Events</button><button class="dk on">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1e">
+      <div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Rings as the hero</div>
+      <p class="dv-onote">The diagram takes the top third at full size with their photo at the centre, and the record becomes a single glass panel beneath. Closest to the Profile screen, which makes the two feel like one family.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr"><div style="display:flex;flex-direction:column;gap:14px">
+          <div class="pad"><button style="display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:2px 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People</button></div>
+          <div style="position:relative;height:204px;display:flex;align-items:center;justify-content:center">
+            <div style="position:relative;width:220px;height:220px">
+              <div style="position:absolute;inset:0;animation:spin 80s linear infinite"><sc-for list="{{ nA }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:9px;margin:-4.5px -1.25px;border-radius:1px;background:#0a84ff;transform:{{ d.t }}"></span></sc-for></div>
+              <div style="position:absolute;inset:0;animation:spinr 110s linear infinite"><sc-for list="{{ nB }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:12px;margin:-6px -1.25px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for></div>
+              <div style="position:absolute;inset:0;animation:spin 140s linear infinite"><sc-for list="{{ nC }}" as="d" hint-placeholder-count="3"><span style="position:absolute;top:50%;left:50%;width:3px;height:15px;margin:-7.5px -1.5px;border-radius:1.5px;background:#0a3fb0;transform:{{ d.t }}"></span></sc-for></div>
+              <div class="av" style="position:absolute;top:50%;left:50%;width:92px;height:92px;margin:-46px;font-size:25px">AC</div>
+            </div>
+          </div>
+          <div class="pad" style="display:flex;flex-direction:column;gap:13px">
+            <div style="text-align:center">
+              <h1 style="margin:0;font:600 25px/29px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Alex Chen</h1>
+              <p style="margin:3px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">Design lead, Figma &middot; 9 connections &middot; 4 events &middot; 3 cities</p>
+            </div>
+            <div class="gl" style="border-radius:24px;padding:15px 16px;display:flex;flex-direction:column;gap:11px">
+              <div style="display:grid;grid-template-columns:60px 1fr;row-gap:7px;column-gap:12px;font:400 12.5px/17px 'Instrument Sans',sans-serif">
+                <span style="color:#8b93a5">Who</span><span>You and Alex Chen</span>
+                <span style="color:#8b93a5">When</span><span>Aug 13, 2026, 6:42 PM</span>
+                <span style="color:#8b93a5">How</span><span>QR code, verified by location</span>
+                <span style="color:#8b93a5">Where</span><span>Blue Bottle Coffee</span>
+              </div>
+              <div style="height:1px;background:rgba(13,18,32,.08)"></div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><span style="font:600 12.5px/17px 'Instrument Sans',sans-serif">Location sharing</span><span style="font:500 10px/14px 'Geist Mono',monospace;color:#7a5c00">WAITING ON ALEX</span></div>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Visible to mutual connections<span style="width:40px;height:24px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">You agree to share it<span style="width:40px;height:24px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Mark this meeting private<span style="width:40px;height:24px;border-radius:999px;background:rgba(13,18,32,.14);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button style="flex:1;padding:12px;border-radius:16px;border:0;background:#0d1220;font:600 13px/17px 'Instrument Sans',sans-serif;color:#fff;cursor:pointer">Continue</button>
+              <button style="flex:1;padding:12px;border-radius:16px;border:1px solid rgba(180,35,24,.4);background:rgba(180,35,24,.05);font:600 13px/17px 'Instrument Sans',sans-serif;color:#b42318;cursor:pointer">Remove connection</button>
+            </div>
+          </div>
+        </div></div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk">Connect</button><button class="dk">Events</button><button class="dk on">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1f">
+      <div class="dv-olabel"><a class="dv-oid" href="#1f">1f</a>Ticket record</div>
+      <p class="dv-onote">The meeting as an issued document: mini rings punched into the stub, mono facts, and the two consent switches as the only live controls. Reads as evidence, which is what this screen actually is.</p>
+      <div class="dv-card" style="background:repeating-linear-gradient(45deg,#e5e8f0 0 22px,#e9ecf3 22px 44px)">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr"><div style="padding:0 16px;display:flex;flex-direction:column;gap:14px">
+          <button style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:2px 6px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People</button>
+          <div style="background:#fbfbfd;border-radius:20px;box-shadow:0 26px 50px -22px rgba(13,18,32,.4);overflow:hidden">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 18px;background:#0d1220;color:#fff">
+              <span class="mono" style="font-size:10px;letter-spacing:.18em">MEETING RECORD</span>
+              <span class="mono" style="font-size:10px;color:rgba(255,255,255,.5)">#8814-AC</span>
+            </div>
+            <div style="padding:18px;display:flex;align-items:center;gap:16px">
+              <div style="position:relative;width:150px;height:150px;flex-shrink:0">
+                <div style="position:absolute;top:50%;left:50%;width:64px;height:64px;margin:-32px;border-radius:999px;border:1px solid rgba(13,18,32,.1)"></div>
+                <div style="position:absolute;top:50%;left:50%;width:96px;height:96px;margin:-48px;border-radius:999px;border:1px solid rgba(13,18,32,.1)"></div>
+                <div style="position:absolute;top:50%;left:50%;width:132px;height:132px;margin:-66px;border-radius:999px;border:1px solid rgba(13,18,32,.1)"></div>
+                <sc-for list="{{ tA }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:1.5px;height:6px;margin:-3px -.75px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+                <sc-for list="{{ tB }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:1.5px;height:9px;margin:-4.5px -.75px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+                <sc-for list="{{ tC }}" as="d" hint-placeholder-count="3"><span style="position:absolute;top:50%;left:50%;width:1.5px;height:10px;margin:-5px -.75px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+                <div class="av" style="position:absolute;top:50%;left:50%;width:48px;height:48px;margin:-24px;font-size:14px;background:rgba(13,18,32,.06);border-color:rgba(13,18,32,.1)">AC</div>
+              </div>
+              <div style="min-width:0;flex:1">
+                <div class="mono" style="font-size:8.5px;letter-spacing:.14em;color:#a4abbb">PARTIES</div>
+                <div style="margin-top:4px;font:600 19px/23px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Alex Chen</div>
+                <div class="mono" style="margin-top:2px;font-size:10px;color:#8b93a5">AND YOU</div>
+                <div style="margin-top:8px;display:flex;flex-direction:column;gap:3px;font:500 10px/14px 'Geist Mono',monospace;color:#5b6478">
+                  <span>9 CONNECTIONS</span><span>4 EVENTS</span><span>3 CITIES</span>
+                </div>
+              </div>
+            </div>
+            <div style="padding:0 18px 16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div><div class="mono" style="font-size:8.5px;letter-spacing:.14em;color:#a4abbb">DATE</div><div class="mono" style="margin-top:3px;font-size:12px">2026-08-13</div></div>
+              <div><div class="mono" style="font-size:8.5px;letter-spacing:.14em;color:#a4abbb">TIME</div><div class="mono" style="margin-top:3px;font-size:12px">18:42 PDT</div></div>
+              <div><div class="mono" style="font-size:8.5px;letter-spacing:.14em;color:#a4abbb">METHOD</div><div class="mono" style="margin-top:3px;font-size:12px">QR + GPS</div></div>
+              <div><div class="mono" style="font-size:8.5px;letter-spacing:.14em;color:#a4abbb">PLACE</div><div class="mono" style="margin-top:3px;font-size:12px">BLUE BOTTLE</div></div>
+            </div>
+            <div style="position:relative;height:22px;display:flex;align-items:center">
+              <div style="position:absolute;left:-11px;width:22px;height:22px;border-radius:999px;background:repeating-linear-gradient(45deg,#e5e8f0 0 22px,#e9ecf3 22px 44px)"></div>
+              <div style="position:absolute;right:-11px;width:22px;height:22px;border-radius:999px;background:repeating-linear-gradient(45deg,#e5e8f0 0 22px,#e9ecf3 22px 44px)"></div>
+              <div style="flex:1;margin:0 16px;border-top:2px dashed rgba(13,18,32,.16)"></div>
+            </div>
+            <div style="padding:14px 18px 18px;display:flex;flex-direction:column;gap:12px">
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Visible to mutual connections<span style="width:42px;height:25px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:20px;width:19px;height:19px;border-radius:999px;background:#fff"></span></span></label>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">You agree to share it<span style="width:42px;height:25px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:20px;width:19px;height:19px;border-radius:999px;background:#fff"></span></span></label>
+              <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Mark this meeting private<span style="width:42px;height:25px;border-radius:999px;background:rgba(13,18,32,.14);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:999px;background:#fff"></span></span></label>
+              <div class="mono" style="font-size:9.5px;color:#7a5c00;letter-spacing:.06em">STATUS: WAITING ON ALEX &mdash; NO PLACE SHOWN YET</div>
+            </div>
+          </div>
+          <button style="align-self:flex-start;border:1px solid rgba(13,18,32,.14);background:rgba(255,255,255,.7);border-radius:999px;padding:11px 18px;font:600 13px/17px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Remove connection</button>
+        </div></div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk">Connect</button><button class="dk">Events</button><button class="dk on">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1h">
+      <div class="dv-olabel"><a class="dv-oid" href="#1h">1h</a>Removal, step two</div>
+      <p class="dv-onote">The second explicit tap, matching the pattern the app already uses for revoking a card. It spells out the three things that actually happen, since none of them are reversible.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr"><div class="pad" style="display:flex;flex-direction:column;gap:16px">
+          <div class="mono" style="font-size:9.5px;letter-spacing:.14em;color:#a4abbb">REMOVAL &mdash; STEP TWO</div>
+          <div style="border-radius:24px;border:1px solid rgba(180,35,24,.35);background:rgba(255,255,255,.72);padding:17px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="av" style="width:44px;height:44px;font-size:13px">AC</span>
+              <span style="font:600 15px/20px 'Instrument Sans',sans-serif">Remove Alex Chen?</span>
+            </div>
+            <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#0d1220;text-wrap:pretty">This can&rsquo;t be undone from here. Reconnecting means meeting Alex in person again and going through Connect, not tapping a button.</p>
+            <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font:400 12.5px/18px 'Instrument Sans',sans-serif;color:#5b6478">
+              <li>Alex stops being able to see your profile</li>
+              <li>The meeting stays in your history, shared with nobody</li>
+              <li>Any location you&rsquo;d both agreed to share is withdrawn</li>
+            </ul>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-top:2px">
+              <button class="btn" style="background:#b42318;color:#fff">Yes, remove connection</button>
+              <button class="btn" style="background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.12);color:#0d1220">Cancel</button>
+            </div>
+          </div>
+        </div></div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk">Connect</button><button class="dk">Events</button><button class="dk on">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1i">
+      <div class="dv-olabel"><a class="dv-oid" href="#1i">1i</a>An NFC meeting</div>
+      <p class="dv-onote">Identical to a QR record apart from one row &mdash; How reads &ldquo;NFC card tap&rdquo; and everything else, place included, behaves the same. Shown here in the <em>shared</em> state, so you can see the other end of the consent flow. Worth confirming with your backend: today the schema only writes a location for QR meetings, so NFC records would need one captured too.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr"><div class="pad" style="display:flex;flex-direction:column;gap:15px">
+          <button style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:2px 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People</button>
+          <div style="display:flex;align-items:center;gap:15px">
+            <div style="position:relative;width:150px;height:150px;flex-shrink:0">
+              <div style="position:absolute;top:50%;left:50%;width:64px;height:64px;margin:-32px;border-radius:999px;border:1px solid rgba(10,132,255,.18)"></div>
+              <div style="position:absolute;top:50%;left:50%;width:96px;height:96px;margin:-48px;border-radius:999px;border:1px solid rgba(13,18,32,.1)"></div>
+              <div style="position:absolute;top:50%;left:50%;width:132px;height:132px;margin:-66px;border-radius:999px;border:1px solid rgba(10,63,176,.14)"></div>
+              <sc-for list="{{ sA }}" as="d" hint-placeholder-count="9"><span style="position:absolute;top:50%;left:50%;width:2px;height:6px;margin:-3px -1px;border-radius:1px;background:#0a84ff;transform:{{ d.t }}"></span></sc-for>
+              <sc-for list="{{ sB }}" as="d" hint-placeholder-count="4"><span style="position:absolute;top:50%;left:50%;width:2px;height:9px;margin:-4.5px -1px;border-radius:1px;background:#0d1220;transform:{{ d.t }}"></span></sc-for>
+              <sc-for list="{{ sC }}" as="d" hint-placeholder-count="3"><span style="position:absolute;top:50%;left:50%;width:2.5px;height:10px;margin:-5px -1.25px;border-radius:1.5px;background:#0a3fb0;transform:{{ d.t }}"></span></sc-for>
+              <div class="av" style="position:absolute;top:50%;left:50%;width:48px;height:48px;margin:-24px;font-size:14px;background:linear-gradient(140deg,rgba(124,58,237,.2),rgba(10,132,255,.16))">DO</div>
+            </div>
+            <div style="min-width:0">
+              <h1 style="margin:0;font:600 22px/26px 'Instrument Sans',sans-serif;letter-spacing:-.03em">Dana Ortiz</h1>
+              <p style="margin:2px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">Chef, Rooftop Supper Club</p>
+              <span style="display:inline-flex;align-items:center;gap:5px;margin-top:8px;border-radius:999px;padding:4px 10px;background:rgba(13,18,32,.05);font:500 10px/14px 'Geist Mono',monospace;color:#5b6478">NFC TAP</span>
+            </div>
+          </div>
+          <div class="gl" style="border-radius:22px;padding:15px;display:flex;flex-direction:column;gap:11px">
+            <div style="font:600 13px/17px 'Instrument Sans',sans-serif">How you connected</div>
+            <div style="display:grid;grid-template-columns:66px 1fr;row-gap:8px;column-gap:12px;font:400 12.5px/17px 'Instrument Sans',sans-serif">
+              <span style="color:#8b93a5">Who</span><span>You and Dana Ortiz</span>
+              <span style="color:#8b93a5">When</span><span>Aug 12, 2026, 11:05 AM</span>
+              <span style="color:#8b93a5">How</span><span>NFC card tap</span>
+              <span style="color:#8b93a5">Where</span><span>Tartine Bakery</span>
+            </div>
+          </div>
+          <div style="border-radius:22px;background:rgba(255,255,255,.55);border:1px solid rgba(13,18,32,.07);padding:15px;display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><span style="font:600 13px/17px 'Instrument Sans',sans-serif">Location sharing</span><span style="font:500 10px/14px 'Geist Mono',monospace;color:#0847c4">SHARED WITH MUTUALS</span></div>
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Visible to mutual connections<span style="width:40px;height:24px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">You agree to share it<span style="width:40px;height:24px;border-radius:999px;background:#0a84ff;position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:19px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+            <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 12.5px/17px 'Instrument Sans',sans-serif;cursor:pointer">Mark this meeting private<span style="width:40px;height:24px;border-radius:999px;background:rgba(13,18,32,.14);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:#fff"></span></span></label>
+            <p style="margin:0;font:400 11px/15px 'Instrument Sans',sans-serif;color:#5b6478">Dana agreed too, so your mutual connections can see the place.</p>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button style="flex:1;padding:12px;border-radius:16px;border:0;background:#0d1220;font:600 13px/17px 'Instrument Sans',sans-serif;color:#fff;cursor:pointer">Continue</button>
+            <button style="flex:1;padding:12px;border-radius:16px;border:1px solid rgba(180,35,24,.4);background:rgba(180,35,24,.05);font:600 13px/17px 'Instrument Sans',sans-serif;color:#b42318;cursor:pointer">Remove connection</button>
+          </div>
+        </div></div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk">Connect</button><button class="dk">Events</button><button class="dk on">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+    <div class="dv-opt" id="1g">
+      <div class="dv-olabel"><a class="dv-oid" href="#1g">1g</a>After removal</div>
+      <p class="dv-onote">What&rsquo;s left once you remove someone: the history stays, the rings go flat, and the button says what it can actually do &mdash; open Connect so you can meet again. It cannot restore the connection, and the copy doesn&rsquo;t pretend otherwise.</p>
+      <div class="dv-card">
+        <div class="sb"><span>9:41</span><span style="width:17px;height:10px;border:1.5px solid #0d1220;border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:#0d1220;border-radius:1px"></span></span></div>
+        <div class="scr"><div class="pad" style="display:flex;flex-direction:column;gap:16px">
+          <button style="align-self:flex-start;display:flex;align-items:center;gap:6px;border:0;background:transparent;color:#5b6478;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:2px 0"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg>People</button>
+          <div style="display:flex;align-items:center;gap:16px;opacity:.6">
+            <div style="position:relative;width:120px;height:120px;flex-shrink:0">
+              <div style="position:absolute;top:50%;left:50%;width:68px;height:68px;margin:-34px;border-radius:999px;border:1px dashed rgba(13,18,32,.16)"></div>
+              <div style="position:absolute;top:50%;left:50%;width:94px;height:94px;margin:-47px;border-radius:999px;border:1px dashed rgba(13,18,32,.13)"></div>
+              <div style="position:absolute;top:50%;left:50%;width:118px;height:118px;margin:-59px;border-radius:999px;border:1px dashed rgba(13,18,32,.1)"></div>
+              <div class="av" style="position:absolute;top:50%;left:50%;width:52px;height:52px;margin:-26px;font-size:15px;background:rgba(13,18,32,.06);border-color:rgba(13,18,32,.1);color:#8b93a5">AC</div>
+            </div>
+            <div style="min-width:0">
+              <h1 style="margin:0;font:600 23px/27px 'Instrument Sans',sans-serif;letter-spacing:-.03em;color:#5b6478">Alex Chen</h1>
+              <p style="margin:3px 0 0;font:400 13px/18px 'Instrument Sans',sans-serif;color:#8b93a5">Connection removed</p>
+            </div>
+          </div>
+          <div style="border-radius:22px;background:rgba(255,255,255,.6);border:1px solid rgba(13,18,32,.07);padding:16px;display:flex;flex-direction:column;gap:10px">
+            <p style="margin:0;font:400 13.5px/20px 'Instrument Sans',sans-serif;color:#0d1220;text-wrap:pretty">The record of the meeting stays here as your history &mdash; Aug 13, Blue Bottle Coffee, verified by location. Nothing about it is shared any more, and Alex can no longer see your profile.</p>
+            <div style="height:1px;background:rgba(13,18,32,.07)"></div>
+            <p style="margin:0;font:400 12.5px/18px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">There&rsquo;s no button that undoes this. Connecting again means being in the same place again &mdash; a tap or a scan, like the first time.</p>
+          </div>
+          <button class="btn" style="background:linear-gradient(150deg,#0a84ff,#0b4fd6);color:#fff;box-shadow:0 14px 30px -10px rgba(10,132,255,.55);width:100%">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>Connect again in person
+          </button>
+          <p style="margin:0;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478;text-align:center;text-wrap:pretty">Opens Connect &mdash; it doesn&rsquo;t notify Alex or restore anything on its own.</p>
+        </div></div>
+        <div class="dock"><button class="dk">Home</button><button class="dk">Feed</button><button class="dk">Connect</button><button class="dk">Events</button><button class="dk on">People</button><button class="dk">Profile</button></div>
+      </div>
+    </div>
+
+  </div>
+
+  <p class="dv-next">Try next: &ldquo;<a class="dv-oid" href="#1a">1a</a> into <a class="dv-oid" href="#1e">1e</a>&rdquo; &middot; &ldquo;keep <a class="dv-oid" href="#1c">1c</a> but with <a class="dv-oid" href="#1a">1a</a>&rsquo;s merging rings&rdquo; &middot; &ldquo;make <a class="dv-oid" href="#1g">1g</a>&rsquo;s wording softer&rdquo; &middot; &ldquo;put the winners in the prototype&rdquo;</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  /** Evenly spaced ticks on a ring; `t` is the screen-frame transform. */
+  ring(count, radius, from) {
+    const step = 360 / count;
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      out.push({ t: "rotate(" + ((from || 0) + i * step).toFixed(2) + "deg) translateY(-" + radius + "px)" });
+    }
+    return out;
+  }
+
+  renderVals() {
+    return {
+      // 1a — your rings (12/6) beside theirs (9/4), both at 150px.
+      // Bands need >=8px edge-to-edge, and staggered start angles so no two of
+      // them ever share one: touching edges on a shared angle render as a single
+      // longer tick, which makes the band undercount.
+      mA: this.ring(12, 52), mB: this.ring(6, 70, 14),
+      mC: this.ring(9, 52, 12), mD: this.ring(4, 70, 26),
+      sA: this.ring(9, 32), sB: this.ring(4, 48, 20), sC: this.ring(3, 66, 40),
+      nA: this.ring(9, 62), nB: this.ring(4, 84, 22), nC: this.ring(3, 106, 41),
+      tA: this.ring(9, 32), tB: this.ring(4, 48, 20), tC: this.ring(3, 66, 40),
+    };
+  }
+}
+</script>
+</body>
+</html>
