@@ -92,14 +92,55 @@ export const eventVisibilitySchema = z.enum(["public", "private"]);
 export type EventVisibility = z.infer<typeof eventVisibilitySchema>;
 
 /**
- * `event_rsvps.status`.
+ * `event_rsvps.status` — the six values the column may hold, widened from four
+ * by 20260814051000.
  *
  * Only `going` counts as attendance for `private.shares_event_with()`, which is
  * a branch of the `users` read policy — so this distinction has access-control
  * consequences, not just display ones.
+ *
+ * Read this together with `rsvpIntentSchema` below: three of these six are
+ * things a person says about themselves, and three are outcomes the server
+ * computes. A client can never write any of them directly — every status
+ * transition goes through `public.request_event_rsvp` or
+ * `public.decide_event_rsvp` (20260814051200), because `going` means different
+ * real things depending on the event's capacity and approval settings.
  */
-export const rsvpStatusSchema = z.enum(["going", "interested", "not_going", "waitlist"]);
+export const rsvpStatusSchema = z.enum([
+  "going",
+  "interested",
+  "not_going",
+  "waitlist",
+  "pending",
+  "denied",
+]);
 export type RsvpStatus = z.infer<typeof rsvpStatusSchema>;
+
+/**
+ * What a person may *ask* for — the `p_status` argument of
+ * `public.request_event_rsvp`.
+ *
+ * Deliberately a strict subset of `rsvpStatusSchema`. `pending`, `waitlist` and
+ * `denied` are outcomes, not intents: `pending` and `waitlist` are what the
+ * server stores when the event requires approval or is full, and `denied` is
+ * somebody else's decision about you. The RPC rejects all three with
+ * `invalid_intent` rather than translating them, and this schema is the same
+ * refusal one layer earlier so a bad value is a TypeScript error instead of a
+ * round trip.
+ */
+export const rsvpIntentSchema = z.enum(["going", "interested", "not_going"]);
+export type RsvpIntent = z.infer<typeof rsvpIntentSchema>;
+
+/**
+ * The `p_decision` argument of `public.decide_event_rsvp` — what a host may do
+ * about somebody else's request.
+ *
+ * Two values, not four: a host approves or denies. There is no "eject" (deny on
+ * an already-`going` row) and no "reinstate" (approve on a `denied` row); the
+ * migration header records why each of those is refused rather than built.
+ */
+export const rsvpDecisionSchema = z.enum(["approve", "deny"]);
+export type RsvpDecision = z.infer<typeof rsvpDecisionSchema>;
 
 /** `pending_connections.status` — deferred flow, §2.8. */
 export const pendingConnectionStatusSchema = z.enum(["pending", "claimed", "expired", "cancelled"]);

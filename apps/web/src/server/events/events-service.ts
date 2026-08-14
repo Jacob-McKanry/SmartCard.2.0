@@ -1,0 +1,617 @@
+import "server-only";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  eventInsertSchema,
+  eventUpdateSchema,
+  type CityRow,
+  type EventInsert,
+  type EventRow,
+  type EventRsvpRow,
+  type EventUpdate,
+  type RsvpDecision,
+  type RsvpIntent,
+  type RsvpStatus,
+} from "@smartcard/types";
+import { summarizeConnectionsAttending, type ConnectionsAttendingSummary } from "@smartcard/core";
+
+/**
+ * The service layer (§1.7) for Events — RSVP + "who's going" (README build
+ * order item 5, architecture §2.6).
+ *
+ * Every function takes the caller's own RLS-bound `SupabaseClient` — never the
+ * service role — for the same reason `connections-service.ts` and
+ * `profile-service.ts` do: nothing in this feature needs to bypass RLS, and the
+ * database policies stay the real backstop regardless of what this file gets
+ * right or wrong.
+ *
+ * WHERE THE SECURITY BOUNDARY IS, FEATURE BY FEATURE
+ *
+ * *Reads* are ordinary RLS-filtered selects. `private.can_see_event()` decides
+ * which `events` rows come back (public events to anybody signed in — the one
+ * deliberate exception in this schema, §2.6 — plus your own and any you hold an
+ * RSVP for), and the narrow `event_rsvps` select policy decides which RSVP rows
+ * do (your own, and your connections'). Neither rule is re-implemented here.
+ *
+ * *Writes to `event_rsvps` are not possible from this file at all.* Since
+ * `20260814051200_fn_event_rsvp_write_path.sql`, `authenticated` holds no
+ * INSERT, UPDATE or DELETE grant on that table, and every status transition
+ * goes through one of three `security definer` RPCs. That is deliberate and is
+ * the same structure the graph tables use: `going` means different real things
+ * depending on the event's capacity and approval settings, and it is an input
+ * to the `users` read policy via `private.shares_event_with()`, so a
+ * client-asserted `going` would be a client-asserted profile-visibility grant.
+ * You will not find a `.from("event_rsvps").insert(...)` anywhere below, and
+ * adding one would not work.
+ *
+ * *Aggregates are answers, not rows.* "18 going, 3 waiting" and "4 of your
+ * connections are going" come from `event_attendance_counts` and
+ * `connections_attending`, because §3.3's rule is that the database hands back
+ * a computed answer rather than the attendee list. Relaxing the `event_rsvps`
+ * policy to compute these client-side would turn every public event into a way
+ * to enumerate the people at it.
+ */
+
+// ---------------------------------------------------------------------------
+// Cities
+// ---------------------------------------------------------------------------
+
+/**
+ * The curated city list for pickers and browse.
+ *
+ * Filtered to `is_active` here rather than by the RLS policy, which is
+ * `using (true)`. The two are doing different jobs: a deactivated city is not
+ * *secret*, it is just retired, and an event held in one still has to render
+ * its city's name. Hiding inactive rows at the policy layer would produce
+ * historical events whose city renders blank.
+ */
+export async function listActiveCities(supabase: SupabaseClient): Promise<CityRow[]> {
+  const { data, error } = await supabase
+    .from("cities")
+    .select("id, slug, name, state, is_active, created_at")
+    .eq("is_active", true)
+    .order("name");
+
+  if (error) {
+    throw new Error(`Failed to load cities: ${error.message}`, { cause: error });
+  }
+  return data as CityRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Browse and detail
+// ---------------------------------------------------------------------------
+
+export interface BrowseEventsOptions {
+  /** Restrict to one city. Omit for every city. */
+  cityId?: string;
+  /** `upcoming` (default) or `past`, decided by `starts_at` against now. */
+  when?: "upcoming" | "past";
+}
+
+/**
+ * A browse row: the event plus the city it is in, which every list view needs
+ * and which would otherwise be one lookup per row.
+ */
+export interface BrowseEventItem {
+  event: EventRow;
+  city: Pick<CityRow, "id" | "slug" | "name" | "state">;
+}
+
+/**
+ * A cap, not pagination — the same call `feed-service.ts` documents and for the
+ * same reason. The pilot is a handful of cities with a handful of events each;
+ * cursor pagination is machinery aimed at a scale this product does not have
+ * yet. Revisit with real pagination, not a bigger number, if a city's event
+ * count starts approaching this.
+ */
+const BROWSE_LIMIT = 50;
+
+/**
+ * Public events, newest-first for the past and soonest-first for what is
+ * coming up.
+ *
+ * `.eq("visibility", "public")` is a *product* filter, not a security one — RLS
+ * would already withhold any private event the caller cannot see. It is here
+ * because browse is the public directory of events: a host's own private events
+ * turning up in a city browse alongside public ones would be a confusing list,
+ * and they have their own view (`listHostedEvents`). Removing this line would
+ * not leak anything; it would just make browse mean something else.
+ */
+export async function browseEvents(
+  supabase: SupabaseClient,
+  options: BrowseEventsOptions = {},
+): Promise<BrowseEventItem[]> {
+  const when = options.when ?? "upcoming";
+  const nowIso = new Date().toISOString();
+
+  let query = supabase
+    .from("events")
+    .select(
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+    )
+    .eq("visibility", "public")
+    .limit(BROWSE_LIMIT);
+
+  if (options.cityId) {
+    query = query.eq("city_id", options.cityId);
+  }
+
+  query =
+    when === "upcoming"
+      ? query.gte("starts_at", nowIso).order("starts_at", { ascending: true })
+      : query.lt("starts_at", nowIso).order("starts_at", { ascending: false });
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to load events: ${error.message}`, { cause: error });
+  }
+
+  return (data ?? []).map(splitEmbeddedCity);
+}
+
+/**
+ * One event by id, or `null` if it does not exist *or* the caller may not see
+ * it.
+ *
+ * Those two cases are indistinguishable on purpose, the same posture
+ * `getConnectionForViewer` takes: `private.can_see_event()` already makes "not
+ * visible to you" and "no such event" produce the same empty result, and
+ * telling them apart here — with the service role, say, for a nicer error —
+ * would turn this function into a probe for whether a given private event
+ * exists.
+ */
+export async function getEventForViewer(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<BrowseEventItem | null> {
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+    )
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load event: ${error.message}`, { cause: error });
+  }
+  return data === null ? null : splitEmbeddedCity(data);
+}
+
+/** The caller's own answer for one event, or `null` if they have not answered. */
+export async function getOwnRsvp(
+  supabase: SupabaseClient,
+  eventId: string,
+  userId: string,
+): Promise<EventRsvpRow | null> {
+  const { data, error } = await supabase
+    .from("event_rsvps")
+    .select("id, event_id, user_id, status, responded_at, decided_by, decided_at, capacity_override")
+    .eq("event_id", eventId)
+    .eq("user_id", userId)
+    .maybeSingle<EventRsvpRow>();
+
+  if (error) {
+    throw new Error(`Failed to load your RSVP: ${error.message}`, { cause: error });
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// A person's own events
+// ---------------------------------------------------------------------------
+
+/** Events the caller hosts, soonest first — including private ones. */
+export async function listHostedEvents(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<BrowseEventItem[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+    )
+    .eq("host_user_id", userId)
+    .order("starts_at", { ascending: false })
+    .limit(BROWSE_LIMIT);
+
+  if (error) {
+    throw new Error(`Failed to load your events: ${error.message}`, { cause: error });
+  }
+  return (data ?? []).map(splitEmbeddedCity);
+}
+
+export interface AttendingEventItem extends BrowseEventItem {
+  /** The caller's own RSVP for this event — always their own row, never anyone else's. */
+  rsvp: EventRsvpRow;
+}
+
+/**
+ * Every event the caller has answered for, with their answer — their attending
+ * history, including `pending`, `waitlist` and `denied`, because a person is
+ * entitled to see the state of their own requests.
+ *
+ * Two queries rather than an embed: the `event_rsvps` select policy and the
+ * `events` select policy are evaluated independently, and reading the RSVPs
+ * first then fetching exactly those events keeps it obvious which policy is
+ * responsible for which half. A missing event for one of the caller's own RSVP
+ * rows would mean the event became invisible to them (they withdrew from a
+ * private event in another tab, say) — the row is skipped rather than rendered
+ * half-populated, the same fail-closed shape `listOwnConnections` uses.
+ */
+export async function listAttendingEvents(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<AttendingEventItem[]> {
+  const { data: rsvps, error: rsvpsError } = await supabase
+    .from("event_rsvps")
+    .select("id, event_id, user_id, status, responded_at, decided_by, decided_at, capacity_override")
+    .eq("user_id", userId)
+    .order("responded_at", { ascending: false })
+    .limit(BROWSE_LIMIT);
+
+  if (rsvpsError) {
+    throw new Error(`Failed to load your RSVPs: ${rsvpsError.message}`, { cause: rsvpsError });
+  }
+  if (!rsvps || rsvps.length === 0) {
+    return [];
+  }
+
+  const { data: events, error: eventsError } = await supabase
+    .from("events")
+    .select(
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+    )
+    .in(
+      "id",
+      rsvps.map((r) => r.event_id),
+    );
+
+  if (eventsError) {
+    throw new Error(`Failed to load the events you answered: ${eventsError.message}`, {
+      cause: eventsError,
+    });
+  }
+
+  const byId = new Map((events ?? []).map((row) => [row.id as string, splitEmbeddedCity(row)]));
+
+  return (rsvps as EventRsvpRow[]).flatMap((rsvp): AttendingEventItem[] => {
+    const item = byId.get(rsvp.event_id);
+    return item ? [{ ...item, rsvp }] : [];
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Aggregates — computed answers, never attendee rows (§3.3)
+// ---------------------------------------------------------------------------
+
+export interface EventAttendanceCounts {
+  going: number;
+  interested: number;
+  waitlist: number;
+  /** Host-only; `null` for everybody else, because queue depth is the host's business. */
+  pending: number | null;
+  capacity: number | null;
+  /** `null` when capacity is unlimited. Never negative, even past a host override. */
+  seatsRemaining: number | null;
+  isFull: boolean;
+}
+
+/**
+ * The numbers an event page shows. `null` when the caller cannot see the event
+ * — the RPC's refusal, passed through rather than turned into an exception,
+ * because "you cannot see this" is the same answer `getEventForViewer` gives by
+ * returning nothing.
+ */
+export async function getEventAttendanceCounts(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<EventAttendanceCounts | null> {
+  const { data, error } = await supabase.rpc("event_attendance_counts", { p_event_id: eventId });
+
+  if (error) {
+    throw new Error(`Failed to load attendance for this event: ${error.message}`, { cause: error });
+  }
+
+  const result = data as Record<string, unknown> | null;
+  if (!result || result.ok !== true) {
+    return null;
+  }
+
+  return {
+    going: Number(result.going ?? 0),
+    interested: Number(result.interested ?? 0),
+    waitlist: Number(result.waitlist ?? 0),
+    pending: result.pending === null || result.pending === undefined ? null : Number(result.pending),
+    capacity: result.capacity === null || result.capacity === undefined ? null : Number(result.capacity),
+    seatsRemaining:
+      result.seats_remaining === null || result.seats_remaining === undefined
+        ? null
+        : Number(result.seats_remaining),
+    isFull: result.is_full === true,
+  };
+}
+
+/**
+ * "3 going, 2 interested" over the caller's *own connections* — Q21's two
+ * separately-labelled counts, never one combined number.
+ *
+ * The RPC returns only people already in the caller's graph, so this cannot be
+ * used to enumerate an event's attendees; and it is a display answer, not a
+ * gate. `private.shares_event_with()` — the branch of the `users` read policy
+ * that decides whether two *unconnected* people may read each other's profiles
+ * — still requires `going` on both sides and is untouched by this. Anybody
+ * tempted to reuse this function as a visibility check should read the §2.6
+ * amendment first: it is one refactor away from converting a display change
+ * into a visibility change.
+ */
+export async function getConnectionsAttending(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<ConnectionsAttendingSummary> {
+  const { data, error } = await supabase.rpc("connections_attending", { p_event_id: eventId });
+
+  if (error) {
+    throw new Error(`Failed to load who you know at this event: ${error.message}`, { cause: error });
+  }
+
+  return summarizeConnectionsAttending((data ?? []) as { user_id: string; status: string }[]);
+}
+
+export interface HostQueueEntry {
+  rsvpId: string;
+  userId: string;
+  status: RsvpStatus;
+  respondedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  capacityOverride: boolean;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+  photoPath: string | null;
+}
+
+/**
+ * The host's roster for their own event: everyone `pending`, `waitlist` or
+ * `going`, with the profile fields needed to decide about them.
+ *
+ * Returns an empty list — not an error — for anybody who is not the host, which
+ * is the RPC's own behaviour passed straight through.
+ *
+ * This is the one place in the Events feature that shows a caller profile
+ * fields for people they may not otherwise be able to read, and it is contained
+ * in a function precisely so that it cannot become a general visibility rule:
+ * the alternative considered and rejected was a new branch on the `users` read
+ * policy (§3.4), which would have applied to every query against `users`
+ * anywhere in the app, forever. `interested`, `not_going` and `denied` rows are
+ * deliberately not included — the migration header explains each exclusion.
+ */
+export async function getHostRsvpQueue(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<HostQueueEntry[]> {
+  const { data, error } = await supabase.rpc("event_rsvp_queue", { p_event_id: eventId });
+
+  if (error) {
+    throw new Error(`Failed to load the RSVP queue: ${error.message}`, { cause: error });
+  }
+
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    rsvpId: row.rsvp_id as string,
+    userId: row.user_id as string,
+    status: row.status as RsvpStatus,
+    respondedAt: row.responded_at as string,
+    decidedAt: (row.decided_at as string | null) ?? null,
+    decidedBy: (row.decided_by as string | null) ?? null,
+    capacityOverride: row.capacity_override === true,
+    firstName: (row.first_name as string | null) ?? null,
+    lastName: (row.last_name as string | null) ?? null,
+    username: (row.username as string | null) ?? null,
+    photoPath: (row.photo_path as string | null) ?? null,
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Event mutations — ordinary RLS-checked writes
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates an event hosted by the caller. Q5, resolved: any signed-in user may.
+ *
+ * `hostUserId` is a separate argument rather than a field of `input` because it
+ * must come from the session, never from client input — the same arrangement
+ * `addOwnSocialLink` uses for `user_id`. The INSERT policy's `with check`
+ * (`host_user_id = private.current_user_id()`) would refuse a mismatch anyway;
+ * this is that rule enforced one layer earlier, where it produces a clearer
+ * failure than a policy violation.
+ */
+export async function createEvent(
+  supabase: SupabaseClient,
+  hostUserId: string,
+  input: EventInsert,
+): Promise<EventRow> {
+  const parsed = eventInsertSchema.parse(input);
+
+  const { data, error } = await supabase
+    .from("events")
+    .insert({ ...parsed, host_user_id: hostUserId })
+    .select(
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at",
+    )
+    .single<EventRow>();
+
+  if (error) {
+    throw new Error(`Failed to create the event: ${error.message}`, { cause: error });
+  }
+  return data;
+}
+
+/**
+ * Edits an event the caller hosts. The `.eq("host_user_id", userId)` filter
+ * duplicates what the UPDATE policy already enforces — the same belt-and-braces
+ * posture the rest of this codebase's service layer takes, so a bug that lost
+ * the session-derived id still cannot edit somebody else's event.
+ *
+ * Raising `capacity` here can promote people off the waitlist, by an AFTER
+ * UPDATE trigger in the database rather than by anything in this function
+ * (20260814051200). That is why the promotion is not visible in this code: it
+ * has to happen in the same transaction as the capacity change, and a hook in
+ * TypeScript could not guarantee that.
+ */
+export async function updateOwnEvent(
+  supabase: SupabaseClient,
+  userId: string,
+  eventId: string,
+  update: EventUpdate,
+): Promise<void> {
+  const parsed = eventUpdateSchema.parse(update);
+
+  const { data, error } = await supabase
+    .from("events")
+    .update(parsed)
+    .eq("id", eventId)
+    .eq("host_user_id", userId)
+    .select("id");
+
+  if (error) {
+    throw new Error(`Failed to update the event: ${error.message}`, { cause: error });
+  }
+  if (!data || data.length === 0) {
+    throw new Error("That event couldn't be updated — you may not be its host.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// RSVP mutations — every one of these is an RPC, and that is the design
+// ---------------------------------------------------------------------------
+
+/**
+ * What the RSVP RPCs answer with. A refusal is an ordinary result rather than
+ * an exception, because "that event is full" and "the host has to approve this"
+ * are things to tell a person, not stack traces. The `reason` codes are the
+ * database's own vocabulary, passed through unchanged so there is one list to
+ * keep in step rather than two.
+ */
+export type RsvpMutationResult =
+  | {
+      ok: true;
+      /**
+       * The status now stored — `null` after a withdrawal, which leaves no row
+       * and therefore no answer. Rendering `null` as `not_going` would state
+       * something the person did not say.
+       */
+      status: RsvpStatus | null;
+      /** The status a withdrawal removed, so the UI can say what it undid. */
+      withdrewFromStatus: RsvpStatus | null;
+      changed: boolean;
+      /** How many people the database promoted off the waitlist as a result. */
+      promoted: number;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * Express an intent about an event: `going`, `interested` or `not_going`.
+ *
+ * The *stored* status may differ from what was asked, and that is the whole
+ * point of routing this through `public.request_event_rsvp`: an approval-gated
+ * event stores `pending`, a full one stores `waitlist`. Callers should render
+ * the returned `status`, not the intent they sent — the two disagreeing is the
+ * normal case, not an error.
+ */
+export async function requestRsvp(
+  supabase: SupabaseClient,
+  eventId: string,
+  intent: RsvpIntent,
+): Promise<RsvpMutationResult> {
+  const { data, error } = await supabase.rpc("request_event_rsvp", {
+    p_event_id: eventId,
+    p_status: intent,
+  });
+
+  if (error) {
+    throw new Error(`Failed to record your RSVP: ${error.message}`, { cause: error });
+  }
+  return asRsvpResult(data);
+}
+
+/**
+ * Removes the caller's answer entirely — distinct from answering `not_going`,
+ * which is an answer. If this frees a seat, the longest-waiting person is
+ * promoted inside the same database transaction, which is why withdrawal is an
+ * RPC rather than the plain DELETE it replaced.
+ */
+export async function withdrawRsvp(
+  supabase: SupabaseClient,
+  eventId: string,
+): Promise<RsvpMutationResult> {
+  const { data, error } = await supabase.rpc("withdraw_event_rsvp", { p_event_id: eventId });
+
+  if (error) {
+    throw new Error(`Failed to withdraw your RSVP: ${error.message}`, { cause: error });
+  }
+  return asRsvpResult(data);
+}
+
+/**
+ * A host approving or denying somebody else's request for their own event.
+ *
+ * `override` admits past a full event's cap and is recorded on the row
+ * (`capacity_override`) so an over-capacity event is explainable afterwards.
+ * Whether the caller is really the host is decided by the database, not here:
+ * the RPC looks the RSVP up joined to its event with `host_user_id = caller`,
+ * and answers `rsvp_not_found` for both "no such RSVP" and "not your event" so
+ * this cannot be used to probe whether an id is real.
+ */
+export async function decideRsvp(
+  supabase: SupabaseClient,
+  rsvpId: string,
+  decision: RsvpDecision,
+  override = false,
+): Promise<RsvpMutationResult> {
+  const { data, error } = await supabase.rpc("decide_event_rsvp", {
+    p_rsvp_id: rsvpId,
+    p_decision: decision,
+    p_override: override,
+  });
+
+  if (error) {
+    throw new Error(`Failed to record your decision: ${error.message}`, { cause: error });
+  }
+  return asRsvpResult(data);
+}
+
+// ---------------------------------------------------------------------------
+// Internal
+// ---------------------------------------------------------------------------
+
+/**
+ * PostgREST returns an embedded one-to-one relation as a nested object (or, for
+ * some shapes, a one-element array). Normalising it here keeps every caller
+ * from having to know which, and keeps `BrowseEventItem` a flat, predictable
+ * shape for whoever builds the UI.
+ */
+function splitEmbeddedCity(row: Record<string, unknown>): BrowseEventItem {
+  const { cities, ...event } = row;
+  const city = (Array.isArray(cities) ? cities[0] : cities) as BrowseEventItem["city"];
+  return { event: event as unknown as EventRow, city };
+}
+
+/** Narrows the RPC's jsonb answer without inventing a success it did not report. */
+function asRsvpResult(data: unknown): RsvpMutationResult {
+  const result = data as Record<string, unknown> | null;
+
+  if (!result || result.ok !== true) {
+    return { ok: false, reason: String(result?.reason ?? "unknown_error") };
+  }
+  return {
+    ok: true,
+    status: (result.status as RsvpStatus | undefined) ?? null,
+    // `withdraw_event_rsvp` reports the status it removed rather than a new one.
+    withdrewFromStatus: (result.withdrew_from_status as RsvpStatus | undefined) ?? null,
+    changed: result.changed !== false,
+    promoted: Number(result.promoted ?? 0),
+  };
+}

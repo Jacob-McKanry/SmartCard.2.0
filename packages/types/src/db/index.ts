@@ -18,6 +18,7 @@ export * from "./enums";
 export * from "./users";
 export * from "./social-links";
 export * from "./cards";
+export * from "./cities";
 export * from "./events";
 export * from "./event-rsvps";
 export * from "./connection-sessions";

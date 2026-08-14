@@ -118,3 +118,27 @@ export {
 
 // --- §4.2 step 7: what a user is allowed to be told ---------------------------
 export { userFacingMessage } from "./connect/user-messages";
+
+// --- §2.6: the Events RSVP rules ---------------------------------------------
+// Display-side only, and deliberately so: the database computes and enforces
+// every stored RSVP status (20260814051200), and `authenticated` holds no write
+// grant on `event_rsvps` at all. These functions exist so a screen can say
+// "this needs approval" or "you are 3rd in line" before anybody taps. See the
+// module header — the SQL is authoritative wherever the two disagree.
+export {
+  deriveDecidedRsvp,
+  deriveRequestedRsvp,
+  isFull,
+  nextWaitlistPromotions,
+  seatsRemaining,
+  summarizeConnectionsAttending,
+  waitlistOrder,
+  waitlistPositionOf,
+  type ConnectionAttendingRow,
+  type ConnectionsAttendingSummary,
+  type RsvpDecisionContext,
+  type RsvpDecisionOutcome,
+  type RsvpRequestContext,
+  type RsvpRequestOutcome,
+  type WaitlistEntry,
+} from "./events/rsvp-rules";
