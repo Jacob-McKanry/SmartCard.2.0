@@ -1,0 +1,84 @@
+-- =============================================================================
+-- 20260814061000_app_config_event_auto_tagging.sql
+--
+-- WHAT THIS CHANGES
+--   Adds two `app_config` rows, and nothing else. No table, no column, no
+--   policy, no grant, no function. They are the two tunables behind automatic
+--   event tagging of a verified QR meeting (§2.6):
+--
+--     event_geofence_radius_m              150
+--     event_auto_tag_default_window_hours    4
+--
+--   `meetings.event_id` has existed since 20260809210500 and
+--   `public.create_verified_connection` has accepted `p_event_id` since
+--   20260813210300 — both already write it correctly. Until now nothing ever
+--   COMPUTED a value, so every meeting ever recorded has `event_id = null`
+--   regardless of where it happened. These rows are what the new computation in
+--   `packages/core/src/connect/event-tagging.ts` reads.
+--
+-- THE PROBLEM BEING SOLVED
+--   A meeting that happened at an event should say so, because "you met 4
+--   people at this event" is one of the few aggregates this product can offer
+--   without a feed, a directory or a search — none of which it will ever have.
+--   Filling the column by hand is not an option (nobody would), and inferring
+--   it from proximity alone would be wrong (two strangers meeting on the
+--   pavement outside a conference did not meet at that conference).
+--
+-- THE RULE THESE TWO VALUES SERVE
+--   A verified QR meeting is tagged to event E if and only if ALL of:
+--     1. BOTH people hold an `event_rsvps` row for E with `status = 'going'`.
+--        Not `interested`, not `waitlist`, not `pending` — the same line
+--        `private.shares_event_with()` already draws.
+--     2. The verification's own clock is inside E's window:
+--        `starts_at <= now <= (ends_at ?? starts_at + <window hours>)`.
+--     3. E has non-null `latitude`/`longitude`.
+--     4. BOTH GPS fixes the proximity gate already compared are within
+--        `event_geofence_radius_m` of E's coordinates.
+--     5. If two or more events satisfy all of the above at once, the meeting is
+--        left UNTAGGED. An ambiguous attribution is worse than none.
+--
+--   Rules 1-3 are answered by a query; 4 and 5 are decided in `packages/core`,
+--   next to the GPS gate's own distance comparison and for the same reason.
+--
+-- WHY THESE ARE ROWS AND NOT CONSTANTS
+--   Same reason as every other row in this table: 150 m will be wrong for some
+--   venue, and finding that out during an event must not need a deploy or an
+--   app-store review. An operator running a conference across a large campus
+--   raises the radius with one UPDATE.
+--
+-- WHAT IS DIFFERENT ABOUT THESE TWO, AND WHY IT IS WRITTEN DOWN
+--   EVERY OTHER ROW IN `app_config` IS A SECURITY THRESHOLD. THESE TWO ARE NOT.
+--   Nothing about whether a connection is accepted or refused reads them. They
+--   are computed strictly after the verification has already succeeded, they
+--   cannot produce a rejection, and if the lookup fails the connection still
+--   succeeds with `event_id = null`. Anyone tuning `event_geofence_radius_m`
+--   is changing which meetings get labelled, never who may connect to whom —
+--   which is the opposite of what tuning `qr_max_distance_m` does, and the two
+--   sit three lines apart in the same table.
+--
+--   Widening this radius is therefore cheap, and that asymmetry is exactly why
+--   it is recorded here: the next person to edit this table in a hurry should
+--   not have to work out which kind of row they are looking at.
+--
+-- RLS / ACCESS IMPACT
+--   None, and none is possible. `app_config` has RLS enabled with no policy and
+--   no grant to `anon` or `authenticated` (20260809211000 revoked everything and
+--   nothing granted it back), so these rows — like the nineteen already there —
+--   are readable and writable by the service role only. Adding a row inherits
+--   that posture; there is no per-row access to configure.
+--
+-- IDEMPOTENCY
+--   A plain INSERT, matching the two prior `app_config` seeds (20260809210700,
+--   20260813210000) rather than the `on conflict do nothing` used for the cities
+--   and storage-bucket seeds. Those seeds are placeholder DATA that a later
+--   environment may legitimately already hold; a config key is not. If either
+--   key already exists, this migration should fail loudly and a human should
+--   find out why a row appeared before the migration that introduces it.
+-- =============================================================================
+
+insert into public.app_config (key, value, description) values
+  ('event_geofence_radius_m', '150'::jsonb,
+   'How close (metres) BOTH people''s GPS fixes must be to an event''s venue coordinates for a verified QR meeting to be tagged with that event (§2.6). NOT A SECURITY THRESHOLD, unlike every other row in this table: it is applied only after a connection has already been accepted, and changing it changes which meetings get labelled, never who may connect. Starts equal to qr_max_distance_m because a venue is at least as big as the radius two people may be apart inside it; raise it for a large campus.'),
+
+  ('event_auto_tag_default_window_hours', '4'::jsonb,
+   'How long after starts_at an event with no ends_at still counts as running, for event tagging only (§2.6). events.ends_at is nullable and most hosts will not set it, so without this an event would stop matching the instant it began. Four hours is a long evening: generous enough to cover a whole event, short enough that a meeting the next morning at the same venue is not attributed to yesterday''s. NOT A SECURITY THRESHOLD — see event_geofence_radius_m.');

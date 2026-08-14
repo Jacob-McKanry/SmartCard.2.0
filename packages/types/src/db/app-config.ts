@@ -26,6 +26,13 @@ import { jsonbSchema, timestamptzSchema, uuidSchema } from "./scalars";
  * notification-coalescing key (amendment (d)), and the six §4.6 rate limits,
  * whose numbers the architecture never specified and whose reasoning is
  * recorded in that migration.
+ *
+ * Two more added 2026-08-14 by 20260814061000 for automatic event tagging
+ * (§2.6). They are the only keys here that are NOT security thresholds: they
+ * are read after a connection has already been accepted, and decide only
+ * whether the resulting meeting is labelled with an event. That migration's
+ * header says so at length, because the distinction is invisible from the
+ * table.
  */
 export const appConfigKeySchema = z.enum([
   "qr_max_distance_m",
@@ -43,6 +50,9 @@ export const appConfigKeySchema = z.enum([
   "qr_relaxation_cooldown_seconds",
 
   "nfc_tap_notification_coalesce_seconds",
+
+  "event_geofence_radius_m",
+  "event_auto_tag_default_window_hours",
 
   "rate_limit_qr_session_create_per_user_hour",
   "rate_limit_qr_redeem_per_user_hour",

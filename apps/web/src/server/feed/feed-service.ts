@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { MeetingLocationRow, UserRow, VerificationMethod } from "@smartcard/types";
+import type { EventRow, MeetingLocationRow, UserRow, VerificationMethod } from "@smartcard/types";
 
 import { classifyFeedMeeting } from "@/app/(app)/feed/classify";
 
@@ -41,6 +41,20 @@ import { classifyFeedMeeting } from "@/app/(app)/feed/classify";
  * location simply has no row in the map below — that is the expected,
  * majority case for a triadic post, not a bug to work around.
  *
+ * And once more for `events`, which the "met at [event]" line needs: the
+ * lookup is a plain `.select("id, title")` over the distinct `event_id`s of the
+ * meetings already in view, so `private.can_see_event()` decides which titles
+ * come back — public events to anyone signed in (§2.6), plus the caller's own,
+ * ones they hold an RSVP for, and ones they were invited to (20260814060100).
+ * There are therefore two entirely ordinary ways for a feed item's `event` to
+ * be null, and neither is an error: the meeting was not tagged to an event at
+ * all (today, every meeting — nothing populates `meetings.event_id` yet), or it
+ * was tagged to a private event this viewer cannot see. The second case is the
+ * one worth naming: a triadic "[A] met [B]" post whose meeting happened at a
+ * private event the viewer is not part of renders with no event line rather
+ * than being dropped, because the meeting is legitimately visible to them and
+ * the event's title is not. Fail closed on the title, not on the post.
+ *
  * WHY `users` CAN BE READ FOR BOTH PARTIES OF A TRIADIC POST
  *
  * A "[A] met [B]" post needs both A's and B's profile rows, and the viewer is
@@ -70,6 +84,14 @@ const FEED_ITEM_LIMIT = 50;
 
 type ProfileSummary = Pick<UserRow, "id" | "first_name" | "last_name" | "username" | "photo_path">;
 
+/**
+ * Just enough of an event to say where a meeting happened. Deliberately not the
+ * whole `EventRow`: the feed is a list of meetings, and a card that carried an
+ * event's venue, capacity and cover image would be an events feature growing
+ * inside the meeting feed.
+ */
+type EventSummary = Pick<EventRow, "id" | "title">;
+
 export interface ParticipantFeedItem {
   kind: "participant";
   meetingId: string;
@@ -80,6 +102,14 @@ export interface ParticipantFeedItem {
   otherUser: ProfileSummary;
   /** `null` when RLS returned no location row for this meeting — see header. */
   location: MeetingLocationRow | null;
+  /**
+   * The event this meeting happened at, when it had one and the viewer may see
+   * it. `null` is the ordinary case in both directions — see the header. Carried
+   * on each variant rather than hoisted into a shared base, matching how
+   * `meetingId`, `occurredAt` and `location` are already written here: the
+   * discriminated union stays readable as two complete post shapes.
+   */
+  event: EventSummary | null;
 }
 
 export interface MutualFeedItem {
@@ -97,6 +127,8 @@ export interface MutualFeedItem {
   userA: ProfileSummary;
   userB: ProfileSummary;
   location: MeetingLocationRow | null;
+  /** See `ParticipantFeedItem.event` — same field, same two null cases. */
+  event: EventSummary | null;
 }
 
 export type FeedItem = ParticipantFeedItem | MutualFeedItem;
@@ -109,7 +141,7 @@ export type FeedItem = ParticipantFeedItem | MutualFeedItem;
 export async function listFeedItems(supabase: SupabaseClient, viewerId: string): Promise<FeedItem[]> {
   const { data: meetings, error: meetingsError } = await supabase
     .from("meetings")
-    .select("id, occurred_at, verification_method")
+    .select("id, occurred_at, verification_method, event_id")
     .order("occurred_at", { ascending: false })
     .limit(FEED_ITEM_LIMIT);
 
@@ -166,7 +198,13 @@ export async function listFeedItems(supabase: SupabaseClient, viewerId: string):
 
   const allParticipantUserIds = [...new Set(participants.map((p) => p.user_id))];
 
-  const [usersResult, locationsResult] = await Promise.all([
+  // The small set of events the meetings in view actually name. Deduplicated
+  // because a night out is one event and many meetings, so the distinct count
+  // is normally far below the meeting count — and empty in the common case,
+  // which skips the round trip entirely rather than sending `.in("id", [])`.
+  const eventIds = [...new Set(meetings.flatMap((m) => (m.event_id ? [m.event_id as string] : [])))];
+
+  const [usersResult, locationsResult, eventsResult] = await Promise.all([
     allParticipantUserIds.length > 0
       ? supabase
           .from("users")
@@ -177,6 +215,9 @@ export async function listFeedItems(supabase: SupabaseClient, viewerId: string):
       .from("meeting_locations")
       .select("meeting_id, latitude, longitude, accuracy_m, place_label")
       .in("meeting_id", meetingIds),
+    eventIds.length > 0
+      ? supabase.from("events").select("id, title").in("id", eventIds)
+      : Promise.resolve({ data: [] as EventSummary[], error: null }),
   ]);
 
   if (usersResult.error) {
@@ -189,11 +230,19 @@ export async function listFeedItems(supabase: SupabaseClient, viewerId: string):
       cause: locationsResult.error,
     });
   }
+  if (eventsResult.error) {
+    throw new Error(`Failed to load events for the feed: ${eventsResult.error.message}`, {
+      cause: eventsResult.error,
+    });
+  }
 
   const usersById = new Map((usersResult.data ?? []).map((u) => [u.id, u]));
   const locationsByMeeting = new Map(
     (locationsResult.data ?? []).map((l) => [l.meeting_id, l as MeetingLocationRow]),
   );
+  // Keyed by event id rather than by meeting id, unlike the map above: several
+  // meetings can share one event, and this is the join for that.
+  const eventsById = new Map((eventsResult.data ?? []).map((e) => [e.id as string, e as EventSummary]));
 
   // Fail closed on anything that doesn't fully resolve, the same posture
   // `listOwnConnections` takes: skip the row rather than render a
@@ -203,6 +252,10 @@ export async function listFeedItems(supabase: SupabaseClient, viewerId: string):
     const participantIds = participantIdsByMeeting.get(meeting.id) ?? [];
     const kind = classifyFeedMeeting(participantIds, viewerId);
     const location = locationsByMeeting.get(meeting.id) ?? null;
+    // Absent for an untagged meeting and for an event RLS withheld, and the two
+    // are deliberately not distinguished: both mean "no event line on this
+    // post". Unlike a missing user or connection below, neither skips the item.
+    const event = meeting.event_id ? (eventsById.get(meeting.event_id) ?? null) : null;
 
     if (kind === "participant") {
       const otherUserId = participantIds.find((id) => id !== viewerId);
@@ -220,6 +273,7 @@ export async function listFeedItems(supabase: SupabaseClient, viewerId: string):
           verificationMethod: meeting.verification_method,
           otherUser,
           location,
+          event,
         },
       ];
     }
@@ -246,6 +300,7 @@ export async function listFeedItems(supabase: SupabaseClient, viewerId: string):
           userA,
           userB,
           location,
+          event,
         },
       ];
     }

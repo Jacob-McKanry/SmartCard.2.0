@@ -302,6 +302,15 @@ export async function redeemQr(
     store: deps.store,
     signingSecret: deps.signingSecret,
     config,
+    // Event tagging (§2.6) runs after the verification has already been
+    // accepted and deliberately cannot fail the request — an untagged meeting
+    // is a missing label, not a missing connection. This hook exists so that
+    // "could not determine the event" still shows up somewhere a human looks,
+    // rather than being indistinguishable from "there was no event". Logged
+    // like the audit-log write failure above it, for the same reason: it is a
+    // monitoring problem, not a user-facing one.
+    onEventTaggingError: (error) =>
+      console.error("[connect] event auto-tagging lookup failed; meeting left untagged", error),
   });
   const outcome = await verifier.verify(ctx, parsed.data);
 

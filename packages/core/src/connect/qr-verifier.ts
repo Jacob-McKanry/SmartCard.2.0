@@ -32,6 +32,14 @@
  *     already connected to purely to learn whether the GPS gate passed, which
  *     is a proximity oracle about that person, repeatable for free.
  *
+ * THERE IS ONE STEP AFTER (9), AND IT IS NOT A CHECK. Event auto-tagging
+ * (§2.6) fills `meetings.event_id` once the nine above have already accepted
+ * the scan. It is metadata: it cannot reject, cannot change a rejection's
+ * reason, and cannot throw. It is listed here rather than left to be
+ * discovered, because a tenth thing happening in a function whose ordering is a
+ * security property is exactly the kind of addition that deserves to be
+ * announced at the top. See `event-tagging.ts`.
+ *
  * WHY REJECTIONS RETURN RATHER THAN THROW
  * Every refusal below is a value the caller logs to `connection_attempts` with
  * its real reason and its real numbers (§4.2 step 7), before returning a
@@ -44,6 +52,7 @@ import type { QrRedeemRequest } from "@smartcard/types";
 import { qrRedeemRequestSchema } from "@smartcard/types";
 
 import type { VerificationConfig } from "./config";
+import { resolveAutoTaggedEventId } from "./event-tagging";
 import { evaluateGpsGate } from "./gps-gate";
 import { sealVerified } from "./internal/seal";
 import type { ConnectStore } from "./ports";
@@ -65,10 +74,20 @@ export interface QrVerifierDeps {
   /** `QR_SIGNING_SECRET`. Server-side only — a client holding it can mint tokens for any session. */
   signingSecret: string;
   config: VerificationConfig;
+  /**
+   * Called if the post-acceptance event-tagging lookup fails (§2.6). Optional,
+   * and it exists only so the failure is visible in a server log rather than
+   * silent — `packages/core` holds no logger of its own (§1.3).
+   *
+   * It CANNOT affect the outcome. By the time it can be called the verification
+   * has already been accepted; not providing it means an untagged meeting and
+   * nothing else.
+   */
+  onEventTaggingError?: (error: unknown) => void;
 }
 
 export function createQrVerifier(deps: QrVerifierDeps): VerificationMethod<QrRedeemRequest> {
-  const { store, signingSecret, config } = deps;
+  const { store, signingSecret, config, onEventTaggingError } = deps;
 
   return {
     id: "qr_gps",
@@ -226,6 +245,47 @@ export function createQrVerifier(deps: QrVerifierDeps): VerificationMethod<QrRed
         return fail("rate_limited", measured);
       }
 
+      // === EVERYTHING ABOVE DECIDES. EVERYTHING BELOW ONLY DESCRIBES. ========
+      //
+      // The attempt is accepted as of this line. Steps 1-9 are complete, no
+      // `fail(...)` appears after this point, and nothing below can add one.
+      //
+      // --- Event auto-tagging (§2.6) — METADATA, NOT A CHECK ----------------
+      // Fills `meetings.event_id` when this scan happened at an event both
+      // people had answered `going` to and both were standing inside. Read
+      // `event-tagging.ts` for the rule and for why it declines rather than
+      // guesses when two events qualify at once.
+      //
+      // THREE PROPERTIES OF ITS POSITION HERE ARE LOAD-BEARING, and a reviewer
+      // should be able to confirm each by looking at this line alone:
+      //
+      //   * It is BELOW the gate, the graph checks and the rate limit, so no
+      //     part of accept/reject can read it. A scan is accepted or refused
+      //     for precisely the reasons §4.2 step 5 lists, whether or not an
+      //     event exists, and with precisely the same `RejectionReason`.
+      //   * It never throws. `resolveAutoTaggedEventId` catches everything and
+      //     returns null, so a broken events query cannot convert a verified,
+      //     in-person meeting into a 500. "Could not determine" and "there was
+      //     no event" are deliberately the same answer.
+      //   * It introduces no new data. The two positions handed to it are the
+      //     same two the gate already compared — no fresh location is captured
+      //     and none is stored beyond the meeting location chosen below.
+      //
+      // If a future change needs the event to influence whether a connection
+      // is allowed, that is a different feature and it does not belong after
+      // this comment.
+      const eventId = await resolveAutoTaggedEventId({
+        store,
+        presenterUserId,
+        scannerUserId,
+        presenter: presenterFix,
+        scanner: scannerFix,
+        now: ctx.now,
+        geofenceRadiusM: config.event_geofence_radius_m,
+        windowHoursIfNoEnd: config.event_auto_tag_default_window_hours,
+        onError: onEventTaggingError,
+      });
+
       return sealVerified({
         ok: true,
         initiatorUserId: scannerUserId,
@@ -263,7 +323,11 @@ export function createQrVerifier(deps: QrVerifierDeps): VerificationMethod<QrRed
           accuracyConfigUsedM: thresholds.maxAccuracyM,
           radiusMode: thresholds.radiusMode,
           relaxationSourceAttemptId: relaxation.sourceAttemptId,
-          eventId: null,
+          // Null whenever no single event matched — including when the lookup
+          // itself failed. `create-verified-connection.ts` passes this straight
+          // to `create_verified_connection`'s `p_event_id`, which has accepted
+          // it since 20260813210300.
+          eventId,
         },
       });
     },

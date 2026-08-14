@@ -310,6 +310,19 @@ export interface EventAttendanceCounts {
   /** `null` when capacity is unlimited. Never negative, even past a host override. */
   seatsRemaining: number | null;
   isFull: boolean;
+  /**
+   * How many verified meetings are tagged to this event — "23 people met
+   * someone new here". A plain number, visible to everybody who can see the
+   * event rather than host-gated like `pending`, because unlike queue depth it
+   * is a fact about the event and not about any individual: it names nobody and
+   * pairs nobody with anybody (20260814190000).
+   *
+   * Counts *meetings*, which never move, not live connections, which either
+   * party may later remove. So this and `getOwnConnectionsAtEvent` below answer
+   * slightly different questions and may legitimately disagree — see that
+   * function's comment.
+   */
+  connectionsMade: number;
 }
 
 /**
@@ -344,7 +357,115 @@ export async function getEventAttendanceCounts(
         ? null
         : Number(result.seats_remaining),
     isFull: result.is_full === true,
+    // Defaulted like `going`/`interested` rather than nullable like `pending`:
+    // the RPC always returns a number here for a caller who can see the event,
+    // and the `?? 0` is for the one case that outlives any single deploy — a
+    // client running against a database where this migration has not been
+    // applied yet. "No answer" reads as zero, not as `NaN` on a page.
+    connectionsMade: Number(result.connections_made ?? 0),
   };
+}
+
+/**
+ * "How many people did *I* personally connect with at this event" — the
+ * caller's own number, never anybody else's.
+ *
+ * WHY THIS NEEDS NO RPC, NO NEW GRANT AND NO NEW POLICY
+ *
+ * Unlike `getEventAttendanceCounts` above, this question is answerable entirely
+ * from rows the caller may already read, so making it a `security definer`
+ * function would add a privileged code path to compute something unprivileged.
+ * Both halves were verified against the live database in a rolled-back
+ * transaction before this was written, rather than assumed:
+ *
+ *   - `connections`: the "you can read only your own edges" policy
+ *     (20260809211200) returns exactly the caller's own edges. A fourth user's
+ *     connection made at this same event does not come back — confirmed by
+ *     simulating four separate sessions, not by reading the policy alone.
+ *   - `meetings`: `private.can_see_meeting()`'s participant branch is
+ *     unconditional, so a participant always reads their own meeting row
+ *     including its `event_id`, whatever privacy flags are set.
+ *
+ * WHY IT STARTS FROM CONNECTIONS AND NOT FROM MEETINGS
+ *
+ * This is the part that looks like an unnecessary detour and is not. The
+ * obvious one-query version — "count the meetings I can see whose `event_id` is
+ * this event" — is wrong, and the live check demonstrated it: a viewer who is a
+ * mutual of both parties of somebody *else's* meeting can read that meeting row
+ * too (`can_see_meeting`'s Path B, the triadic feed post), so the naive count
+ * returned 2 for a user who personally made 1 connection there. Anchoring on
+ * the caller's own `connections` rows and using the meetings only to look up
+ * `event_id` is what makes the number mean "mine".
+ *
+ * Two queries and a `.in(...)` batch, the same shape as `listOwnConnections` in
+ * `connections-service.ts` and `listAttendingEvents` above, so this stays two
+ * round trips no matter how many connections the caller has.
+ *
+ * `userId` is not needed to *scope* the result — RLS has already done that — and
+ * is used only to re-check each returned edge really is the caller's, the same
+ * belt-and-braces posture the rest of the service layer takes. A row that
+ * somehow failed that check would be dropped rather than counted.
+ *
+ * COUNTS `active` EDGES, so it is "connections I still have from this event",
+ * and it will fall if the caller later removes one. That is the right reading
+ * for a personal number and it is deliberately *not* the same rule as
+ * `connectionsMade` above, which counts meetings and therefore never falls. The
+ * two disagreeing is expected, not a bug in either.
+ *
+ * Note what this deliberately does not do: it never touches `events`, so it
+ * neither needs nor checks `can_see_event`. Asking about an event the caller
+ * cannot see is answerable and harmless — the answer is derived purely from the
+ * caller's own meetings, whose `event_id` `getMeetingRecord` already hands them
+ * — so it discloses nothing they could not already read, and it cannot be used
+ * to probe whether an arbitrary event id exists: an unknown id and an invisible
+ * one both return 0, exactly like an event the caller simply did not connect
+ * with anyone at.
+ */
+export async function getOwnConnectionsAtEvent(
+  supabase: SupabaseClient,
+  eventId: string,
+  userId: string,
+): Promise<number> {
+  const { data: connections, error: connectionsError } = await supabase
+    .from("connections")
+    .select("id, user_a_id, user_b_id, origin_meeting_id")
+    .eq("status", "active");
+
+  if (connectionsError) {
+    throw new Error(`Failed to load your connections: ${connectionsError.message}`, {
+      cause: connectionsError,
+    });
+  }
+  if (!connections || connections.length === 0) {
+    return 0;
+  }
+
+  const ownMeetingIds = connections
+    .filter((c) => c.user_a_id === userId || c.user_b_id === userId)
+    .map((c) => c.origin_meeting_id as string);
+
+  if (ownMeetingIds.length === 0) {
+    return 0;
+  }
+
+  // Rows and `.length`, not PostgREST's `head`/`count=exact`. The two are
+  // equivalent here and the counting form transfers less, but the row form is
+  // the one whose behaviour under these policies was actually checked against
+  // the live database, and it is the form the rest of this file and
+  // `listOwnConnections` already use. The set is bounded by the caller's own
+  // connection count, so there is nothing to save at pilot scale.
+  const { data: meetings, error: meetingsError } = await supabase
+    .from("meetings")
+    .select("id")
+    .eq("event_id", eventId)
+    .in("id", ownMeetingIds);
+
+  if (meetingsError) {
+    throw new Error(`Failed to load your connections at this event: ${meetingsError.message}`, {
+      cause: meetingsError,
+    });
+  }
+  return (meetings ?? []).length;
 }
 
 /**

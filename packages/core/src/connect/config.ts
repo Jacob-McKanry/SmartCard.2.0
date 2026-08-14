@@ -39,6 +39,9 @@ export const CONNECT_CONFIG_KEYS = [
   "qr_relaxation_cooldown_seconds",
   // §2.5 amendment (d) — card-tap notification coalescing
   "nfc_tap_notification_coalesce_seconds",
+  // §2.6 — automatic event tagging of a verified QR meeting
+  "event_geofence_radius_m",
+  "event_auto_tag_default_window_hours",
   // §4.6 rate limits
   "rate_limit_qr_session_create_per_user_hour",
   "rate_limit_qr_redeem_per_user_hour",
@@ -69,6 +72,28 @@ export const verificationConfigSchema = z.object({
   qr_relaxation_cooldown_seconds: nonNegativeNumber,
 
   nfc_tap_notification_coalesce_seconds: nonNegativeNumber,
+
+  /**
+   * The two event auto-tagging values (§2.6). Unlike everything else in this
+   * object, NEITHER IS A SECURITY THRESHOLD: they decide only whether a meeting
+   * that has already been accepted gets stamped with the event it happened at.
+   * Nothing about accept/reject reads them — see `event-tagging.ts`.
+   *
+   * They are still required rows rather than defaulted constants, and that is a
+   * deliberate choice rather than copy-paste. A default would be a silent one:
+   * the geofence radius is a number an operator will want to widen for a
+   * sprawling venue mid-event, and a `?? 150` in TypeScript would quietly
+   * override the row they just edited — the same failure mode the header
+   * describes, minus the security consequence. Keeping the closed set closed
+   * also means the missing-row check needs no exceptions, and an exception list
+   * is the thing that eventually grows a security key onto it by accident.
+   *
+   * The cost is real and worth naming: delete either row and the whole connect
+   * flow refuses, not just the tagging. That is loud, visible and fixed by one
+   * INSERT, which is the direction this file always errs in.
+   */
+  event_geofence_radius_m: positiveNumber,
+  event_auto_tag_default_window_hours: positiveNumber,
 
   rate_limit_qr_session_create_per_user_hour: z.number().int().min(1),
   rate_limit_qr_redeem_per_user_hour: z.number().int().min(1),
