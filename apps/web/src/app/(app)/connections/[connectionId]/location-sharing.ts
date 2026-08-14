@@ -3,7 +3,7 @@ import type { LocationVisibility } from "@smartcard/types";
 /**
  * Pure derivation of what the location-sharing UI should tell a participant,
  * factored out of the page component the same way
- * `apps/web/src/app/connect/present/presenter-state.ts` is factored out of
+ * `apps/web/src/app/(app)/connect/present/presenter-state.ts` is factored out of
  * `presenter-flow.tsx` — this is genuinely stateless logic ("given these
  * RLS-readable values, what do I tell this specific viewer") and is worth
  * unit-testing without a database, a browser, or a signed-in session.

@@ -74,10 +74,14 @@ export default async function FeedPage() {
  * error, is the app empty by mistake? This state exists to answer that
  * question in words instead of making the viewer guess: nothing is wrong,
  * the feed is working exactly as designed, and here is the one and only way
- * to put something in it. The two links go to the Connect Flow screens
- * already linked from the root page — no new destination invented for this,
- * and deliberately no "people you may know" or similar suggestion, which
- * would be exactly the filler the spec rules out.
+ * to put something in it. The link goes to `/connect` — the Connect Flow
+ * toggle already linked from the nav and the home screen — no new
+ * destination invented for this, and deliberately no "people you may know"
+ * or similar suggestion, which would be exactly the filler the spec rules
+ * out. (Previously two links, one each to `/connect/present` and
+ * `/connect/scan` — collapsed to the one `/connect` toggle screen those
+ * routes were merged into; the two-link version was missed when that merge
+ * landed and kept prefetching two now-deleted routes until caught here.)
  */
 function EmptyFeedState() {
   return (
@@ -87,14 +91,9 @@ function EmptyFeedState() {
         This feed only shows meetings verified in person. It stays quiet until one actually happens —
         there&rsquo;s nothing to fill the space with in the meantime.
       </p>
-      <div className="mt-2 flex gap-4">
-        <Link href="/connect/present" className="text-sm text-primary underline underline-offset-4">
-          Show my code
-        </Link>
-        <Link href="/connect/scan" className="text-sm text-primary underline underline-offset-4">
-          Scan a code
-        </Link>
-      </div>
+      <Link href="/connect" className="mt-2 text-sm text-primary underline underline-offset-4">
+        Connect with someone
+      </Link>
     </div>
   );
 }
