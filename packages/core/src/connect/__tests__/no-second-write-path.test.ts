@@ -52,6 +52,36 @@ const ALLOWED_COMMIT_CALLERS = [
   join("apps", "web", "src", "server", "connect", "supabase-connect-store.ts"),
 ];
 
+/**
+ * Files allowed an `.update(` (never `.insert`/`.upsert`) against a protected
+ * table, and exactly which of the four tables each is allowed to touch that
+ * way. `meeting_locations` has no entry anywhere — nothing legitimately
+ * mutates a location after the atomic commit writes it.
+ *
+ * This exists because §4.7 threat 4 is about a SECOND CREATOR of graph rows —
+ * `insert`/`upsert` stays checked with zero exceptions for every file, below.
+ * An `.update()` to a column a migration's RLS grant already scopes narrowly
+ * (never the row's existence, never who it connects) is a different thing:
+ * `20260809211200_rls_policies_graph_and_meetings.sql` grants exactly
+ * `update (is_private, location_visibility) on meetings`,
+ * `update (location_share_consent, marked_private) on meeting_participants`,
+ * and the one `active -> removed` transition on `connections` — and
+ * `connections-service.ts` (see its own "Mutations" section header) uses
+ * each of those and nothing else. RLS enforces the real boundary regardless
+ * of this list; this list is what keeps the list itself honest as new
+ * `.update()` calls are added, by making each one an explicit, reviewed line
+ * here rather than a silent pass through a pattern that can't distinguish
+ * "narrow grant-backed mutation" from "second creator".
+ */
+const ALLOWED_NARROW_UPDATERS: Record<string, string[]> = {
+  connections: [join("apps", "web", "src", "server", "connections", "connections-service.ts")],
+  meetings: [join("apps", "web", "src", "server", "connections", "connections-service.ts")],
+  meeting_participants: [
+    join("apps", "web", "src", "server", "connections", "connections-service.ts"),
+  ],
+  meeting_locations: [],
+};
+
 function* walk(dir: string): Generator<string> {
   let entries: string[];
   try {
@@ -98,12 +128,13 @@ describe("there is exactly one path that writes the social graph", () => {
     expect(files.some((f) => f.relative.endsWith("create-verified-connection.ts"))).toBe(true);
   });
 
-  it.each(PROTECTED_TABLES)("no code inserts into or updates `%s` through supabase-js", (table) => {
-    // Matches `.from("connections")` followed by `.insert(`, `.upsert(` or
-    // `.update(` within a short window — the shape every supabase-js write
-    // takes.
+  it.each(PROTECTED_TABLES)("no code creates rows in `%s` through supabase-js", (table) => {
+    // Matches `.from("connections")` followed by `.insert(` or `.upsert(`
+    // within a short window — the shape every supabase-js row-creating write
+    // takes. This is the actual §4.7 threat 4 concern (a second creator of
+    // graph rows) and has zero exceptions, unlike the `.update()` check below.
     const pattern = new RegExp(
-      String.raw`\.from\(\s*["'\`]${table}["'\`]\s*\)[\s\S]{0,200}?\.(insert|upsert|update)\(`,
+      String.raw`\.from\(\s*["'\`]${table}["'\`]\s*\)[\s\S]{0,200}?\.(insert|upsert)\(`,
     );
     const offenders = files
       .filter((file) => !isTestFile(file.relative))
@@ -112,9 +143,27 @@ describe("there is exactly one path that writes the social graph", () => {
 
     expect(
       offenders,
-      `${offenders.join(", ")} writes ${table} outside create_verified_connection. ` +
+      `${offenders.join(", ")} creates rows in ${table} outside create_verified_connection. ` +
         `§4.7 threat 4: never add a second path that writes connections.`,
     ).toEqual([]);
+  });
+
+  it.each(PROTECTED_TABLES)("only an allowlisted file updates `%s`, and RLS still scopes it", (table) => {
+    const pattern = new RegExp(
+      String.raw`\.from\(\s*["'\`]${table}["'\`]\s*\)[\s\S]{0,200}?\.update\(`,
+    );
+    const updaters = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => pattern.test(file.text))
+      .map((file) => file.relative);
+
+    expect(
+      updaters.sort(),
+      `${updaters.join(", ")} updates ${table} without being on ALLOWED_NARROW_UPDATERS. ` +
+        `Either this is the file's known narrow, RLS-scoped mutation (add it to the list once ` +
+        `you've checked it against the migration's grant) or it's a new writer that needs the ` +
+        `same scrutiny §4.7 threat 4 gives inserts.`,
+    ).toEqual([...ALLOWED_NARROW_UPDATERS[table]].sort());
   });
 
   it("only the ConnectStore implementation calls the atomic commit RPC", () => {
