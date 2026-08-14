@@ -163,7 +163,13 @@ describe("there is exactly one path that writes the social graph", () => {
         `Either this is the file's known narrow, RLS-scoped mutation (add it to the list once ` +
         `you've checked it against the migration's grant) or it's a new writer that needs the ` +
         `same scrutiny §4.7 threat 4 gives inserts.`,
-    ).toEqual([...ALLOWED_NARROW_UPDATERS[table]].sort());
+    // `?? []` because `noUncheckedIndexedAccess` (tsconfig.base.json) types an
+    // index into a Record as possibly-undefined. The fallback is the strict
+    // reading, not a convenience: a table missing from the allowlist means
+    // NOTHING may update it, so an unlisted table asserts an empty set and any
+    // updater at all fails the test. Defaulting the other way — skipping the
+    // assertion — would make a typo in a table name silently disable the check.
+    ).toEqual([...(ALLOWED_NARROW_UPDATERS[table] ?? [])].sort());
   });
 
   it("only the ConnectStore implementation calls the atomic commit RPC", () => {
