@@ -2,7 +2,7 @@ import "server-only";
 
 import { importJWK, SignJWT } from "jose";
 
-import { supabaseJwtSecret, supabaseJwtSigningKey, supabaseUrl } from "@/server/env";
+import { supabaseJwtSigningKey, supabaseUrl } from "@/server/env";
 
 /**
  * Step 3 of the Kinde -> Supabase bridge: mint the short-lived Supabase-format
@@ -41,25 +41,26 @@ import { supabaseJwtSecret, supabaseJwtSigningKey, supabaseUrl } from "@/server/
  * from a log or a proxy is worthless by the time anyone reads it. It is minted
  * per request and never stored, so nothing depends on it lasting longer.
  *
- * WHAT KEY IT IS SIGNED WITH, AND WHY THAT CHANGED (Q27, second §5.4 amendment)
+ * WHAT KEY IT IS SIGNED WITH (Q27, second §5.4 amendment)
  *
- * Originally HS256 with the project's shared JWT secret. That secret turned out
- * to be the project's *previous* key: this project has already rotated to
- * asymmetric JWT signing keys, and Supabase keeps a previous key alive only
- * long enough for outstanding tokens to expire. Signing with a key on its way
- * out means an outage that arrives without warning and hits every user at once.
+ * ES256, with a P-256 private key **we** generated and imported into the
+ * Supabase project's JWT Signing Keys — `SUPABASE_JWT_SIGNING_KEY`. There is
+ * one signing path and no fallback: if that key is missing or malformed the
+ * mint throws (`env.ts`), because the alternative to failing closed here is
+ * signing with something the project may not trust, which produces an opaque
+ * 401 on every request instead of one legible error at the source.
  *
- * The replacement is the mechanism Supabase documents for exactly this case —
- * "How to create (mint) JWTs if access to the private key or shared secret is
- * not possible?": generate an ES256 (P-256) key ourselves, import it into the
- * project's JWT Signing Keys, rotate it in, and sign with it. Supabase's own
- * current key cannot be used by us at all, because Supabase holds its private
- * half and will not export it; only Supabase Auth can sign with that one.
+ * This is the mechanism Supabase documents for exactly our case — "How to
+ * create (mint) JWTs if access to the private key or shared secret is not
+ * possible?": generate an ES256 key, import it as a standby key, rotate it in,
+ * sign with it. Supabase's *own* current key cannot be used by us at all,
+ * because Supabase holds its private half and will not export it; only Supabase
+ * Auth can sign with that one.
  *
- * Two properties of the ES256 path worth stating, because they are the reason
- * it is better rather than merely newer:
+ * Two properties of this arrangement are the reason it is the right one, not
+ * merely the modern one:
  *
- *  - **Verification no longer needs the secret.** The project verifies with the
+ *  - **Verification does not need a secret.** The project verifies with the
  *    public half, published at `/auth/v1/.well-known/jwks.json`. The private
  *    half is held by this server (and by Supabase, since the dashboard import
  *    takes a private JWK — there is no verify-only import).
@@ -67,32 +68,40 @@ import { supabaseJwtSecret, supabaseJwtSigningKey, supabaseUrl } from "@/server/
  *    leaks, the owner revokes it in the signing-keys UI and every token signed
  *    with it stops being accepted immediately, with no code change.
  *
- * THE HS256 BRANCH BELOW IS TRANSITIONAL AND SHOULD BE DELETED
+ * WHAT THIS REPLACED, AND WHY THAT MATTERED (history, settled 2026-08-14)
  *
- * Importing and rotating a signing key is a manual dashboard step (or a
- * Management API call) that no code in this repo can perform. Until it is done,
- * a token signed with the new key would be rejected — Supabase accepts
- * signatures from the in-use and previously-used keys, not from a standby one.
- * So the mechanism is chosen by whether `SUPABASE_JWT_SIGNING_KEY` is set,
- * which mirrors Supabase's own zero-downtime ordering (import as standby ->
- * rotate -> switch the consumer -> revoke the old key). The legacy branch warns
- * once per process rather than staying silent, because the failure this whole
- * change exists to prevent is precisely "nobody noticed we were still on the
- * deprecated key". **Once the rotation is confirmed in front of real data,
- * delete the HS256 branch and make `SUPABASE_JWT_SIGNING_KEY` required.**
+ * This module originally signed HS256 with the project's shared JWT secret
+ * (`SUPABASE_JWT_SECRET`). That secret turned out to be the project's
+ * *previous* key — the project had already rotated to asymmetric signing keys,
+ * and Supabase keeps a previous key alive only long enough for outstanding
+ * tokens to expire. Signing with a key on its way out meant an outage that
+ * would arrive without warning and hit every user at once.
  *
- * Note what does *not* change with the key: lifetime, claims, `sub`, `role`,
- * per-request minting, and the fact that this runs server-side only. The
- * signature is the only difference, which is what §5.4's amendment predicted
- * when it said the blast radius of this migration was one file.
+ * Because importing and rotating a signing key is a manual dashboard step no
+ * code here can perform, the ES256 switch shipped with a temporary HS256
+ * fallback so the app kept working across the rotation window. The rotation was
+ * completed and confirmed against production on 2026-08-14 — the deprecated
+ * path logged a loud warning whenever it was used, and production logs across a
+ * real sign-in and every screen showed it never fired — so the fallback is gone
+ * and the ES256 key is now required. The app can no longer sign with the
+ * deprecated secret even by accident. (`SUPABASE_JWT_SECRET` itself must still
+ * not be *revoked* in the Supabase dashboard: `SUPABASE_SERVICE_ROLE_KEY` is a
+ * legacy JWT signed with it, so revoking it would break `ensureUser()`. That is
+ * Q31, a separate piece of work — see §5.4 and `.env.local`.)
+ *
+ * Note what the key never changed: lifetime, claims, `sub`, `role`, per-request
+ * minting, and the fact that this runs server-side only. The signature was the
+ * only difference, which is what §5.4's amendment predicted when it said the
+ * blast radius of this migration was one file.
  */
 
 /** Seconds. See "why it is short-lived" above before changing this. */
 const TOKEN_LIFETIME_SECONDS = 5 * 60;
 
-type Signer =
-  | { alg: "ES256"; kid: string; key: CryptoKey | Uint8Array }
-  | { alg: "HS256"; kid: null; key: Uint8Array };
+interface Signer {
+  kid: string;
+  key: CryptoKey | Uint8Array;
+}
 
 /**
  * Cached as a promise, not a value: `importJWK` is async, and caching the
@@ -102,19 +111,13 @@ type Signer =
 let cachedSigner: Promise<Signer> | null = null;
 
 function loadSigner(): Promise<Signer> {
+  // Unset, unparseable or not-actually-a-private-key all throw out of here,
+  // naming the variable. That IS the fail-closed behaviour: there is nothing
+  // else this app is allowed to sign with, so an unusable key must stop the
+  // request rather than degrade it into a token Supabase will reject anyway.
   const signingKey = supabaseJwtSigningKey();
 
-  if (signingKey === null) {
-    // Resolve the secret first: with neither key configured the right outcome
-    // is `env.ts`'s named, fail-closed error, not a warning about a fallback
-    // that is not actually available.
-    const secret = new TextEncoder().encode(supabaseJwtSecret());
-    warnOnceAboutLegacySecret();
-    return Promise.resolve({ alg: "HS256", kid: null, key: secret });
-  }
-
   return importJWK(cryptographicMembersOnly(signingKey.jwk), "ES256").then((key) => ({
-    alg: "ES256" as const,
     kid: signingKey.kid,
     key,
   }));
@@ -157,23 +160,6 @@ function signer(): Promise<Signer> {
   return cachedSigner;
 }
 
-let legacyWarningEmitted = false;
-
-function warnOnceAboutLegacySecret(): void {
-  if (legacyWarningEmitted) {
-    return;
-  }
-  legacyWarningEmitted = true;
-  console.warn(
-    "[auth] Signing Supabase access tokens with the LEGACY shared JWT secret (HS256). " +
-      "This project has already rotated to asymmetric JWT signing keys, so this secret is the " +
-      "project's PREVIOUS key and Supabase may revoke it without warning — at which point every " +
-      "request fails at once. Fix: import the ES256 key into Supabase (Project Settings -> JWT " +
-      "Keys -> add a standby key, then Rotate), then set SUPABASE_JWT_SIGNING_KEY. See .env.local " +
-      "and architecture §5.4 (Q27).",
-  );
-}
-
 /**
  * @param userId `public.users.id` — already resolved and already verified to
  *   belong to the authenticated Kinde identity. This function does not check
@@ -184,14 +170,10 @@ export async function mintSupabaseAccessToken(userId: string): Promise<string> {
   const signing = await signer();
 
   return await new SignJWT({ role: "authenticated" })
-    .setProtectedHeader(
-      signing.alg === "ES256"
-        ? // `kid` is not decoration here: it is how Supabase selects which
-          // trusted public key to verify against, and a token without it is
-          // rejected even when the key itself is trusted.
-          { alg: "ES256", kid: signing.kid, typ: "JWT" }
-        : { alg: "HS256", typ: "JWT" },
-    )
+    // `kid` is not decoration here: it is how Supabase selects which trusted
+    // public key to verify against, and a token without it is rejected even
+    // when the key itself is trusted.
+    .setProtectedHeader({ alg: "ES256", kid: signing.kid, typ: "JWT" })
     // `auth.uid()` reads exactly this claim and casts it to uuid.
     .setSubject(userId)
     // Supabase's API gateway expects the `authenticated` audience for a user
@@ -216,5 +198,4 @@ export async function mintSupabaseAccessToken(userId: string): Promise<string> {
  */
 export function resetSupabaseTokenSignerForTests(): void {
   cachedSigner = null;
-  legacyWarningEmitted = false;
 }

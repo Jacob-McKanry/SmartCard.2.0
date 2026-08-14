@@ -1,11 +1,4 @@
-import {
-  createLocalJWKSet,
-  decodeJwt,
-  decodeProtectedHeader,
-  exportJWK,
-  generateKeyPair,
-  jwtVerify,
-} from "jose";
+import { createLocalJWKSet, decodeJwt, exportJWK, generateKeyPair, jwtVerify } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { mintSupabaseAccessToken, resetSupabaseTokenSignerForTests } from "./supabase-token";
@@ -44,7 +37,6 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   process.env.SUPABASE_URL = SUPABASE_URL;
   delete process.env.SUPABASE_JWT_SIGNING_KEY;
-  delete process.env.SUPABASE_JWT_SECRET;
   resetSupabaseTokenSignerForTests();
 });
 
@@ -142,10 +134,12 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
 
 describe("mintSupabaseAccessToken — misconfiguration fails closed rather than falling back", () => {
   /**
-   * The specific accident this guards against: a mistyped or half-pasted
-   * signing key silently demoting the app onto the deprecated shared secret,
-   * which is the exact condition Q27 exists to end. Every case below must
-   * throw, and none may produce an HS256 token.
+   * The accident this guards against used to be a mistyped or half-pasted
+   * signing key silently demoting the app onto the deprecated shared secret.
+   * That fallback was deleted on 2026-08-14, so the guarantee is now stronger
+   * and simpler: there is exactly one key this app can sign with, and anything
+   * wrong with it stops the request at the source with a legible error rather
+   * than producing a token Supabase would reject with an opaque 401.
    */
   const cases: ReadonlyArray<readonly [string, string]> = [
     ["not JSON at all", "-----BEGIN PRIVATE KEY-----"],
@@ -157,9 +151,15 @@ describe("mintSupabaseAccessToken — misconfiguration fails closed rather than 
 
   it.each(cases)("refuses %s", async (_label, value) => {
     process.env.SUPABASE_JWT_SIGNING_KEY = value;
-    process.env.SUPABASE_JWT_SECRET = "a-legacy-secret-that-must-not-be-used";
 
     await expect(mintSupabaseAccessToken(USER_ID)).rejects.toThrow();
+  });
+
+  it("fails closed with a named variable when no signing key is configured at all", async () => {
+    // `beforeEach` already deleted it. Unset is the one misconfiguration a
+    // fresh deployment is most likely to hit, so the error has to say which
+    // variable is missing rather than surface as a signing failure.
+    await expect(mintSupabaseAccessToken(USER_ID)).rejects.toThrow(/SUPABASE_JWT_SIGNING_KEY/);
   });
 
   it("does not cache the failure, so fixing the variable fixes the app", async () => {
@@ -172,45 +172,5 @@ describe("mintSupabaseAccessToken — misconfiguration fails closed rather than 
 
     const token = await mintSupabaseAccessToken(USER_ID);
     await expect(jwtVerify(token, createLocalJWKSet({ keys: [publicJwk] }))).resolves.toBeTruthy();
-  });
-});
-
-describe("mintSupabaseAccessToken — the transitional HS256 branch", () => {
-  /**
-   * Kept only until the imported key is rotated in (a manual dashboard step),
-   * and deliberately loud. A silent legacy path is how a project ends up
-   * depending on a revoked key without knowing it.
-   */
-  it("signs with the legacy secret when no signing key is configured, and says so once", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    process.env.SUPABASE_JWT_SECRET = "legacy-shared-secret-for-tests";
-
-    const token = await mintSupabaseAccessToken(USER_ID);
-    await mintSupabaseAccessToken(USER_ID);
-
-    expect(decodeProtectedHeader(token).alg).toBe("HS256");
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0]?.[0]).toMatch(/LEGACY/);
-  });
-
-  it("still carries identical claims, so the migration changes only the signature", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    process.env.SUPABASE_JWT_SECRET = "legacy-shared-secret-for-tests";
-    const legacy = await mintSupabaseAccessToken(USER_ID);
-
-    resetSupabaseTokenSignerForTests();
-    const { privateJwk } = await importedSigningKey();
-    process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
-    const current = await mintSupabaseAccessToken(USER_ID);
-
-    // Everything but the timestamps, which differ by construction.
-    const comparable = (token: string) => ({ ...claimsOf(token), iat: undefined, exp: undefined });
-
-    expect(comparable(current)).toEqual(comparable(legacy));
-  });
-
-  it("fails closed with a named variable when neither key is configured", async () => {
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    await expect(mintSupabaseAccessToken(USER_ID)).rejects.toThrow(/SUPABASE_JWT_SECRET/);
   });
 });

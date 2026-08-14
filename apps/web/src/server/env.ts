@@ -138,18 +138,18 @@ export function supabaseServiceRoleKey(): string {
  * shared secret was, and is why this is read here and never anywhere near a
  * `NEXT_PUBLIC_` name.
  *
- * OPTIONAL, AND THAT IS A TRANSITIONAL STATE, NOT A DESIGN. Returning null
- * makes the mint fall back to the legacy HS256 shared secret so that the app
- * keeps working in the window between this code shipping and the key being
- * imported *and rotated to in-use* in the dashboard — a manual step no code
- * here can perform. That window is the same one Supabase's own zero-downtime
- * rotation assumes. Once the rotation is confirmed, this becomes required and
- * the fallback goes; see the note in `supabase-token.ts`.
+ * REQUIRED as of 2026-08-14, and there is no second signing path. It was
+ * briefly optional — unset meant falling back to the legacy HS256 shared
+ * secret — only to cover the window between the code shipping and the key being
+ * imported *and rotated to in-use* in the dashboard, a manual step no code here
+ * can perform. That rotation is done and confirmed in production, so the
+ * fallback is deleted: missing, malformed or not-actually-private all throw
+ * here, and the app cannot sign with the deprecated secret even by accident.
  *
- * Anything present-but-wrong throws instead of falling back: a typo'd or
- * truncated key must not quietly demote the app onto the deprecated secret,
- * because the whole point of Q27 is that the deprecated secret can be revoked
- * without warning and we would not notice we were still relying on it.
+ * Failing closed is the point. The deprecated secret is the project's previous
+ * key and Supabase may revoke it without warning; a typo'd or truncated value
+ * quietly demoting the app back onto it is precisely the failure Q27 exists to
+ * prevent, and it is one nobody would notice until every request failed at once.
  */
 export interface SupabaseJwtSigningKey {
   /**
@@ -162,11 +162,15 @@ export interface SupabaseJwtSigningKey {
   jwk: Record<string, unknown>;
 }
 
-export function supabaseJwtSigningKey(): SupabaseJwtSigningKey | null {
-  const raw = process.env.SUPABASE_JWT_SIGNING_KEY?.trim();
-  if (raw === undefined || raw === "") {
-    return null;
-  }
+export function supabaseJwtSigningKey(): SupabaseJwtSigningKey {
+  const raw = required(
+    "SUPABASE_JWT_SIGNING_KEY",
+    "It is the private ES256 JWK this app signs Supabase access tokens with, as one line of JSON. " +
+      "Generate one with `supabase gen signing-key --algorithm ES256`, then Supabase dashboard -> " +
+      "Project Settings -> JWT Keys -> add a standby key -> Import private key, wait ~20 minutes, " +
+      "and click Rotate keys so the project accepts signatures from it. " +
+      "Server-side only — anyone holding it can mint a token for any user.",
+  ).trim();
 
   let parsed: unknown;
   try {
@@ -211,28 +215,6 @@ export function supabaseJwtSigningKey(): SupabaseJwtSigningKey | null {
   }
 
   return { kid, jwk };
-}
-
-/**
- * The legacy symmetric secret the Supabase project uses to verify JWTs.
- *
- * **Deprecated, and on a live deprecation path (Q27).** This project has
- * already rotated to asymmetric JWT signing keys; this shared secret is the
- * project's *previous* key, which Supabase keeps alive only "to verify tokens
- * that are yet to expire" and can revoke at any time. It is read here solely so
- * the app keeps working until `SUPABASE_JWT_SIGNING_KEY` is live — see that
- * function, and the second §5.4 amendment.
- *
- * Holding it means being able to mint a token for any user, so it lives
- * server-side only and is never sent to a browser or a phone.
- */
-export function supabaseJwtSecret(): string {
-  return required(
-    "SUPABASE_JWT_SECRET",
-    "Supabase dashboard -> Project Settings -> JWT Keys (JWT Settings) -> JWT secret / legacy shared secret. " +
-      "Server-side only — anyone holding it can mint a token for any user. " +
-      "Prefer SUPABASE_JWT_SIGNING_KEY: this secret is the project's previous key and Supabase may revoke it.",
-  );
 }
 
 /**

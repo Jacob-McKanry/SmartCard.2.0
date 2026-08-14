@@ -937,6 +937,12 @@ Identical to the numbers recorded when the bridge was first verified. **What can
 
 **Nothing changes for mobile (§5.2), and that is worth one line.** The exchange still happens per request on our server, so the phone still never holds a Supabase credential of any kind — §7.4's "it talks to our API, never the database directly" survives this change untouched. The only thing a future mobile pass inherits is that the server it calls needs `SUPABASE_JWT_SIGNING_KEY` set wherever it runs, exactly as it needed `SUPABASE_JWT_SECRET`.
 
+#### Completed (2026-08-14) — the manual rotation is done and the HS256 fallback is deleted
+
+**The step the amendment above was blocked on has been performed.** The ES256 key was imported as a standby key, left for the recommended ~20 minutes, and rotated to in-use in the dashboard; `SUPABASE_JWT_SIGNING_KEY` is set both locally and on Vercel. **The condition that amendment set for deleting the transitional branch — "once the rotation is confirmed in front of real data" — was checked rather than assumed**: the deprecated path warned loudly at its first use in each process, and a full-text search for that warning across the current production deployment's runtime logs, over a window covering a real authenticated sign-in and loads of `/`, `/profile`, `/connect`, `/feed` and `/connections`, returned **zero** hits. So the HS256 branch is gone, `supabaseJwtSecret()` is deleted from `env.ts`, and `supabaseJwtSigningKey()` now throws a named `MissingEnvVarError` when unset instead of returning null. There is one signing path and no way back onto the deprecated key, including by accident.
+
+**Unchanged, and deliberately so:** `SUPABASE_JWT_SECRET` stays set in the environment and **must still not be revoked in the dashboard** — the Q31 trap below is untouched by this cleanup, because `SUPABASE_SERVICE_ROLE_KEY` is still a legacy JWT signed with that secret. What changed is only that no code reads the variable any more.
+
 ---
 
 ## 6. Migration plan (outline)
@@ -1193,6 +1199,8 @@ Anything prefixed `NEXT_PUBLIC_`/`EXPO_PUBLIC_` is shipped to users and readable
 |---|---|---|
 | `SUPABASE_JWT_SIGNING_KEY` 🔒 | Next.js / Vercel, server-side | **New, and it replaces `SUPABASE_JWT_SECRET` on the signing path.** The full **private** ES256 (P-256) JWK, as one line of JSON, that `mintSupabaseAccessToken` signs the 5-minute per-request token with — a key we generated (`supabase gen signing-key --algorithm ES256`) and imported into the project's JWT Signing Keys, because Supabase will not export the private half of the key it generated. As sensitive as the secret it replaces: anyone holding it can mint a token for any user, so server-side only, never a `NEXT_PUBLIC_` name. **Currently optional, transitionally**: unset means the app falls back to the legacy HS256 secret and warns loudly, which is what keeps it working in the window before the key is imported *and rotated to in-use* in the dashboard. Present-but-malformed **throws** rather than falling back. Becomes required — and the fallback gets deleted — once the rotation is confirmed. See the second §5.4 amendment. |
 | `SUPABASE_JWT_SECRET` 🔒 | Next.js / Vercel, server-side | **Superseded, still required, do not delete yet.** It is the project's *previous* signing key (Q27) and is read only until `SUPABASE_JWT_SIGNING_KEY` is switched on. Two things not to do: don't remove it before that switch, and **don't revoke it in the dashboard at all yet** — `SUPABASE_SERVICE_ROLE_KEY` is a legacy JWT signed with it, so revoking it disables the service-role key `ensureUser()` depends on (Q31). |
+
+**Correction (2026-08-14) — both rows above have moved on, now that the rotation is done** (see §5.4's "Completed (2026-08-14)" note). `SUPABASE_JWT_SIGNING_KEY` is no longer "currently optional, transitionally" — it is **required**, it is the only signing path, and unset now throws a named error rather than falling back. `SUPABASE_JWT_SECRET` is no longer read by any code at all and has been dropped from `turbo.json`'s build env list; it stays set in the environment for reference, and the "don't revoke it in the dashboard" warning stands unchanged and still gated on Q31.
 
 ### 7.5 Push notifications — Expo's push service
 
