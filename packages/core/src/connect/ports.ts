@@ -56,6 +56,24 @@ export interface CardRecord {
   ownerUserId: string | null;
 }
 
+/**
+ * An event that COULD have hosted a meeting between two specific people — a
+ * candidate, not an answer.
+ *
+ * `latitude`/`longitude` are non-nullable HERE even though the columns are
+ * nullable in `events`. An event whose venue coordinates were never set cannot
+ * be geofence-matched against anything, so the store drops it rather than
+ * handing core a row with holes in it that core would then have to re-check.
+ * That keeps the "can this even be a candidate?" question — a pure data
+ * question — entirely on the store's side of the port, and leaves core with
+ * only the decision.
+ */
+export interface CandidateEventRecord {
+  id: string;
+  latitude: number;
+  longitude: number;
+}
+
 export interface AttemptLogRecord {
   sessionId: string | null;
   method: VerificationMethodId;
@@ -172,6 +190,32 @@ export interface ConnectStore {
     windowSeconds: number;
     now: Date;
   }): Promise<RelaxationHistory>;
+
+  /**
+   * Which events could a meeting between these two people plausibly have
+   * happened at? Used ONLY to fill `meetings.event_id` after a verification has
+   * already been accepted (§2.6) — never as an input to accepting it.
+   *
+   * Returns candidates, not a decision, and the split is the point. The store
+   * answers the parts that are pure data — both people answered `going` to it,
+   * it was running at `now`, its venue coordinates are set — and core answers
+   * the parts that are judgment: whether both GPS fixes actually fall inside
+   * the event's geofence, and what to do when two events qualify at once
+   * (nothing; see `event-tagging.ts`). That mirrors where the GPS gate's own
+   * distance comparison lives, which is in core and not in SQL, for the reason
+   * this file's header gives: a rule that can only be exercised against a
+   * database is a rule that gets one test instead of ten.
+   *
+   * `windowHoursIfNoEnd` is how long an event with no `ends_at` is treated as
+   * still running after `starts_at`. It comes from `app_config`, so the store
+   * never invents it.
+   */
+  findCandidateEventsForConnection(input: {
+    presenterUserId: string;
+    scannerUserId: string;
+    now: Date;
+    windowHoursIfNoEnd: number;
+  }): Promise<CandidateEventRecord[]>;
 
   /** Records the event and reports whether the subject is still inside its limit. */
   consumeRateLimit(request: RateLimitRequest): Promise<boolean>;

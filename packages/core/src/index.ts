@@ -68,6 +68,14 @@ export {
   type GpsGateVerdict,
 } from "./connect/gps-gate";
 
+// --- §2.6: post-acceptance event tagging (metadata, never a gate) ------------
+// Exported for the same reason `evaluateGpsGate` is: it is a rule with a
+// documented answer for every input, and a reviewer should be able to exercise
+// it directly. `resolveAutoTaggedEventId` is deliberately NOT exported — it is
+// the verifier's plumbing, and nothing outside `qr-verifier.ts` should be
+// deciding a meeting's event.
+export { selectAutoTaggedEvent, type AutoTagInput } from "./connect/event-tagging";
+
 export {
   evaluateRelaxation,
   thresholdsFor,
@@ -93,6 +101,7 @@ export { HOUR_SECONDS, RATE_LIMIT_ACTIONS, type RateLimitAction } from "./connec
 // --- The port the app implements ---------------------------------------------
 export type {
   AttemptLogRecord,
+  CandidateEventRecord,
   CardRecord,
   CommitInput,
   CommitResult,

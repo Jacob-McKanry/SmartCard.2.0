@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AttemptLogRecord,
+  CandidateEventRecord,
   CardRecord,
   CommitInput,
   CommitResult,
@@ -373,6 +374,125 @@ export function supabaseConnectStore(client: SupabaseClient = serviceRoleClient(
         lastRelaxedAttemptAt:
           lastRelaxed.data === null ? null : toDate(lastRelaxed.data.created_at),
       };
+    },
+
+    /**
+     * Which events could a just-verified meeting between these two people have
+     * happened at (§2.6)? Candidates only — see the port's declaration for why
+     * the geofence comparison and the tie-break stay in `packages/core`.
+     *
+     * TWO QUERIES RATHER THAN ONE JOIN, ON PURPOSE. PostgREST can express an
+     * inner join through an embedded resource, but "the SAME event has a
+     * `going` row for user A *and* a separate `going` row for user B" is a
+     * per-group condition, not a per-row one — an embed would happily return an
+     * event that only one of them is going to, and the intersection would have
+     * to be redone here anyway with a filter that LOOKS redundant and therefore
+     * eventually gets deleted. Asking the two questions separately makes the
+     * intersection the visible, single place the "both" in rule 1 lives.
+     *
+     * WHY THE UPPER TIME BOUND IS APPLIED HERE AND NOT IN THE FILTER
+     * The bound is `ends_at ?? starts_at + windowHoursIfNoEnd`, which is a
+     * COALESCE over two columns. Expressing that in PostgREST means a `.or()`
+     * built by interpolating values into a filter expression string — the
+     * string-concatenated-query pattern §4.7 threat 5 rules out, and the reason
+     * `isBlockedEitherWay` above is written as `in × in`. The lower bound and
+     * the venue-coordinates test are ordinary column filters and do run in SQL,
+     * so the set that reaches this loop is already small: only events both
+     * people are going to that had already started.
+     *
+     * ERRORS THROW, exactly like every other method here. That is not in
+     * tension with event tagging being non-fatal: this method's job is to
+     * report honestly that it could not answer, and `event-tagging.ts` in core
+     * is the one place that decides a failed answer means "no event" rather
+     * than "no connection". Swallowing it here instead would hide a broken
+     * query from the one caller equipped to log it.
+     */
+    async findCandidateEventsForConnection(input: {
+      presenterUserId: string;
+      scannerUserId: string;
+      now: Date;
+      windowHoursIfNoEnd: number;
+    }): Promise<CandidateEventRecord[]> {
+      const rsvps = await client
+        .from("event_rsvps")
+        .select("event_id, user_id")
+        // `going` only. `interested`, `waitlist` and `pending` are explicitly
+        // not attendance — the same line `private.shares_event_with()` draws,
+        // for the same reason: wanting to go to an event is not being at it.
+        .eq("status", "going")
+        .in("user_id", [input.presenterUserId, input.scannerUserId]);
+
+      if (rsvps.error) {
+        throw new Error(`Failed to read event RSVPs: ${rsvps.error.message}`, {
+          cause: rsvps.error,
+        });
+      }
+
+      const presenterGoing = new Set<string>();
+      const scannerGoing = new Set<string>();
+      for (const row of (rsvps.data ?? []) as { event_id: string; user_id: string }[]) {
+        if (row.user_id === input.presenterUserId) presenterGoing.add(row.event_id);
+        if (row.user_id === input.scannerUserId) scannerGoing.add(row.event_id);
+      }
+      const sharedEventIds = [...presenterGoing].filter((id) => scannerGoing.has(id));
+
+      // The common case by a wide margin: most connections happen nowhere near
+      // a shared event. Returning early keeps that path at one query.
+      if (sharedEventIds.length === 0) {
+        return [];
+      }
+
+      const events = await client
+        .from("events")
+        .select("id, starts_at, ends_at, latitude, longitude")
+        .in("id", sharedEventIds)
+        .lte("starts_at", input.now.toISOString())
+        // An event whose venue was never set cannot be geofence-matched against
+        // anything. Dropped as a candidate, not treated as an error — §2.6
+        // allows an event to be created before its venue is confirmed.
+        .not("latitude", "is", null)
+        .not("longitude", "is", null);
+
+      if (events.error) {
+        throw new Error(`Failed to read candidate events: ${events.error.message}`, {
+          cause: events.error,
+        });
+      }
+
+      const nowMs = input.now.getTime();
+      const candidates: CandidateEventRecord[] = [];
+
+      for (const row of (events.data ?? []) as {
+        id: string;
+        starts_at: string;
+        ends_at: string | null;
+        latitude: number | null;
+        longitude: number | null;
+      }[]) {
+        const startsAt = toDate(row.starts_at);
+        // An unreadable `starts_at` on a NOT NULL column is a corrupt row. It
+        // is skipped rather than defaulted, matching how `toSessionRecord`
+        // treats an unreadable expiry: an unparseable bound must never read as
+        // "no bound".
+        if (startsAt === null) continue;
+
+        const endsAt = row.ends_at === null ? null : toDate(row.ends_at);
+        const endMs =
+          endsAt === null
+            ? startsAt.getTime() + input.windowHoursIfNoEnd * 3_600_000
+            : endsAt.getTime();
+        if (nowMs > endMs) continue;
+
+        // Re-checked in TypeScript even though the query filtered on it: the
+        // port promises core two non-null numbers, and `select()` gives back a
+        // nullable type. This is the narrowing that makes that promise true
+        // rather than asserted.
+        if (row.latitude === null || row.longitude === null) continue;
+
+        candidates.push({ id: row.id, latitude: row.latitude, longitude: row.longitude });
+      }
+
+      return candidates;
     },
 
     async consumeRateLimit(request: RateLimitRequest): Promise<boolean> {

@@ -35,6 +35,7 @@
 
 import type {
   AttemptLogRecord,
+  CandidateEventRecord,
   CardRecord,
   CommitInput,
   CommitResult,
@@ -57,6 +58,27 @@ export interface FakeConnection {
   originMeetingId: string;
 }
 
+/**
+ * An `events` row, with the two nullable fields that decide candidacy kept
+ * nullable — an event with no `ends_at` and an event with no venue coordinates
+ * are both cases the matching rule has to handle, so the fixture has to be able
+ * to express them.
+ */
+export interface FakeEvent {
+  id: string;
+  startsAt: Date;
+  endsAt: Date | null;
+  latitude: number | null;
+  longitude: number | null;
+}
+
+/** An `event_rsvps` row. The status set is the one 20260814051000 allows. */
+export interface FakeEventRsvp {
+  eventId: string;
+  userId: string;
+  status: "going" | "interested" | "not_going" | "waitlist" | "pending" | "denied";
+}
+
 /** The values seeded by the migrations, so tests run against the real thresholds. */
 export const DEFAULT_CONFIG: VerificationConfig = {
   qr_max_distance_m: 150,
@@ -74,6 +96,9 @@ export const DEFAULT_CONFIG: VerificationConfig = {
   qr_relaxation_cooldown_seconds: 3600,
 
   nfc_tap_notification_coalesce_seconds: 300,
+
+  event_geofence_radius_m: 150,
+  event_auto_tag_default_window_hours: 4,
 
   rate_limit_qr_session_create_per_user_hour: 60,
   rate_limit_qr_redeem_per_user_hour: 60,
@@ -109,6 +134,8 @@ export class FakeConnectStore implements ConnectStore {
   connections: FakeConnection[] = [];
   blocks: Array<{ blocker: string; blocked: string }> = [];
   attempts: FakeAttemptRow[] = [];
+  events: FakeEvent[] = [];
+  eventRsvps: FakeEventRsvp[] = [];
   rateLimitEvents: Array<{ key: string; at: Date }> = [];
   /** Set to a Date to make every time-dependent store method deterministic. */
   now: Date = new Date("2026-08-13T18:00:00.000Z");
@@ -255,6 +282,47 @@ export class FakeConnectStore implements ConnectStore {
       mostRecentUnlockingFailureId: failures[0]?.id ?? null,
       lastRelaxedAttemptAt: lastRelaxed?.createdAt ?? null,
     };
+  }
+
+  /**
+   * Mirrors the candidate query in `supabase-connect-store.ts`, including what
+   * it deliberately does NOT do: no distance comparison and no tie-break. A
+   * fake that returned "the answer" instead of the candidates would make the
+   * geofence and ambiguity tests pass without exercising the rule that decides
+   * them.
+   */
+  async findCandidateEventsForConnection(input: {
+    presenterUserId: string;
+    scannerUserId: string;
+    now: Date;
+    windowHoursIfNoEnd: number;
+  }): Promise<CandidateEventRecord[]> {
+    const goingTo = (userId: string) =>
+      new Set(
+        this.eventRsvps
+          .filter((rsvp) => rsvp.userId === userId && rsvp.status === "going")
+          .map((rsvp) => rsvp.eventId),
+      );
+
+    const presenterGoing = goingTo(input.presenterUserId);
+    const scannerGoing = goingTo(input.scannerUserId);
+    const nowMs = input.now.getTime();
+
+    return this.events
+      .filter((event) => presenterGoing.has(event.id) && scannerGoing.has(event.id))
+      .filter((event) => {
+        if (event.startsAt.getTime() > nowMs) return false;
+        const endMs =
+          event.endsAt === null
+            ? event.startsAt.getTime() + input.windowHoursIfNoEnd * 3_600_000
+            : event.endsAt.getTime();
+        return nowMs <= endMs;
+      })
+      .filter(
+        (event): event is FakeEvent & { latitude: number; longitude: number } =>
+          event.latitude !== null && event.longitude !== null,
+      )
+      .map((event) => ({ id: event.id, latitude: event.latitude, longitude: event.longitude }));
   }
 
   /** Mirrors `rate_limit_consume`: record first, then count, so it errs toward refusing. */

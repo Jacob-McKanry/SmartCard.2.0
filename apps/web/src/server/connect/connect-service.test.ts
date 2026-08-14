@@ -35,6 +35,8 @@ const CONFIG: VerificationConfig = {
   qr_relaxed_max_accuracy_m: 150,
   qr_relaxation_cooldown_seconds: 3600,
   nfc_tap_notification_coalesce_seconds: 300,
+  event_geofence_radius_m: 150,
+  event_auto_tag_default_window_hours: 4,
   rate_limit_qr_session_create_per_user_hour: 60,
   rate_limit_qr_redeem_per_user_hour: 60,
   rate_limit_qr_redeem_failures_per_session: 5,
@@ -110,6 +112,9 @@ class FakeStore implements ConnectStore {
     throw new Error("not implemented — unused by heartbeatQrSession");
   }
   loadRelaxationHistory(): Promise<never> {
+    throw new Error("not implemented — unused by heartbeatQrSession");
+  }
+  findCandidateEventsForConnection(): Promise<never> {
     throw new Error("not implemented — unused by heartbeatQrSession");
   }
   logAttempt(): Promise<string | null> {
