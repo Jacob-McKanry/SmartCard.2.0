@@ -42,12 +42,33 @@ import {
  * backstopped by the database policies in
  * `supabase/migrations/20260809211100_rls_policies_identity_and_cards.sql`.
  *
- * Every action ends by calling `revalidatePath("/profile")` so the same
- * response that carries the mutation's result also carries the page's fresh
+ * Every action ends by calling `revalidateProfileScreens()` so the same
+ * response that carries the mutation's result also carries the pages' fresh
  * server-rendered state (see the Server Actions doc's "single response
  * carries data and UI") — the client never needs a follow-up fetch to see
  * its own edit take effect.
  */
+
+/**
+ * Both screens a profile edit changes, revalidated together.
+ *
+ * These actions are submitted from `/profile/edit`, and the result has to land
+ * in two places: the form the person is looking at, and the `/profile` view
+ * they came from and will go back to. Until the edit route existed there was
+ * one page and one `revalidatePath("/profile")` call; left as it was, that
+ * would now leave the edit page serving whatever it last rendered — a saved
+ * change appearing on the profile but not in the form that saved it.
+ *
+ * Two literal paths rather than `revalidatePath("/profile", "layout")`: the
+ * `layout` form invalidates everything sharing the layout file at that segment,
+ * and `/profile` has no layout of its own, so it would resolve to the shared
+ * `(app)` layout and purge every signed-in screen in the group. Naming the two
+ * paths says exactly what changed and touches nothing else.
+ */
+function revalidateProfileScreens(): void {
+  revalidatePath("/profile");
+  revalidatePath("/profile/edit");
+}
 
 async function requireContext(): Promise<AuthenticatedContext> {
   const context = await getAuthenticatedContext();
@@ -107,7 +128,7 @@ export async function updateProfileAction(
     return { error: messageOf(error) };
   }
 
-  revalidatePath("/profile");
+  revalidateProfileScreens();
   return { success: true };
 }
 
@@ -137,7 +158,7 @@ export async function addSocialLinkAction(
     return { error: messageOf(error) };
   }
 
-  revalidatePath("/profile");
+  revalidateProfileScreens();
   return { success: true };
 }
 
@@ -172,7 +193,7 @@ export async function updateSocialLinkAction(
     return { error: messageOf(error) };
   }
 
-  revalidatePath("/profile");
+  revalidateProfileScreens();
   return { success: true };
 }
 
@@ -185,7 +206,7 @@ export async function updateSocialLinkAction(
 export async function deleteSocialLinkAction(linkId: string): Promise<void> {
   const context = await requireContext();
   await deleteOwnSocialLink(context.supabase, context.userId, linkId);
-  revalidatePath("/profile");
+  revalidateProfileScreens();
 }
 
 // -----------------------------------------------------------------------
@@ -212,12 +233,12 @@ export async function uploadPhotoAction(
     return { error: messageOf(error) };
   }
 
-  revalidatePath("/profile");
+  revalidateProfileScreens();
   return { success: true };
 }
 
 export async function removePhotoAction(): Promise<void> {
   const context = await requireContext();
   await removeOwnProfilePhoto(context.supabase, context.userId);
-  revalidatePath("/profile");
+  revalidateProfileScreens();
 }
