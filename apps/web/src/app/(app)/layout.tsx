@@ -43,7 +43,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen flex-col">
       <Nav />
-      <div className="flex-1 pb-16 sm:pb-0">{children}</div>
+      {/*
+       * Bottom padding clears the dock, which floats above the content rather
+       * than sitting in flow (it is `fixed`, inset 14px from each edge). The
+       * two values are the prototype's own `scrollPadBottom`: 104px on phone,
+       * where the bar is a ~60px dock plus its 14px inset and breathing room,
+       * and 44px on desktop, where the bar is at the top and this is just the
+       * page's own end-of-content margin. Getting this wrong doesn't look
+       * broken — it silently hides the last row of every list behind glass.
+       */}
+      <div className="flex-1 pb-[104px] sm:pb-11">{children}</div>
     </div>
   );
 }
