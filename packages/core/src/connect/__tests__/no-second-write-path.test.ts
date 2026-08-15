@@ -220,6 +220,29 @@ describe("there is exactly one path that writes the social graph", () => {
         join("apps", "web", "src", "server", "connect", "geocode.ts"),
         join("apps", "web", "src", "server", "connect", "push.ts"),
         join("apps", "web", "src", "server", "connect", "supabase-connect-store.ts"),
+        // Added 2026-08-15 with the non-user card preview, by hand and with the
+        // reasoning written down — which is the entire point of this assertion
+        // being a list rather than a pattern.
+        //
+        // This importer is different in kind from the five above it, and the
+        // difference is why it needed a decision rather than a line. Every
+        // other one holds the service role to do something a signed-in caller's
+        // own RLS-bound client cannot: create the row that establishes an
+        // identity, write the graph through the atomic RPC, touch the
+        // service-role-only audit and config tables. This one holds it because
+        // THERE IS NO CALLER IDENTITY AT ALL — the reader is a visitor with no
+        // account, so there is no `auth.uid()` for any policy in this schema to
+        // be written against. The only alternative was a `users` policy whose
+        // USING clause is true for `anon`, which would open the table
+        // 20260809211100 calls "the most important policy file in the project"
+        // to the entire internet and leave the narrowing to whatever `select()`
+        // list the application happened to send.
+        //
+        // What keeps it honest is that the file is narrow and says so at
+        // length: two entry points, each taking only a credential (a card code
+        // or a signed QR token), a hardcoded column list, no caller-supplied
+        // filter of any kind, and `social_links` never read.
+        join("apps", "web", "src", "server", "cards", "card-preview-service.ts"),
       ].sort(),
     );
   });
