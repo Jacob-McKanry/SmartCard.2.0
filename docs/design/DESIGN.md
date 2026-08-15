@@ -302,6 +302,90 @@ forbids showing one anyway.
   beside it and no interactivity. Changing it happens on the edit screen.
 - **Profile's ring diagram has two bands.** See §3's implementation notes.
 
+### Implementation notes — Events (2026-08-15)
+
+The six Events screens, built to §6 above from the prototype's "Events browse",
+"Event detail", "Host approval queue", "Create event" and "RSVP states" blocks.
+Where the built screen departs from the spec, the departure and its reason are
+here rather than only in a commit message.
+
+**One departure is an access rule beating a design detail, and it is the one to
+read first.**
+
+- **The host approval queue shows only people awaiting a decision — not who is
+  going.** §6, `docs/design-lab-reference.md` and `public.event_rsvp_queue`
+  itself all describe the queue as listing everyone `pending`, `waitlist` *and*
+  `going`, with names and photos. §7's "the attendee list is nobody's" has no
+  host exception, and a list of names of people attending an event is an
+  attendee list whoever is reading it. The `going` rows are filtered out in
+  `events/lib/access-rules.ts`. **It costs the host nothing:**
+  `public.decide_event_rsvp` refuses any row that is not `pending` or `waitlist`
+  with `not_decidable` — approving an approved person is a no-op and denying
+  them would be an *eject*, which this product deliberately does not have — so
+  those rows could only ever have been looked at. The host still sees how many
+  are going, in the same four-stat row everybody else sees.
+
+**Where the design named a fact the backend does not hold.**
+
+- **The waitlist pill carries no position on a person's own answer.** §5 draws it
+  "accent-tinted with a position". Computing a position needs every other
+  waiting person's `responded_at`, and the `event_rsvps` select policy returns
+  only your own row and your connections' — that set *is* an attendee list, so
+  the absence is the rule working. A number derived from the readable fragment
+  would be confidently wrong. The host's queue does show positions, because a
+  host legitimately holds the whole waiting list through `event_rsvp_queue`.
+- **The host's name is frequently not renderable, and the row says so.**
+  `users`'s read policy admits you, your connections, and people you are both
+  `going` with; hosting creates no RSVP row, so for most viewers of most public
+  events the host is unreadable. The row then reads "Host not shown" with the
+  rule beneath it, rather than guessing or vanishing.
+- **Create has no cover-photo control.** `uploadEventCover` keys the object as
+  `{event_id}/cover.{ext}`, so a cover cannot exist before the event does, and
+  no Server Action uploads one afterwards; `createEventAction` sends
+  `cover_image_path: null`. The prototype's dropzone would be a control that
+  cannot work, which §7 rules out. Cards and the detail hero therefore render
+  §5's striped placeholder with a mono label, never a stand-in image.
+- **Create has no map pin.** `latitude`/`longitude` exist and the action accepts
+  them, but nothing geocodes an event address, so the control would store
+  nothing.
+- **There is no "RSVP states" route.** That prototype block is a design
+  catalogue of the six pills with example copy — building it as a screen would
+  mean shipping a page of invented data. All six treatments are implemented once
+  in `events/lib/rsvp-pill.tsx` and appear wherever real data produces them.
+
+**Judgment calls.**
+
+- **Browse is a union, not just `browseEvents`.** The public directory plus the
+  viewer's own hosted, answered and *invited* events, deduplicated. The badge in
+  §6 needs it, but the real reason is that a private event somebody was invited
+  to was reachable from nowhere in the app: it is not public, they do not host
+  it, and an invite creates no RSVP row. `listInvitedEvents` was added to the
+  service layer for this.
+- **"Admit past capacity" appears whenever the event is full**, not only on
+  waitlist rows as the prototype draws it. At a full event a plain approve of a
+  `pending` row stores `waitlist`, not `going` — hiding the override there would
+  leave a host pressing Approve and watching nothing happen, which is the silent
+  failure §7 rules out.
+- **The pending count appears only on the dark host panel.** Not on the host's
+  own browse card, not in the stat row. §6 makes the dark ground mean
+  "host-only", and the one number on the page nobody else can see is the number
+  that most needs it.
+- **Withdrawing an RSVP uses the app's confirm panel.** §7's "destructive = two
+  steps, one way" — it removes an answer rather than changing it, it can promote
+  somebody off the waitlist in the same transaction, and on a private event it
+  can end the viewer's own access to the page. Each consequence is named
+  separately, as §7 requires.
+- **The footnote lines are `--text-muted`, not the prototype's `#a4abbb`.** They
+  state access rules, and §8 puts rule-bearing text at `--text-muted` or darker.
+  Same call `/connections` made for its own footnote.
+- **The approval toggle is a real checkbox**, not the prototype's painted pill:
+  the Server Action reads it by name, it is keyboard-reachable, and a screen
+  reader announces its state without any ARIA. §8's floor beats a 40×24 knob.
+- **Event date/time formatting and the status pills moved into
+  `events/lib/`** and Home now imports them. The unknown-timezone fallback
+  (render UTC, *label* UTC) and "`going` is the only solid accent pill" are
+  rules; four copies of a rule is four chances for one of them to drift.
+
 ### Implementation note — "Profile as a visitor sees it" (2026-08-15)
 
 The signed-out card preview (`components/non-user-preview.tsx`, reached from
