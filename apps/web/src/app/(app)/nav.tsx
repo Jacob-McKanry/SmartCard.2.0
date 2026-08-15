@@ -80,7 +80,20 @@ const NAV_ITEMS: readonly NavItem[] = [
   { key: "home", href: "/", label: "Home", icon: House },
   { key: "people", href: "/connections", label: "People", icon: Users },
   { key: "activity", href: "/activity", label: "Activity", icon: Bell },
-  { key: "profile", href: "/profile", label: "Profile", icon: CircleUserRound },
+  {
+    key: "profile",
+    href: "/profile",
+    label: "Profile",
+    icon: CircleUserRound,
+    /*
+     * Settings is reached from Profile and belongs to it, but it is a
+     * top-level route rather than `/profile/settings` — see that page and the
+     * DESIGN.md note for why. Without this entry `activeIndex` would find no
+     * match and fall back to slot 0, lighting **Feed** while you sit on
+     * Settings: not a crash, just the nav quietly lying about where you are.
+     */
+    alsoActiveFor: ["/settings"],
+  },
 ];
 
 /** Exact match for `/`, prefix match otherwise — so nested records keep their slot lit. */

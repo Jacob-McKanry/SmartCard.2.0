@@ -59,6 +59,26 @@ export function kindeIssuerUrl(): string {
 }
 
 /**
+ * This app's own public origin, e.g. `https://smartcard.tech`.
+ *
+ * The same variable `@kinde-oss/kinde-auth-nextjs` builds its redirect URI
+ * from, reused here for the same reason `kindeIssuerUrl()` is reused rather
+ * than re-derived: a second source for "where this app lives" is a second thing
+ * that can disagree with the first.
+ *
+ * Read by the Settings screen to build an absolute `returnUrl` for the account
+ * portal. That has to be absolute — the SDK's portal handler rejects a relative
+ * one and then silently redirects home — so this is not somewhere a relative
+ * path can be substituted.
+ */
+export function kindeSiteUrl(): string {
+  return required(
+    "KINDE_SITE_URL",
+    "It is this app's own public origin, e.g. https://smartcard.tech — the same value the Kinde SDK builds its redirect URI from.",
+  ).replace(/\/+$/, "");
+}
+
+/**
  * Every Kinde client id this backend will accept a token from.
  *
  * Kinde puts the id of the application a token was minted for in the `azp`
