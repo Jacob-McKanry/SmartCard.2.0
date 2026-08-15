@@ -8,7 +8,7 @@ import {
 } from "@/server/events/events-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 
-import { viewerRole } from "../../lib/access-rules";
+import { decidableQueueEntries, viewerRole } from "../../lib/access-rules";
 import { QueueView } from "./queue-view";
 
 /**
@@ -65,14 +65,22 @@ export default async function EventQueuePage({
   ]);
 
   /*
-   * Photos for the people in the queue. `event_rsvp_queue` hands back a
-   * `photo_path`, which is an object key in a private bucket rather than a URL,
-   * so each one still needs a short-lived signed link minted through the host's
-   * own client. A failure degrades to initials — `signedProfilePhotoUrl` returns
-   * `null` rather than throwing, and a missing photo is not an error state.
+   * Photos, for the rows that will actually be drawn.
+   *
+   * `event_rsvp_queue` hands back a `photo_path` — an object key in a private
+   * bucket, not a URL — so each one needs a short-lived signed link minted
+   * through the host's own client. A failure degrades to initials;
+   * `signedProfilePhotoUrl` returns `null` rather than throwing, and a missing
+   * photo is not an error state.
+   *
+   * The list is narrowed by `decidableQueueEntries` *before* minting, not after.
+   * `QueueView` would drop the `going` rows anyway, so minting for them would
+   * only be waste — but a signed URL is a bearer credential for somebody's photo,
+   * and the rule for those is the same as for any other credential: do not
+   * create one you have no use for.
    */
   const photoEntries = await Promise.all(
-    entries.map(
+    decidableQueueEntries(entries).map(
       async (entry) => [entry.userId, await signedProfilePhotoUrl(supabase, entry.photoPath)] as const,
     ),
   );
