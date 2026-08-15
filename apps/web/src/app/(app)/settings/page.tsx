@@ -137,14 +137,22 @@ export default async function SettingsPage() {
       <Group label="WHAT PEOPLE SEE">
         <Panel>
           {/*
-           * A reading with a route to the control, not a control. The same call
-           * Profile made, for the same reason, and here there is a second: the
-           * only Server Action that writes this column
-           * (`profile/actions.ts#updateProfileAction`) submits the whole
-           * profile form, so a lone toggle posting to it would blank out every
-           * other field it did not carry. Making this switchable in place is a
-           * small new action, not a re-use of an existing one, and inventing a
-           * write path was out of scope for this pass.
+           * A reading with a route to the control, not a control.
+           *
+           * AMENDED 2026-08-15 — the second reason this used to give has been
+           * removed at its source and no longer holds. It said that the only
+           * action writing this column (`updateProfileAction`) submits the whole
+           * profile form, so a lone toggle posting to it would blank every field
+           * it did not carry. `updateEmailOptInAction` now writes this one
+           * column and nothing else, over the same service function and the same
+           * column-level grant, and Profile's row is a real switch on top of it.
+           *
+           * This row stays a reading, which is now a design call rather than a
+           * constraint: Settings is a directory of where things live, and a
+           * single live control among a column of navigation rows would be the
+           * odd one out. The state is spelled out in words either way (§8), and
+           * the route it points at is real. Making it switchable in place is now
+           * a small change rather than a new write path, if that is ever wanted.
            */}
           <RowShell last>
             <Link href="/profile/edit#details" className={ROW_CLASS}>
