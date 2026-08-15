@@ -165,6 +165,65 @@ with check (
 );
 
 -- =============================================================================
+-- AMENDMENT (2026-08-15) — THREE STATEMENTS IN THIS FILE ARE NOW OUT OF DATE.
+-- THE SQL ABOVE IS UNCHANGED; 20260815130200 AND 20260815130300 CHANGE WHAT IT
+-- ADDS UP TO, AND THE DIFFERENCES ARE RECORDED HERE PER CLAUDE.md.
+--
+-- 1. THE `users` SELECT POLICY ABOVE HAS BEEN REPLACED.
+--    20260815130200 drops and recreates "read self, connections, and
+--    co-attendees only" with one extra condition: the connection and
+--    co-attendee branches now also require `users.status <> 'deleted'`. The
+--    self branch is untouched, and nothing was widened — the amended policy
+--    returns a strict subset of what this one returned.
+--
+--    Why it had to change: self-serve account deletion is a soft delete, and a
+--    soft delete that leaves you readable by everyone you have met is a setting
+--    rather than a deletion. Account status was previously enforced only where
+--    tokens are minted (`ensureUser()`), which is the right place for
+--    AUTHENTICATION and says nothing about who may still read your row. The
+--    test named in this file's own words applies: reintroducing search "would
+--    require consciously weakening this policy in a reviewed migration, which
+--    is the point" — this is the same bar met in the narrowing direction.
+--
+--    `suspended` is deliberately still readable. A suspension is a hold on the
+--    account holder, often temporary and usually administrative; blanking a
+--    suspended person out of a friend's list would leak a moderation action to
+--    third parties. The test names the state it means.
+--
+-- 2. "No DELETE policy on `users`. Deletion is a soft state change
+--    (`status = 'deleted'`) performed by an administrator; a hard delete
+--    cascades into the graph and must never be one client request away."
+--
+--    The first clause and the last clause both still hold; the middle one no
+--    longer does. Deletion is still a soft state change, there is still no
+--    DELETE policy and no DELETE grant on `users`, and it is still not one
+--    client request away — `public.soft_delete_own_account()` (20260815130300)
+--    is two taps behind the app's shared confirmation panel, and at the
+--    database it is a `security definer` function taking NO ARGUMENTS, so the
+--    subject is read from the JWT and cannot be named by the caller.
+--
+--    What changed is who initiates it: a member can now delete their own
+--    account, which the project owner asked for on 2026-08-15. What did NOT
+--    change is the property that sentence exists to protect: `status` is still
+--    absent from the column-level UPDATE grant below, so no client request sets
+--    it directly, and restoring an account is `service_role` only.
+--
+-- 3. THE CARD KILL SWITCH NOW HAS A SECOND CALLER, AND IT IS NOT A CLIENT.
+--    The `cards` section describes `update (status)` as "the single write
+--    path". The same transition is now also written by
+--    `public.soft_delete_own_account()`, which flips every `assigned` card of a
+--    deleting member to `revoked` in the same transaction as the status change
+--    — a card that still resolves `/card/<code>` to a phone number after its
+--    owner has deleted their account defeats the point of deleting.
+--
+--    Note the direction: the delete only ever revokes. Nothing anywhere
+--    un-revokes a card except the owner, through the grant below, which is also
+--    why the restore path deliberately leaves cards off (`cards.status` records
+--    no reason, so the database cannot tell a card the delete revoked from one
+--    the owner revoked after losing it).
+-- =============================================================================
+
+-- =============================================================================
 -- AMENDMENT (2026-08-15) — SOCIAL LINKS ARE NOW DISCLOSED TO UNAUTHENTICATED
 -- CALLERS ON ONE PATH, WHICH REVERSES WHAT THE `social_links` SECTION ABOVE
 -- SAYS. NO SQL IN THIS FILE CHANGED.

@@ -10,7 +10,7 @@
 import { z } from "zod";
 
 import { integerSchema, latitudeSchema, longitudeSchema, timestamptzSchema, uuidSchema } from "./scalars";
-import { eventVisibilitySchema } from "./enums";
+import { eventCancelReasonSchema, eventStatusSchema, eventVisibilitySchema } from "./enums";
 
 export const eventRowSchema = z.object({
   id: uuidSchema,
@@ -62,6 +62,24 @@ export const eventRowSchema = z.object({
    * (`apps/web/src/server/events/cover-url.ts`).
    */
   cover_image_path: z.string().nullable(),
+
+  /**
+   * `scheduled` | `cancelled` (20260815130100). Absent from `eventUpdateSchema`
+   * below and from the column-level UPDATE grant, because no client writes it:
+   * the only writer is `public.soft_delete_own_account()`, cancelling the events
+   * of a host who has deleted their account.
+   */
+  status: eventStatusSchema,
+
+  /** When it was cancelled. Null exactly when `status` is `scheduled`, by CHECK. */
+  cancelled_at: timestamptzSchema.nullable(),
+
+  /**
+   * Why it was cancelled. Null exactly when `status` is `scheduled`, by the same
+   * CHECK — the three columns are constrained to agree so a half-applied
+   * cancellation cannot exist.
+   */
+  cancelled_reason: eventCancelReasonSchema.nullable(),
 
   created_at: timestamptzSchema,
 });

@@ -142,7 +142,7 @@ export async function browseEvents(
   let query = supabase
     .from("events")
     .select(
-      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, status, cancelled_at, cancelled_reason, created_at, cities!inner(id, slug, name, state)",
     )
     .eq("visibility", "public")
     .limit(BROWSE_LIMIT);
@@ -183,7 +183,7 @@ export async function getEventForViewer(
   const { data, error } = await supabase
     .from("events")
     .select(
-      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, status, cancelled_at, cancelled_reason, created_at, cities!inner(id, slug, name, state)",
     )
     .eq("id", eventId)
     .maybeSingle();
@@ -225,7 +225,7 @@ export async function listHostedEvents(
   const { data, error } = await supabase
     .from("events")
     .select(
-      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, status, cancelled_at, cancelled_reason, created_at, cities!inner(id, slug, name, state)",
     )
     .eq("host_user_id", userId)
     .order("starts_at", { ascending: false })
@@ -296,7 +296,7 @@ export async function listInvitedEvents(
   const { data, error } = await supabase
     .from("events")
     .select(
-      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, status, cancelled_at, cancelled_reason, created_at, cities!inner(id, slug, name, state)",
     )
     .in("id", eventIds)
     .order("starts_at", { ascending: true });
@@ -385,7 +385,7 @@ export async function listAttendingEvents(
   const { data: events, error: eventsError } = await supabase
     .from("events")
     .select(
-      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, status, cancelled_at, cancelled_reason, created_at, cities!inner(id, slug, name, state)",
     )
     .in(
       "id",
@@ -683,7 +683,7 @@ export async function createEvent(
     .from("events")
     .insert({ ...parsed, host_user_id: hostUserId })
     .select(
-      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at",
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, status, cancelled_at, cancelled_reason, created_at",
     )
     .single<EventRow>();
 

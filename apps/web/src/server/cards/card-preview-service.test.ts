@@ -641,6 +641,25 @@ describe("every refusal on the QR path is the same refusal", () => {
     expect(fake.recorded).toEqual([]);
   });
 
+  it("refuses the session a soft delete burned, so a QR still on screen stops resolving", async () => {
+    // `soft_delete_own_account()` flips every `active` session of the deleting
+    // person to `revoked` in the same transaction as the card revocation, and
+    // for the same reason: a code that was on screen at the moment they tapped
+    // Delete would otherwise keep minting tokens that resolve to their phone
+    // number for the rest of the session's life. This asserts the surface
+    // honours that write — the `revoked` branch is shared with the
+    // five-failure rule, and the point here is that the delete reaches it.
+    const fake = fakeWorld(
+      healthyWorld({
+        sessions: { [SESSION_ID]: liveSession({ status: "revoked" }) },
+        subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) },
+      }),
+    );
+
+    await expect(resolveQrTokenPreview(goodToken, request(), fake.deps)).resolves.toBeNull();
+    expect(fake.recorded).toEqual([]);
+  });
+
   it("produces exactly one distinct result across every QR failure mode", async () => {
     const worlds: [string, FakeWorld][] = [
       [forgedToken, healthyWorld()],
@@ -837,6 +856,73 @@ describe("a failed enrichment read discloses less, never refuses and never lies"
     const preview = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
     expect(preview?.photo).toBeNull();
     expect(preview?.photoUrl).toBeNull();
+  });
+
+  /**
+   * ADDED 2026-08-15 WITH SELF-SERVE ACCOUNT DELETION.
+   *
+   * The cases above already cover "a revoked card" and "an owner who has been
+   * soft-deleted" as separate refusals. What they do not cover is the state a
+   * real deletion actually produces, which is BOTH AT ONCE plus a burned
+   * session — and the property worth asserting is not that each half refuses
+   * (that is already tested) but that the combination is still the same single
+   * refusal, on every surface, with nothing logged.
+   *
+   * These are extensions of the equivalence set rather than new tests of the
+   * same branches: each one is written as the post-deletion world and compared
+   * against the canonical "unknown code" answer.
+   */
+  it("refuses the exact state a soft delete leaves behind, identically", async () => {
+    // `soft_delete_own_account()` sets the owner to `deleted` AND flips every
+    // assigned card to `revoked`, in one transaction. Two independent locks on
+    // this surface, and the test asserts the pair produces the ordinary refusal
+    // rather than some third behaviour neither branch was tested for.
+    const afterDeletion = healthyWorld({
+      cards: { [GOOD_CODE]: assignedCard({ status: "revoked" }) },
+      subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) },
+    });
+
+    const deleted = await resolveCardCodePreview(GOOD_CODE, request(), fakeWorld(afterDeletion).deps);
+    const unknown = await resolveCardCodePreview(
+      UNKNOWN_CODE,
+      request(),
+      fakeWorld(healthyWorld()).deps,
+    );
+
+    expect(deleted).toBeNull();
+    expect(deleted).toStrictEqual(unknown);
+  });
+
+  it("refuses a deleted owner even if the card revocation somehow did not happen", () => {
+    // The belt-and-braces claim stated as a test. The transaction makes a
+    // half-applied delete impossible, but this surface must not DEPEND on that:
+    // the owner-status check in `discloseSubject` is what refuses here, and it
+    // is reached whatever state the card is in.
+    return expect(
+      resolveCardCodePreview(
+        GOOD_CODE,
+        request(),
+        fakeWorld(
+          healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) } }),
+        ).deps,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it("refuses a deleted owner on the vCard surface too, and writes no audit row", async () => {
+    // The download is the surface that outlives the page — a `.vcf` saved into
+    // somebody's contacts is the disclosure that cannot be taken back — so it
+    // gets its own assertion rather than being assumed to follow the page.
+    const fake = fakeWorld(
+      healthyWorld({
+        cards: { [GOOD_CODE]: assignedCard({ status: "revoked" }) },
+        subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) },
+      }),
+    );
+
+    await expect(resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps)).resolves.toBeNull();
+    expect(fake.recorded).toEqual([]);
+    expect(fake.photoBytesAsked).toEqual([]);
   });
 
   it("never reads links, counts or photo bytes for a subject it is about to refuse", async () => {

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { AuthFailureScreen, classifyAuthFailure } from "@/components/auth-failure-screen";
+import { hasCompletedSignup } from "@/server/onboarding/onboarding-service";
 
 import { Nav } from "./nav";
 
@@ -48,6 +49,30 @@ import { Nav } from "./nav";
  * a database outage must not be presented to somebody as "your account is on
  * hold", which is exactly the reassuring, confident, wrong answer that a
  * catch-all would produce.
+ *
+ * A FOURTH JOB: THE ONBOARDING GATE
+ *
+ * A new account is sent to `/onboarding` until it has been through the flow.
+ * The check is one boolean off the caller's own row (`has_completed_signup`),
+ * read with their own RLS-bound client.
+ *
+ * Three things about it are deliberate:
+ *
+ *  - **It is here rather than in each page**, for the same reason the auth gate
+ *    is: five copies of a redirect is four chances to forget one, and the one
+ *    forgotten is the screen somebody lands on.
+ *  - **`/onboarding` is outside this route group**, so the gate needs no
+ *    "except this page" branch. A layout is never told the pathname (see
+ *    `sign-in/page.tsx`), so a gate that had to exempt a page inside its own
+ *    group would have no way to, and would redirect that page to itself
+ *    forever.
+ *  - **It costs one small query per signed-in render**, on top of the token
+ *    exchange that is already `cache()`d. Folding it into some other read was
+ *    considered and rejected: this layout deliberately loads nothing else, and
+ *    giving it a reason to would make every screen's data depend on the gate.
+ *
+ *  It also means an existing member never sees this, because 20260815130000
+ *  backfilled every row that existed to `true`. Nobody mid-pilot gets ambushed.
  */
 export const dynamic = "force-dynamic";
 
@@ -63,6 +88,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (context === null) {
     redirect("/sign-in");
+  }
+
+  /*
+   * Fails closed by throwing rather than by guessing: `hasCompletedSignup`
+   * raises if the read fails, and neither default is safe — `false` drops a
+   * set-up member into the wizard on a transient error, `true` skips setup for
+   * a genuinely new account. `redirect()` signals by throwing, so it is outside
+   * the try/catch above; wrapping it would turn the redirect into a caught
+   * error.
+   */
+  if (!(await hasCompletedSignup(context.supabase, context.userId))) {
+    redirect("/onboarding");
   }
 
   return (
