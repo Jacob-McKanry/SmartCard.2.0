@@ -49,6 +49,29 @@ export const RATE_LIMIT_ACTIONS = {
   /** `nfc/redeem`, per user and per card, per hour. */
   nfcRedeem: "nfc_redeem",
   /**
+   * The non-user card preview (`/card/<code>` signed out, and `/c/<token>`),
+   * per IP and per card, per hour. Thresholds seeded by 20260815120000.
+   *
+   * NOT A §4.6 LIMIT — §4.6 predates this feature and lists nothing for it. It
+   * is registered here anyway, beside the others, because this object is the
+   * one place an action name is allowed to exist: two copies of the literal
+   * `"card_preview"` in two files is precisely how a rate limit silently
+   * becomes two half-empty counters, which is the one failure mode
+   * `rate_limit_events.subject_kind`'s CHECK constraint already exists to
+   * prevent one level down.
+   *
+   * IT IS ALSO THE ONLY ACTION IN THIS LIST AN UNAUTHENTICATED CALLER CAN
+   * SPEND, and that is the part worth stopping on. Every other action here has
+   * a signed-in user behind it, and `nfc-verifier.ts` leans on that in as many
+   * words: the per-user budget "is the limit that actually resists
+   * brute-forcing card codes, because a guesser has to be a signed-in user".
+   * On the preview path there is no account to charge, so that limit does not
+   * exist. What stands in its place is the per-IP and per-card pair, plus the
+   * 48 bits of non-user-chosen entropy in the card code — which was always the
+   * control doing the real work.
+   */
+  cardPreview: "card_preview",
+  /**
    * Not a limit — a coalescing marker. Records that the card's owner was pushed
    * a tap notification, so the next tap inside
    * `nfc_tap_notification_coalesce_seconds` does not push again (§4.5
