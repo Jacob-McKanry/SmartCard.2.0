@@ -14,6 +14,7 @@ import { cardCodeSchema, type AppConfigKey } from "@smartcard/types";
 
 import { clientIpFrom, hashIpAddress } from "@/server/connect/request-context";
 import { supabaseConnectStore } from "@/server/connect/supabase-connect-store";
+import { countEventsAttended } from "@/server/events/attendance-count";
 import { qrSigningSecret } from "@/server/env";
 import { serviceRoleClient } from "@/server/supabase/service-role-client";
 
@@ -997,26 +998,31 @@ export function supabaseCardPreviewStore(
      * expression in a module whose entire claim is that it has none. Two plain
      * `.eq()`s cost a round trip and keep the claim true.
      *
-     * WHY "EVENTS ATTENDED" IS `going` PLUS `starts_at` IN THE PAST. Profile's
-     * `countEventsAttended` uses exactly this rule and explains it: `going` is
-     * the only status the database itself treats as attendance, and an event
-     * that has not happened yet has not been attended however firmly it was
-     * answered. Mirroring it matters more than it looks — a preview that counted
-     * differently from the owner's own screen would have the owner arguing with
-     * a page about strangers they cannot see.
+     * WHY "EVENTS ATTENDED" IS NOT COUNTED HERE ANY MORE (amended 2026-08-15).
+     * It is `countEventsAttended` in `server/events/attendance-count.ts`, and
+     * this module now calls the same function Profile does. This file used to
+     * carry the query inline, alongside a note recording a "known, deliberate
+     * difference from Profile": Profile derived its number from
+     * `listAttendingEvents`, which caps at the 50 most recent RSVPs, so at 50+
+     * RSVPs the owner's own screen undercounted while this page — counting in
+     * SQL — did not. That was written down as a curiosity and it was a bug: a
+     * person's own profile disagreeing with the page strangers see, in the
+     * direction of the owner being told less about themselves. One function now
+     * answers the question for both, because two implementations of one number
+     * are what let them drift in the first place.
      *
-     * ONE KNOWN, DELIBERATE DIFFERENCE FROM PROFILE. Profile derives its number
-     * from `listAttendingEvents`, which caps at the 50 most recent RSVPs, so at
-     * 50+ RSVPs Profile itself would undercount. This counts in SQL and is
-     * exact. Nobody in a 337-user pilot is near that, and the honest number is
-     * the right one to show; it is recorded here so that a future "the preview
-     * says 51 and my profile says 50" is a known thing rather than a mystery.
+     * The property that made the inline query safe to run without a policy
+     * behind it is unchanged and is asserted in that module's own header:
+     * `head: true` with `count: "exact"` transfers a count header and an empty
+     * body, so the widest thing a bug in it can disclose is a different NUMBER,
+     * never a person. The connection counts below stay here because they are
+     * this page's alone — no other surface computes them.
      *
-     * Throws if EITHER half fails, so the caller omits the whole diagram rather
-     * than pairing a real count with a fabricated zero.
+     * Throws if ANY of the three fails, so the caller omits the whole diagram
+     * rather than pairing a real count with a fabricated zero.
      */
     async loadPreviewCounts(userId: string, now: Date): Promise<PreviewCounts> {
-      const [aSide, bSide, attended] = await Promise.all([
+      const [aSide, bSide, eventsAttended] = await Promise.all([
         client
           .from("connections")
           .select("id", { count: "exact", head: true })
@@ -1027,18 +1033,13 @@ export function supabaseCardPreviewStore(
           .select("id", { count: "exact", head: true })
           .eq("status", "active")
           .eq("user_b_id", userId),
-        // `events!inner` makes the join a filter rather than a left join, so
-        // `starts_at` can be compared without any `events` column being
-        // returned — `head: true` returns no body either way.
-        client
-          .from("event_rsvps")
-          .select("id, events!inner(starts_at)", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("status", "going")
-          .lt("events.starts_at", now.toISOString()),
+        // The shared counter, on this module's own client. It throws on a
+        // failure or a missing count header rather than defaulting, which is
+        // what keeps the all-or-nothing promise below.
+        countEventsAttended(client, userId, now),
       ]);
 
-      for (const result of [aSide, bSide, attended]) {
+      for (const result of [aSide, bSide]) {
         if (result.error) {
           throw new Error(`Failed to count for the card preview: ${result.error.message}`, {
             cause: result.error,
@@ -1054,7 +1055,7 @@ export function supabaseCardPreviewStore(
 
       return {
         connections: (aSide.count ?? 0) + (bSide.count ?? 0),
-        eventsAttended: attended.count ?? 0,
+        eventsAttended,
       };
     },
 
