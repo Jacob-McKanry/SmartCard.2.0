@@ -34,3 +34,4 @@ export * from "./contact-import-matches";
 export * from "./pending-connections";
 export * from "./user-push-tokens";
 export * from "./rate-limit-events";
+export * from "./card-preview-views";

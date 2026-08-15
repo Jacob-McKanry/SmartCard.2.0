@@ -33,6 +33,21 @@ import { jsonbSchema, timestamptzSchema, uuidSchema } from "./scalars";
  * whether the resulting meeting is labelled with an event. That migration's
  * header says so at length, because the distinction is invisible from the
  * table.
+ *
+ * Two more added 2026-08-15 by 20260815120000 for the non-user card preview.
+ * They are the only rows here read by a request with NO SIGNED-IN USER behind
+ * it, which is why they exist at all: every §4.6 limit that resists guessing a
+ * card code is keyed to a user, and there is no account to charge on that path.
+ *
+ * They are also the only keys in this list that `parseVerificationConfig`
+ * (`packages/core/src/connect/config.ts`) deliberately does NOT read. That
+ * function treats its key list as closed and refuses the whole connect flow if
+ * any single row is missing — right for keys the connect flow reads, wrong for
+ * these two, where it would mean a missing preview row stops people connecting
+ * in person. The preview reads its own rows in
+ * `apps/web/src/server/cards/card-preview-service.ts` and refuses only itself.
+ * The rule that is NOT relaxed is the important one: still no default, still a
+ * throw on a missing or unusable value.
  */
 export const appConfigKeySchema = z.enum([
   "qr_max_distance_m",
@@ -60,6 +75,9 @@ export const appConfigKeySchema = z.enum([
   "rate_limit_nfc_redeem_per_card_hour",
   "rate_limit_nfc_redeem_per_user_hour",
   "rate_limit_connect_per_ip_hour",
+
+  "rate_limit_card_preview_per_ip_hour",
+  "rate_limit_card_preview_per_card_hour",
 ]);
 export type AppConfigKey = z.infer<typeof appConfigKeySchema>;
 
