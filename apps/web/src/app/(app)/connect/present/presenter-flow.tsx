@@ -5,8 +5,8 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { ConnectApiError, createQrSession, heartbeatQrSession } from "@smartcard/api-client";
 
-import { Button } from "@/components/ui/button";
-
+import { ConnectedPayoff, type PayoffViewer } from "../connected-payoff";
+import { QuietOutcome, StatusLine } from "../lib/connect-ui";
 import { getOrCreateDeviceId } from "../lib/device-id";
 import { getFreshLocation, locationDenialMessage } from "../lib/geolocation";
 import { buildConnectUrl } from "../lib/qr-url";
@@ -17,6 +17,13 @@ import {
   requestWakeLock,
   type WakeLockSentinelLike,
 } from "./wake-lock";
+
+/**
+ * How long the code stays faded out before the new one is swapped in. Matches
+ * the CSS transition below, and the prototype's own 560ms — see the
+ * cross-fade comment in the component.
+ */
+const QR_CROSSFADE_MS = 560;
 
 /**
  * The presenter screen ("Show my code"), wired on top of `presenter-state.ts`.
@@ -38,8 +45,13 @@ import {
  * comment for why that page-level check is UX only, not the security
  * boundary; the boundary is `getAuthenticatedContext()` re-run inside every
  * `/api/connect/*` route on every request this component makes.
+ *
+ * `viewer` is the signed-in person's own initials and photo, resolved on the
+ * server by `../page.tsx` and passed down purely so the success payoff can
+ * draw their side of the two-disc flourish. It is presentation data about the
+ * caller themselves and is never sent anywhere.
  */
-export function PresenterFlow() {
+export function PresenterFlow({ viewer }: { viewer: PayoffViewer }) {
   const [state, dispatch] = useReducer(presenterReducer, initialPresenterState);
   const wakeLockSentinelRef = useRef<WakeLockSentinelLike | null>(null);
   /**
@@ -60,6 +72,17 @@ export function PresenterFlow() {
   const [origin] = useState<string | null>(() =>
     typeof window === "undefined" ? null : window.location.origin,
   );
+  /**
+   * The token currently being faded out, or null. Set by the heartbeat effect
+   * the moment it learns a rotation happened, and never cleared: the dim is
+   * applied only while it still *equals* the token on screen, so the
+   * subsequent dispatch of the new token releases it automatically. That is
+   * deliberate — a separate "clear the flag" step is the thing that would
+   * strand the plate at 12% opacity if a session ended mid-fade, and tokens
+   * are unique so a leftover value can never match a later one.
+   */
+  const [fadingToken, setFadingToken] = useState<string | null>(null);
+  const dimmed = state.phase === "active" && fadingToken === state.token;
 
   // ---------------------------------------------------------------------
   // requesting-location -> starting -> active
@@ -146,12 +169,37 @@ export function PresenterFlow() {
   // `rotateAfterSeconds` and re-scheduled every time a fresh `active` state
   // arrives — so a server-side change to the rotation cadence takes effect
   // on the very next cycle rather than needing a hardcoded constant here.
+  //
+  // THE ROTATION CROSS-FADE IS DRIVEN FROM HERE, NOT FROM A SEPARATE EFFECT
+  //
+  // DESIGN.md §6: "Rotation is a soft cross-fade (opacity to .12 +
+  // blur(7px), swap, back) — never a hard cut." The swap has to happen at the
+  // *bottom* of the fade, while the code is unreadable; that is what makes it
+  // a cross-fade rather than a flicker. This is the one place that knows a
+  // rotation has actually happened, so it is where the fade is sequenced:
+  // dim, wait, then dispatch the new token. Everything below runs inside an
+  // async callback, so there is no synchronous state update in an effect body
+  // and no second effect racing this one to decide what is on screen.
+  //
+  // A heartbeat legitimately returns the SAME token when rotation is not yet
+  // due; that dispatches straight through with no fade, which is why the
+  // comparison is on the value rather than on "a heartbeat arrived".
+  //
+  // WHAT IS BRIEFLY ON SCREEN, AND WHY IT IS SAFE. For the ~560ms of the
+  // fade the superseded token is still displayed, at 12% opacity behind a 7px
+  // blur — unreadable by a camera, which is the point of fading rather than
+  // cutting. Even if one were read, this fails closed: the server has already
+  // rotated the nonce, so redeeming it is a `nonce_mismatch` rejection like
+  // any other, answered with the same generic refusal as everything else.
+  // Nothing here can turn a superseded token into a connection.
   // ---------------------------------------------------------------------
   useEffect(() => {
     if (state.phase !== "active") return;
-    const { sessionId, rotateAfterSeconds } = state;
+    const { sessionId, rotateAfterSeconds, token: currentToken } = state;
 
     let cancelled = false;
+    let fadeTimer: number | undefined;
+
     const timer = window.setTimeout(async () => {
       const location = await getFreshLocation();
       if (cancelled) return;
@@ -170,11 +218,22 @@ export function PresenterFlow() {
         if (cancelled) return;
 
         if (response.status === "active") {
-          dispatch({
+          const next = {
             type: "heartbeat-active",
             token: response.token,
             rotateAfterSeconds: response.rotateAfterSeconds,
-          });
+          } as const;
+
+          if (response.token === currentToken) {
+            dispatch(next);
+            return;
+          }
+
+          setFadingToken(currentToken);
+          fadeTimer = window.setTimeout(() => {
+            if (cancelled) return;
+            dispatch(next);
+          }, QR_CROSSFADE_MS);
         } else if (response.status === "consumed") {
           dispatch({ type: "heartbeat-consumed" });
         } else {
@@ -189,6 +248,7 @@ export function PresenterFlow() {
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      if (fadeTimer !== undefined) window.clearTimeout(fadeTimer);
     };
   }, [state]);
 
@@ -236,50 +296,107 @@ export function PresenterFlow() {
   }, [state.phase]);
 
   return (
-    <div className="flex flex-col items-center gap-6 text-center">
-      {state.phase === "requesting-location" && <Status message="Getting your location…" />}
+    <div className="flex w-full flex-col items-center gap-[18px]">
+      {state.phase === "requesting-location" && <StatusLine message="Getting your location…" />}
 
       {state.phase === "location-denied" && (
-        <ErrorPanel
+        <QuietOutcome
           message={locationDenialMessage(state.reason)}
           onRetry={() => dispatch({ type: "restart" })}
         />
       )}
 
-      {state.phase === "starting" && <Status message="Setting up your code…" />}
+      {state.phase === "starting" && <StatusLine message="Setting up your code…" />}
 
       {state.phase === "active" && (
-        <div className="flex flex-col items-center gap-4">
-          <div className="rounded-lg border bg-card p-4">
-            <QRCodeSVG
-              value={origin !== null ? buildConnectUrl(origin, state.token) : ""}
-              size={240}
-              level="M"
-              marginSize={2}
+        <>
+          <p
+            className="text-center text-[14px] leading-5"
+            style={{ color: "var(--sc-text-muted)" }}
+          >
+            Have the other person scan this with SmartCard.
+          </p>
+
+          {/*
+           * The glass plate, its breathing halo, and the white QR card
+           * inside it — §6's "QR in a white plate inside a glass card with a
+           * breathing halo". The halo sits at `z-index:-1` and is inset
+           * *outward*, so what is visible is the glow spilling past the
+           * card's edge; the card's own background covers the rest.
+           */}
+          <div
+            className="relative rounded-[34px] p-5"
+            style={{
+              background: "var(--sc-glass-bg)",
+              backdropFilter: "blur(var(--sc-glass-blur)) saturate(1.6)",
+              WebkitBackdropFilter: "blur(var(--sc-glass-blur)) saturate(1.6)",
+              border: "1px solid var(--sc-glass-bd)",
+              boxShadow: "0 26px 60px -20px rgba(11,96,255,.35), 0 4px 14px rgba(16,24,40,.08)",
+            }}
+          >
+            <span
+              aria-hidden
+              className="absolute rounded-[50px]"
+              style={{
+                inset: -26,
+                zIndex: -1,
+                background:
+                  "radial-gradient(circle at 50% 50%, var(--sc-accent-tint), transparent 70%)",
+                animation: "sc-halo 4.5s ease-in-out infinite",
+              }}
             />
+            <div
+              className="flex size-[248px] items-center justify-center rounded-[22px] bg-white p-3.5"
+              style={{
+                opacity: dimmed ? 0.12 : 1,
+                filter: dimmed ? "blur(7px)" : "blur(0px)",
+                transition: "opacity .55s var(--sc-ease-glide), filter .55s var(--sc-ease-glide)",
+              }}
+            >
+              <QRCodeSVG
+                value={origin !== null ? buildConnectUrl(origin, state.token) : ""}
+                size={220}
+                level="M"
+                marginSize={2}
+              />
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">Hold this up for them to scan.</p>
-        </div>
+
+          <p
+            className="flex items-center gap-2 text-[12px] leading-4 font-medium"
+            style={{ color: "var(--sc-text-subtle)" }}
+          >
+            <span
+              aria-hidden
+              className="size-1.5 rounded-full"
+              style={{ background: "var(--sc-accent)", animation: "sc-halo 2s ease-in-out infinite" }}
+            />
+            Code refreshes on its own — nothing to tap
+          </p>
+        </>
       )}
 
       {state.phase === "connected" && (
-        <div className="flex flex-col items-center gap-4">
-          <h2 className="text-xl font-semibold">You&rsquo;re connected.</h2>
-          <Button variant="outline" onClick={() => dispatch({ type: "restart" })}>
-            Show another code
-          </Button>
-        </div>
+        // No `connectionId`: the heartbeat that produced this state carries
+        // only `status: "consumed"`. See `connected-payoff.tsx`'s header.
+        <ConnectedPayoff
+          viewer={viewer}
+          connectionId={null}
+          onAgain={() => dispatch({ type: "restart" })}
+          againLabel="Show another code"
+        />
       )}
 
       {state.phase === "ended" && (
-        <div className="flex flex-col items-center gap-4">
-          <p className="text-sm text-muted-foreground">That code is no longer active.</p>
-          <Button onClick={() => dispatch({ type: "restart" })}>Show a new code</Button>
-        </div>
+        <QuietOutcome
+          message="That code is no longer active."
+          onRetry={() => dispatch({ type: "restart" })}
+          retryLabel="Show a new code"
+        />
       )}
 
       {state.phase === "error" && (
-        <ErrorPanel message={state.message} onRetry={() => dispatch({ type: "restart" })} />
+        <QuietOutcome message={state.message} onRetry={() => dispatch({ type: "restart" })} />
       )}
     </div>
   );
@@ -290,17 +407,4 @@ function apiErrorMessage(error: unknown): string {
   return error instanceof ConnectApiError
     ? error.message
     : "Couldn't reach SmartCard. Check your connection and try again.";
-}
-
-function Status({ message }: { message: string }) {
-  return <p className="text-sm text-muted-foreground">{message}</p>;
-}
-
-function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-sm text-destructive">{message}</p>
-      <Button onClick={onRetry}>Try again</Button>
-    </div>
-  );
 }
