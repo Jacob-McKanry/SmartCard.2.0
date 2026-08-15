@@ -265,6 +265,29 @@ panel so it can never be mistaken for the public view. Create is a stacked glass
 form; the approval queue puts "admit past capacity" in a visually distinct
 dashed danger style, since it's a recorded exception.
 
+**Sign in** — the app mark on a 78px accent plate with the shimmer sweep, the
+wordmark, one line of positioning, and two pill buttons: Sign in (accent
+gradient) and Create an account (secondary). **Never an email field, or any
+other input.** Both buttons reach the same hosted page, which works out for
+itself whether the person exists; a signed-out screen that took an address and
+then behaved differently for a known one would be an oracle for "does this
+person have an account". Tapping either paints the **handoff**: the app mark, a
+pulse, a lock, and the host the browser is on its way to, in mono.
+
+**Sign-in failures** — a neutral (never red) 76px icon plate, title, one
+paragraph, a panel naming what actually resolves it, and exactly one action.
+Never a retry where retrying cannot work, and never a support channel this
+product does not have.
+
+**Settings** — screen title, an identity card (avatar, name, email in mono, Edit
+pill), then glass panels grouped under mono section labels, each row a 15px icon
++ title + one-line detail + a chevron or a state badge. Sign out is a
+full-width secondary pill at the foot and opens a **bottom sheet**, not the
+destructive confirm panel — it is reversible, so it asks once, and the copy
+spends its words ruling out the fear that data goes with the session. **Nothing
+one-way lives on this screen**; the rows that cannot change say why in place
+rather than being greyed out without a reason.
+
 ### Implementation notes — Home, Feed, Profile (2026-08-15)
 
 Where the built screen departs from the spec above, and why. In every case the
@@ -417,6 +440,131 @@ implementation), and the contact sheet.
 - **The visitor's ring has the same two bands as Profile's**, for the reason §3's
   notes give. Not three. A "cities" band on a stranger-facing page would be a
   number the owner's own profile refuses to show them.
+
+### Implementation notes — Auth, failures and Settings (2026-08-15)
+
+Built from `docs/design/prototypes/Auth flow.dc.html`, whose twelve states split
+almost exactly in half: five are shipped, and the reason each of the other seven
+is not is a fact about the backend rather than a preference. **This section's
+main job is to record the seven**, because every one of them is a plausible,
+tidy-looking thing for a future pass to paste in from the prototype, and none of
+them would fail loudly — they would just lie.
+
+**Built.** `isGate` (`/sign-in`), `isHandoff` (a state of the gate, not a route),
+`isError` (three of its four branches, in `components/auth-failure-screen.tsx`),
+`showSettings` (`/settings`) and `isSignout` (a bottom sheet on it).
+
+**The four capabilities the prototype's Settings screen implies, none of which
+exist.** §7's "never invent a capability" is the whole argument; the specifics
+are what make each one un-buildable rather than merely unbuilt.
+
+- **"Change your password" is the sharpest one, because it is not a missing
+  feature — it is a false statement about the product.** Sign-in is Kinde
+  *passwordless*: an emailed one-time code, no password field anywhere, on any
+  account. The §5.1 amendment in
+  `docs/architecture/2026-08-09-initial-architecture-proposal.md` records that,
+  and records that switching to passwords is a user migration rather than a
+  settings change. Settings therefore says in plain words that there is no
+  password, which is what somebody hunting for that row actually needs to know.
+  That sentence is coupled to a Kinde dashboard setting rather than to anything
+  in this repo, and it is annotated as such where it is written.
+- **"Delete your account"** — `users.status` has a `'deleted'` value and nothing
+  implements it. No policy, no action, no service function, and
+  `20260809211100` states that deletion is an administrator's soft state change
+  which "must never be one client request away".
+- **"Download your connections"** — there is no export path anywhere.
+- **Three of the four "what people see" toggles** — "Profile visible to people
+  you meet", "City visible to mutual connections" and "Event invitations" have
+  no column behind them, and the first two would read as *security* controls. A
+  switch that claims to hide your profile and does nothing is the worst thing on
+  this list. `email_opt_in` is the one real field and is the one that appears.
+
+**Three more prototype states are absent, each for its own reason.**
+
+- **`isSignup` — our own name-and-email form before the handoff — cannot be
+  honest yet.** Its value is that a new account has a name from the first
+  screen, but nothing in this app can persist a name typed before the account
+  exists: the row is created by `ensureUser()` from Kinde's *verified* claims at
+  the first authenticated request, and from nothing else. Carrying the typed
+  values to that point would mean either trusting client-supplied identity
+  fields at insert time or adding `authUrlParams` to the authorization request —
+  and §5.1's amendment rules the second out as dashboard configuration. The
+  prototype's own copy on that screen ("You'll set a password on the next step")
+  is also false for the reason above.
+- **`isCallback` — the three-step "confirming sign-in / finding your account /
+  almost there" list — describes a moment that does not exist here.** The
+  callback is `handleAuth()`'s, and `app/api/auth/[kindeAuth]/route.ts`
+  deliberately has no custom logic in it: nothing SmartCard-specific happens at
+  callback time, because identity is resolved *per request* in
+  `getAuthenticatedContext()` rather than once at login and then trusted for the
+  life of a cookie. Drawing three steps completing there would be an animation
+  of work happening somewhere else.
+- **`isError`'s fourth branch, "Couldn't reach SmartCard", is not renderable.**
+  It is a transport failure, and there is no server to server-render a page when
+  the server cannot be reached.
+
+**Onboarding (`isFirstRun`, `isOnbPhoto`, `isOnbDetails`) is blocked on a write
+path that does not exist, and the block is one line of SQL.** The three screens
+themselves need no new backend — the profile Server Actions and the photo
+uploader already do every field they collect. What is missing is the ability to
+record that they were *finished*: `has_completed_signup` is deliberately absent
+from the column-level UPDATE grant in `20260809211100` ("the server asserts
+onboarding finished, not the client claiming it did"), and no server path
+asserts it — `ensureUser()` leaves it false and nothing else ever writes it. A
+gate reading a flag that can never become true is an onboarding flow that
+re-runs on every sign-in, forever, so the screens were not built. Unblocking it
+is a decision about *which* server code is entitled to assert completion, not a
+UI task. `isFirstRun` (Home's "you're set up" banner) has the same dependency:
+it is the same flag, read in a second place.
+
+**Judgment calls in what was built.**
+
+- **The handoff is a state of the gate, not a route.** The prototype draws it as
+  its own step, which would put a page between the tap and the redirect. Built
+  as an overlay painted over the navigation the browser is *already* performing,
+  it costs no route, no wait and no second tap, and the anchors underneath still
+  work with no JavaScript. The host it names is read from `KINDE_ISSUER_URL` —
+  the same variable the SDK builds the redirect from — so it is a claim the next
+  address bar confirms rather than a reassurance.
+- **The failure screens' only action is Sign out.** The prototype's primary
+  button on three of them is "Email support". There is no support address
+  anywhere in this product, and §7 covers a contact channel as much as a
+  feature. Signing out is real, and it is also the useful one: it clears the
+  session, which is what stops the bounce between the gate and the error, and it
+  is how somebody tries a different account.
+- **The failure icons are neutral, not red.** §2 reserves `--danger` for
+  destructive actions. Being told an account is on hold is bad news, but nothing
+  on the page destroys anything.
+- **Settings' `email_opt_in` is a reading with a route to the control**, matching
+  Profile's call for the same field. A second reason applies here: the only
+  action that writes the column submits the whole profile form, so a lone toggle
+  posting to it would blank every other field it did not carry.
+- **The cards group points at `/activity` instead of repeating it.** `/activity`
+  already lists assigned cards with a working two-step revoke *and* the tap log
+  that gives a revoke its context. A second revoke button is a second place to
+  keep correct, on the one action in this app that cannot be undone.
+- **The account portal is linked, and labelled for what it is.** The SDK's
+  `portal` route is real in this version — `/api/auth/portal` dispatches and
+  redirects a session-less caller to login, where an unknown route under
+  `/api/auth/` 404s — so it is the honest home for "manage your account". It is
+  *not* labelled with any specific control, because what it offers is decided by
+  the sign-in service rather than by SmartCard. **Two things to know before
+  relying on it:** its `returnUrl` must be absolute (the handler passes it to
+  `generatePortalUrl`, which throws on anything `new URL()` cannot parse), and
+  **every failure path in that handler ends in a silent redirect to the site
+  root** — including a tenant where the portal is unavailable. That is the one
+  silent failure on these screens, it belongs to the SDK rather than to this
+  code, and it has not been exercised against the live Kinde tenant.
+- **Settings is `/settings`, not `/profile/settings`, and the Profile nav slot
+  is taught to stay lit there.** Without that entry `activeIndex` finds no match
+  and falls back to slot 0 — the dock would light *Feed* while you sit on
+  Settings.
+- **The entry point is a 44px gear at the top-right of Profile.** §6 gives
+  Profile one floating affordance and calls it the calm, static anchor of the
+  app; a second pill beside Edit would double the screen's only chrome. Settings
+  is also a different *kind* of destination: Edit changes what other people see,
+  Settings is the session and the account behind it, none of which anyone else
+  can see.
 
 ---
 

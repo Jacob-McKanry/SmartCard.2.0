@@ -139,7 +139,10 @@ function Handoff({ destinationHost }: { destinationHost: string }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="text-[20px] leading-[25px] font-semibold" style={{ letterSpacing: "-.025em" }}>
+        <h2
+          className="text-[20px] leading-[25px] font-semibold"
+          style={{ letterSpacing: "-.025em" }}
+        >
           One moment
         </h2>
         <p

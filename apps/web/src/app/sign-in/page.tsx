@@ -121,7 +121,10 @@ export default async function SignInPage() {
       </span>
 
       <div className="flex flex-col gap-2.5">
-        <h1 className="text-[30px] leading-[34px] font-semibold" style={{ letterSpacing: "-.035em" }}>
+        <h1
+          className="text-[30px] leading-[34px] font-semibold"
+          style={{ letterSpacing: "-.035em" }}
+        >
           SmartCard
         </h1>
         <p className="text-[14px] leading-5" style={{ color: "var(--sc-text-muted)" }}>
