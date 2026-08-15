@@ -13,6 +13,7 @@ import {
   type RsvpDecision,
   type RsvpIntent,
   type RsvpStatus,
+  type UserRow,
 } from "@smartcard/types";
 import { summarizeConnectionsAttending, type ConnectionsAttendingSummary } from "@smartcard/core";
 
@@ -234,6 +235,115 @@ export async function listHostedEvents(
     throw new Error(`Failed to load your events: ${error.message}`, { cause: error });
   }
   return (data ?? []).map(splitEmbeddedCity);
+}
+
+/**
+ * The events the caller has been invited to see — and nothing else about
+ * invites.
+ *
+ * WHY THIS FUNCTION HAD TO EXIST BEFORE THE SCREENS COULD SHIP
+ *
+ * An invite to a *private* event is the only thing that makes that event
+ * visible to the invitee (`private.can_see_event`'s third branch,
+ * 20260814060100). But until this function, nothing could list them: it is not
+ * public, so `browseEvents` excludes it; the invitee does not host it, so
+ * `listHostedEvents` excludes it; and an invite creates no RSVP row — that is
+ * the invariant that keeps `shares_event_with()` safe — so `listAttendingEvents`
+ * excludes it too. The event was reachable only by somebody typing its id into
+ * the URL bar, which made the whole invite mechanism inert.
+ *
+ * WHY IT NEEDS NO NEW GRANT, POLICY OR RPC
+ *
+ * Both halves are rows the caller may already read. The `event_invites` SELECT
+ * policy's first branch is `invited_user_id = current_user_id()`, so the first
+ * query returns exactly the caller's own invites and nobody else's — it cannot
+ * be used to see who *else* was invited to the same event. The second query is
+ * an ordinary `events` select, so `can_see_event` decides it independently,
+ * which is why this is two plain queries rather than an embed: if an invite were
+ * somehow readable for an event that is not, the event simply does not come
+ * back and the row is dropped.
+ *
+ * `userId` is not what scopes the result — RLS has already done that — and is
+ * used only to re-check each returned row really is the caller's, the same
+ * belt-and-braces posture the rest of this file takes.
+ *
+ * Deliberately returns the *events*, not the invite rows. Handing back
+ * `invited_by_user_id` by default would put an identity in the result of a
+ * function whose job is a list of events, and no screen needs it.
+ */
+export async function listInvitedEvents(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<BrowseEventItem[]> {
+  const { data: invites, error: invitesError } = await supabase
+    .from("event_invites")
+    .select("event_id, invited_user_id")
+    .eq("invited_user_id", userId)
+    .limit(BROWSE_LIMIT);
+
+  if (invitesError) {
+    throw new Error(`Failed to load your invites: ${invitesError.message}`, { cause: invitesError });
+  }
+
+  const eventIds = (invites ?? [])
+    .filter((row) => row.invited_user_id === userId)
+    .map((row) => row.event_id as string);
+
+  if (eventIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("events")
+    .select(
+      "id, host_user_id, city_id, title, description, starts_at, ends_at, timezone, venue_name, venue_address, latitude, longitude, visibility, capacity, requires_approval, cover_image_path, created_at, cities!inner(id, slug, name, state)",
+    )
+    .in("id", eventIds)
+    .order("starts_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`Failed to load the events you were invited to: ${error.message}`, {
+      cause: error,
+    });
+  }
+  return (data ?? []).map(splitEmbeddedCity);
+}
+
+/**
+ * The host's name and photo for one event, or `null` when the caller may not
+ * read them.
+ *
+ * `null` IS THE COMMON CASE AND IS NOT AN ERROR. `public.users`'s read policy
+ * (§3.4) lets you read somebody only if they are you, a connection of yours, or
+ * somebody you are both `going` to an event with. Hosting an event creates no
+ * RSVP row, so for most viewers of most public events the host's name is simply
+ * not readable and this returns `null`. The screen then names no host rather
+ * than inventing one — the same "degrades to absent, never to empty or to
+ * invented" shape the card-preview screens use for a missing block.
+ *
+ * Note what this deliberately is *not*: a lookup of an arbitrary user id. Its
+ * only caller passes an `events.host_user_id` it read through the same
+ * RLS-bound client, so it cannot be pointed at a person of the caller's
+ * choosing. A general `getUserById` in this codebase would be the first half of
+ * the directory CLAUDE.md forbids.
+ */
+export async function getEventHostProfile(
+  supabase: SupabaseClient,
+  hostUserId: string,
+): Promise<Pick<UserRow, "id" | "first_name" | "last_name" | "photo_path"> | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, first_name, last_name, photo_path")
+    .eq("id", hostUserId)
+    .maybeSingle();
+
+  // A refusal here means "you may not read this person", which is an answer
+  // rather than a failure — the same posture `getEventForViewer` takes for an
+  // event the caller cannot see. It must not take an event page down.
+  if (error) {
+    return null;
+  }
+  return (data as Pick<UserRow, "id" | "first_name" | "last_name" | "photo_path"> | null) ?? null;
 }
 
 export interface AttendingEventItem extends BrowseEventItem {
