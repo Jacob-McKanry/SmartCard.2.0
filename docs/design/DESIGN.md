@@ -302,6 +302,38 @@ forbids showing one anyway.
   beside it and no interactivity. Changing it happens on the edit screen.
 - **Profile's ring diagram has two bands.** See §3's implementation notes.
 
+### Implementation note — "Profile as a visitor sees it" (2026-08-15)
+
+The signed-out card preview (`components/non-user-preview.tsx`, reached from
+`/card/<code>` and `/c/<token>`) is the only built instance of this screen, and
+it now draws the same three blocks Profile does, from the same components rather
+than lookalikes of them: §3's ring diagram (`RingDiagram` at the `profile`
+preset, the same two bands), §5's link tiles (`LinkTiles`, which moved from
+`app/(app)/profile/` into `components/` so both screens render one
+implementation), and the contact sheet.
+
+- **Two of Profile's parts are deliberately absent, and both are absences this
+  section asks for.** No Edit pill — "no edit affordance anywhere", and the
+  visitor has no account to edit with. No `email_opt_in` row: it is a setting
+  rather than an identity field, and whether somebody wants occasional email from
+  SmartCard is between them and SmartCard.
+- **The sign-in blurb is this section's "provenance card".** §6 asks for
+  something explaining why the page is reachable at all. Each route passes its
+  own sentence rather than sharing one, because the honest answer differs: a card
+  is permanent and somebody physically handed it to you, a QR code is live and
+  goes stale in seconds.
+- **Every block degrades to absent, never to empty or to zero.** No links renders
+  no link block at all (`emptyState="omit"`) rather than a "Links" heading over
+  empty space. Counts that could not be computed render the medallion with no
+  rings, never a diagram of zeroes — §7's rule against implying more than is
+  known cuts both ways, and "0 connections" is a claim rather than an absence.
+  The service deliberately returns the same value whether the person genuinely
+  has none or the read failed, so the page cannot become a way to tell those two
+  apart.
+- **The visitor's ring has the same two bands as Profile's**, for the reason §3's
+  notes give. Not three. A "cities" band on a stranger-facing page would be a
+  number the owner's own profile refuses to show them.
+
 ---
 
 ## 7. Copy and honesty rules
