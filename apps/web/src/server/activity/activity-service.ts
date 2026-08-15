@@ -119,6 +119,79 @@ export async function listCardTapActivity(
   });
 }
 
+/**
+ * One occasion on which the caller's contact details were shown to somebody
+ * with no account — see `card_preview_views` (20260815120100).
+ *
+ * There is deliberately no "who". A preview has no viewer identity, because
+ * the entire premise is that the viewer has no account, and that is genuinely
+ * all this table knows. The hashed IP and user agent it also stores sit
+ * outside the caller's column grant on purpose (20260815120200): a hash a
+ * cardholder can read back is a stable identifier for a stranger, i.e. a
+ * tracking primitive nobody asked for.
+ */
+export interface CardPreviewActivityItem {
+  id: number;
+  /** `card_code` — a signed-out visitor opened a tapped card's URL. `qr_token` — they opened a live QR link. */
+  source: "card_code" | "qr_token";
+  /** `preview` — the page was rendered. `vcard` — the contact file was downloaded. */
+  surface: "preview" | "vcard";
+  viewedAt: string;
+}
+
+/**
+ * Every non-user preview of the caller's own profile, newest first.
+ *
+ * WHY THIS BELONGS ON THIS SCREEN
+ * §4.7 threat 7's defence on the card path is detection rather than
+ * prevention, and this page is the always-available half of it (push is the
+ * fast half). The non-user preview added a second thing a card in the wrong
+ * hands is worth to whoever holds it: they can read the owner's phone number
+ * and email without connecting at all — which means no tap, no connection,
+ * and therefore no push notification. Without this list that disclosure would
+ * be completely invisible to the person it is about, which is the single
+ * outcome the preview's audit table exists to prevent.
+ *
+ * Same posture as `listCardTapActivity` above: the caller's own RLS-bound
+ * client, never the service role. `card_preview_views` grants `authenticated`
+ * SELECT on six columns and one policy scopes every row to
+ * `subject_user_id = current_user_id()`, so — exactly as with
+ * `connection_sessions` and `cards` — nothing here needs to bypass RLS.
+ *
+ * Capped at 50 with no pagination, matching every other list in this app
+ * (§2.9's judgment call). It is the fastest-growing of the three lists on this
+ * screen, since a preview needs neither a tap nor a connection, so it is also
+ * the first one worth revisiting with real pagination.
+ */
+export async function listCardPreviewActivity(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<CardPreviewActivityItem[]> {
+  // Deliberately no `.eq("subject_user_id", userId)`: the select policy already
+  // scopes every row to the caller, and `subject_user_id` is outside the column
+  // grant so it cannot be named in the query at all. `userId` stays in the
+  // signature to match this module's other functions and to keep the call site
+  // explicit about whose activity is being asked for.
+  void userId;
+
+  const { data, error } = await supabase
+    .from("card_preview_views")
+    .select("id, source, surface, viewed_at")
+    .order("viewed_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    throw new Error(`Failed to load card-preview activity: ${error.message}`, { cause: error });
+  }
+
+  return data.map((row) => ({
+    id: row.id as number,
+    source: row.source as CardPreviewActivityItem["source"],
+    surface: row.surface as CardPreviewActivityItem["surface"],
+    viewedAt: row.viewed_at as string,
+  }));
+}
+
 /** The caller's own cards that are currently tappable — the ones a revoke action is meaningful for. */
 export async function listOwnAssignedCards(
   supabase: SupabaseClient,
