@@ -273,9 +273,19 @@ Constraints: `CHECK (user_a_id < user_b_id)` and `UNIQUE (user_a_id, user_b_id)`
 
 One environment variable is implied and added to §7.4: `GEOCODING_API_KEY` 🔒, server-side only, name to be finalised with the provider.
 
-**`meeting_participants`** — `meeting_id` + `user_id` (composite PK), `location_share_consent` (boolean, default false), `marked_private` (boolean, default false).
+**`meeting_participants`** — `meeting_id` + `user_id` (composite PK), `location_share_consent` (boolean, default true as of 2026-08-15 — see amendment below), `marked_private` (boolean, default false).
 
-Rules: mutuals see location only if **every** participant has consented; any participant marking a meeting private hides it from everyone but the two of them; consent defaults to false.
+Rules: mutuals see location only if **every** participant has consented; any participant marking a meeting private hides it from everyone but the two of them; consent defaults to true as of 2026-08-15.
+
+#### Amendment (2026-08-15) — location sharing now defaults ON, reversing the original decision
+
+The table above originally read `location_share_consent` default **false**, and `location_visibility` (above, in the `meetings` table) originally read `participants_only` (default). The reasoning given then was explicit: *"consent defaults to false... sharing a meeting's location with mutuals is an affirmative act by every participant afterwards, and nothing here may pre-consent on their behalf."* That reasoning was sound and is not being disputed — it is being overridden by the project owner's product decision, made 2026-08-15: a verified in-person meeting should show up in both participants' feeds and their mutuals' feeds **by default**, with each person individually retaining the power to opt out, rather than each person individually having to opt in before anything is shared.
+
+**What changed:** the column defaults only — `meetings.location_visibility` now defaults to `'mutuals'`, and `meeting_participants.location_share_consent` now defaults to `true`. See `supabase/migrations/20260815140000_flip_location_sharing_default_to_on.sql` for the exact SQL and its full reasoning.
+
+**What did not change, and this is the half of the decision that matters more than the flip itself:** every existing privacy control is untouched. Either participant can still unilaterally revoke their own consent, or unilaterally mark a meeting private via `marked_private`, at any time — this remains a **one-person action**, never requiring the other participant to agree, matching the one-sided veto `marked_private` already used before this change. §3.2's four-condition RLS policy on `meeting_locations` (visibility, privacy override, unanimous consent, viewer-is-a-mutual) is completely unchanged in code; only which condition is *true on day one* of a new meeting changed. `deriveLocationSharingStatus` (`apps/web/src/app/(app)/connections/[connectionId]/location-sharing.ts`) needed no code change at all, since it derives UI state from whatever the database says rather than assuming a starting state.
+
+**Not backfilled.** The new defaults apply to meetings created from 2026-08-15 forward only. Retroactively flipping an already-recorded meeting's consent to `true` would grant sharing on a real person's behalf without their action — exactly the outcome the original "nothing here may pre-consent on their behalf" rule existed to prevent, applied in the opposite direction. Existing rows keep whatever consent state they already had.
 
 ### 2.5 Verification sessions and audit
 
