@@ -130,6 +130,37 @@ Sizes: hero 220px box (r 62/84/106), profile 256px box (r 62/88/112), crest
 150px box (r 32/48/66). Rotation is optional and slow, opposite directions per
 band, only where the screen is a moment rather than a form.
 
+### Implementation notes (2026-08-15)
+
+Recorded here rather than only in code, per CLAUDE.md: where building this found
+a reason to depart from the section above, the deviation sits next to the
+decision it departs from. Built as `apps/web/src/components/ring-diagram.tsx`,
+with the arithmetic in `ring-geometry.ts` and `ring-geometry.test.ts`.
+
+- **The crest's radii above are unbuildable and the prototype's are used
+  instead.** `r 32/48/66` fails this section's own ≥8px clearance rule with the
+  tick lengths specified above: a 9px tick at r32 ends at 36.5, a 12px tick at
+  r48 begins at 42 — 5.5px apart. The prototype's actual crest is two bands at
+  r52/r70 with 8px and 11px ticks, which clears by 8.5px. The rule wins over the
+  number.
+- **The staggering rule is derived, not a constant.** Two bands share a tick
+  angle exactly when the difference between their start angles is a multiple of
+  `360 / lcm(ticksA, ticksB)`, so any fixed offset re-aligns the bands for
+  whichever record counts happen to land on that multiple — the same undercount
+  bug, appearing for some users only. Each band now starts half that value past
+  the one inside it, which is provably the furthest apart the arithmetic allows.
+  A fixed 7° constant was written first and the exhaustive test rejected it.
+- **Profile ships two bands, not three.** The outermost band — "cities met
+  people in" — has no data behind it. `meeting_locations` stores a lat/lng and a
+  `place_label`, and that label is a venue name or a neighbourhood, not a city
+  (`server/connect/geocode.ts` requests `poi,neighborhood,place` and prefers the
+  POI). Counting distinct labels and captioning them "cities" would be a number
+  the app cannot stand behind, so the band is omitted rather than approximated.
+  Adding it needs a city recorded on the meeting, not a cleverer query.
+- **Above 40 records a band compresses to a whole-number ratio** and the caption
+  states it ("1 tick = 3 connections"), so the diagram never silently
+  undercounts.
+
 ---
 
 ## 4. Navigation
@@ -233,6 +264,43 @@ four-stat row, description, RSVP block. Host-only management sits on a dark
 panel so it can never be mistaken for the public view. Create is a stacked glass
 form; the approval queue puts "admit past capacity" in a visually distinct
 dashed danger style, since it's a recorded exception.
+
+### Implementation notes — Home, Feed, Profile (2026-08-15)
+
+Where the built screen departs from the spec above, and why. In every case the
+cause is the same: the design named a fact the schema does not hold, and §7
+forbids showing one anyway.
+
+- **Home's events block is "Coming up", not the prototype's "Happening near
+  you".** Nothing in the schema knows where a user is — `users` has no city, and
+  `cities` is a curated list only *events* reference — so proximity is a claim
+  the app cannot back. It lists the viewer's own answered upcoming events, which
+  is also the only version of the list that can carry the RSVP status pill the
+  design draws, since that pill needs the viewer's own row.
+- **Home's latest-meeting row shows the verification method where the prototype
+  shows a place name.** `listOwnConnections` does not return the origin meeting's
+  id, so the page has no route to `meeting_locations`. The place name is one tap
+  away on the meeting record, and §7 already says a missing location is normal
+  and gets no remark.
+- **Event times name their zone when none is stored.** `events.timezone` is
+  nullable and `starts_at` alone only pins an instant, so a missing zone renders
+  in UTC and is labelled UTC rather than passed off as a local time.
+- **Feed builds only the editorial card, not the photo card.** A meeting carries
+  no photo in this schema and an open photo feed is out of scope, so there is
+  nothing to be full-bleed of. The prototype's striped placeholder block is
+  exactly the "forced placeholder" this section rules out. Both variants share
+  one glass container already, so adding the photo card later changes nothing
+  else.
+- **Feed cards now show the event a meeting happened at.** Real data
+  (`meetings.event_id`, RLS-gated) that nothing had been rendering.
+- **Profile's Edit pill goes to `/profile/edit`.** The forms that used to be the
+  profile page moved there unchanged — same components, same Server Actions,
+  same validation — because a viewing screen with an Edit pill needs somewhere
+  for the pill to go.
+- **Profile's `email_opt_in` toggle is a reading, not a control.** On a viewing
+  screen it reports stored state, so it renders with an explicit "On"/"Off" word
+  beside it and no interactivity. Changing it happens on the edit screen.
+- **Profile's ring diagram has two bands.** See §3's implementation notes.
 
 ---
 
