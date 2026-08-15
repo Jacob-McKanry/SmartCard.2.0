@@ -35,10 +35,30 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * `storage.objects` (Supabase Storage enforces RLS at signing time, not only
  * at fetch time), so calling it with the caller's own RLS-bound client means
  * a request can only ever mint a signed URL for a path it is actually allowed
- * to read — today, only its own `{user_id}/...` prefix. Using the service
- * role here would silently reopen the exact gate this function exists to
- * keep shut, for the same reason `service-role-client.ts` gives for staying
- * off the request path everywhere except `ensureUser()`.
+ * to read: its own photo, and the photo of anyone whose profile it can
+ * already read. Using the service role here would silently reopen the exact
+ * gate this function exists to keep shut, for the same reason
+ * `service-role-client.ts` gives for staying off the request path everywhere
+ * except `ensureUser()`.
+ *
+ * WHO "ALLOWED TO READ" MEANS, AND WHY IT IS NOT THIS FILE'S DECISION
+ * (`20260815010000`, fixing a bug found in the 2026-08-15 security audit.)
+ * The policy admits exactly the viewers `private.can_see_user()` admits —
+ * self, an active connection, or a shared `going` RSVP — which is the same
+ * predicate the `users` SELECT policy uses, deliberately: a photo is one
+ * field of a profile, and it must never outlive the visibility of the profile
+ * it belongs to. That is one function in the database, not a rule restated
+ * here, so nothing in this file needs to change if profile visibility does.
+ *
+ * Until that migration the SELECT policy was own-prefix only, matching the
+ * three write policies. Reads and writes needed different rules and had been
+ * given the same one, so every call below that passed a COUNTERPART's path —
+ * `/feed`, `/connections`, `/connections/[connectionId]`, `/activity`, i.e.
+ * six of this function's seven call sites — silently returned null and
+ * rendered as fallback initials. Silently, because "you may not read this"
+ * and "this photo does not exist" deliberately produce the same `null` here
+ * (see the `@returns` note below), which is right for a privacy boundary and
+ * is exactly what made a permission bug look like a missing avatar.
  */
 
 /** Seconds. Long enough to render and navigate a page; see the header above. */

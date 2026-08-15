@@ -569,6 +569,30 @@ on public.users for select using (
 
 Every readable row must be justified by a specific graph relationship — there's no branch true for an arbitrary user. **No-global-search is enforced by the database being structurally unable to answer the question, not by us declining to build a search screen.** A future change would have to consciously weaken this policy in a reviewed migration to reintroduce it.
 
+#### Amendment (2026-08-15) — this predicate is now `private.can_see_user()`, because a photo had escaped it
+
+The three branches above are unchanged in meaning, but they now live in one function that two policies share (`20260815010000`):
+
+```sql
+create or replace function private.can_see_user(p_viewer uuid, p_target uuid)
+returns boolean language sql stable security definer set search_path = ''
+as $$
+  select p_viewer is not null and p_target is not null and (
+    p_viewer = p_target
+    or private.are_connected(p_viewer, p_target)
+    or private.shares_event_with(p_viewer, p_target)
+  );
+$$;
+```
+
+**Why it was extracted.** A profile photo is one field of a profile, but it is stored as a Storage object rather than a column, so it was governed by a *separate* rule — and the two disagreed. `20260813191041` gave the `profile-photos` bucket a single own-`{user_id}/`-prefix rule for all four verbs. That is correct for the three writes and wrong for reads, because the app renders other people's photos on `/feed`, `/connections`, `/connections/[connectionId]` and `/activity`; six of the seven `signedProfilePhotoUrl` call sites pass a counterpart's path together with the *viewer's* client. Supabase Storage enforces RLS at signing time, so every one of those returned an error, which the app maps to `null`, which renders as fallback initials. **A permission bug that looks exactly like a missing avatar**, with no exception and no log line. It had never been seen because `connections` still holds zero rows; the first real connection of the pilot would have surfaced it.
+
+**Why the fix is "whoever can see the profile" and not something looser.** The tempting repair — let any authenticated user read the bucket — makes every avatar render and hands a photo to somebody who cannot see the profile it belongs to, which is §3.4's rule defeated by a side door. Tying the photo to `can_see_user` means the photo is visible to exactly the people who can already read that user's name, bio, company, phone and email, so it discloses nothing new, and it tracks the profile rule automatically if that rule ever changes.
+
+**Why one function rather than the predicate written twice.** The failure this prevents is specific and silent: somebody later narrows profile visibility — a `blocks` branch, say — updates this policy, and does not know a second copy governs photos. Profile hidden, photo still readable, and the symptom is an avatar that *still renders*, which nobody reports as a bug. Extracting the predicate makes that drift structurally impossible, the same argument `can_see_meeting` and `can_see_event` already embody.
+
+**Verified against the live database, not inferred.** In a rolled-back transaction with three real migrated users, a real active connection and a real shared `going` RSVP: before the change a connected viewer saw **0** of the counterpart's photo objects (the bug, reproduced); after it, the owner, an active connection and a co-attendee each resolve, a stranger sees **0**, and the viewer's total visible objects is **3 of 148** rather than 148. Removing the connection revokes photo visibility in the same statement that removes the edge, because the policy asks the graph rather than caching an answer. The `users` policy's own behaviour was counted before and after the repoint inside one transaction and is identical (3 = 3), so this section's rule did not change — only where it is written. The write policies are untouched and remain own-prefix only: who may *look at* a photo and who may *overwrite* one are different questions, and conflating them is what caused this.
+
 ### 3.5 Service-role-only tables
 
 `connection_attempts`, `app_config`, `pending_connections` have no user-facing read policy at all.
