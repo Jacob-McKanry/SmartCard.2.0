@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { UserRound } from "lucide-react";
 
+import { LocalTimestamp } from "@/components/local-timestamp";
+
 import { AvatarDisc } from "../connections/lib/avatar-disc";
 import {
   ConnectButton,
@@ -171,7 +173,7 @@ export function ConnectedPayoff({
                * claim about where two people were.
                */}
               {details.placeLabel ? `${details.placeLabel} · ` : ""}
-              {details.whenLabel}
+              <LocalTimestamp iso={details.occurredAt} format="time" />
             </div>
           )}
         </div>

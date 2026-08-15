@@ -3,9 +3,10 @@ import { ChevronLeft } from "lucide-react";
 import { waitlistPositionOf } from "@smartcard/core";
 
 import type { HostQueueEntry } from "@/server/events/events-service";
+import { LocalTimestamp } from "@/components/local-timestamp";
 import { AvatarDisc } from "../../../connections/lib/avatar-disc";
 import { decidableQueueEntries, type ViewerRole } from "../../lib/access-rules";
-import { askedAtLine, displayName, initialsFor } from "../../lib/format";
+import { displayName, initialsFor } from "../../lib/format";
 import { RsvpPill, waitlistLabel } from "../../lib/rsvp-pill";
 import { GLASS } from "../../lib/surfaces";
 import { DecideButton } from "./decide-button";
@@ -172,7 +173,7 @@ function QueueRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] leading-5 font-semibold tracking-[-0.01em]">{name}</p>
           <p className="truncate text-[12px] leading-[17px]" style={{ color: "var(--sc-text-subtle)" }}>
-            Asked {askedAtLine(entry.respondedAt)}
+            Asked <LocalTimestamp iso={entry.respondedAt} />
             {waitlistPosition === null ? "" : ` · ${waitlistLabel(waitlistPosition)}`}
           </p>
         </div>

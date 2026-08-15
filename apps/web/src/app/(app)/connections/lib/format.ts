@@ -54,17 +54,15 @@ export function verificationMethodLabel(method: VerificationMethod): string {
 }
 
 /**
- * Formats `meetings.occurred_at` (a `timestamptz`) for display.
+ * `formatOccurredAt` USED TO LIVE HERE. USE `<LocalTimestamp>` INSTEAD.
  *
- * Locale is pinned to `en-US` rather than left as the server's default —
- * this renders server-side (`export const dynamic = "force-dynamic"` on both
- * pages in this feature), so an unpinned locale would make the same meeting
- * render differently depending on the runtime's environment rather than the
- * viewer's, which is not a distinction this pilot needs to make yet.
+ * It formatted `meetings.occurred_at` with `toLocaleString("en-US", …)` and no
+ * `timeZone`. Both pages in this feature are Server Components, so that read
+ * the *server's* zone — UTC on Vercel — and a meeting made at 10:00 PM US
+ * Central was shown back to the two people who were there as "4:00 AM".
+ *
+ * The zone a meeting time must be printed in is the reader's, and only the
+ * browser knows it, so it cannot be decided in a pure string helper like the
+ * ones above. `@/components/local-timestamp` renders it instead; its header
+ * explains how, and why locale stays pinned to `en-US`.
  */
-export function formatOccurredAt(occurredAt: string): string {
-  return new Date(occurredAt).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}

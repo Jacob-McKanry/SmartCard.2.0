@@ -51,12 +51,16 @@ import { displayName, initialsFor } from "../connections/lib/format";
  *    the API already answered `ok: true`. It is not reachable from, and tells
  *    nothing about, a rejected scan — §4.2 step 7's rule is untouched.
  *
- * WHY THE STRINGS ARE FORMATTED HERE RATHER THAN IN THE COMPONENT
+ * WHY THE TIME IS NO LONGER FORMATTED HERE
  *
- * Same reason `formatOccurredAt` pins `en-US`: this app renders dates
- * server-side with a fixed locale, and having the payoff format its own would
- * make the one timestamp on the screen disagree with the identical timestamp
- * on the meeting record it links to.
+ * It used to be, so that the payoff and the meeting record it links to could
+ * not word the same instant two different ways. They did agree — and both were
+ * wrong: this is server code, and `toLocaleTimeString` with no `timeZone` uses
+ * the Vercel runtime's zone, so a 10:00 PM connection congratulated you on
+ * meeting someone at 4:00 AM. The raw `timestamptz` goes to the client now and
+ * `<LocalTimestamp>` renders it there, which is the only place the reader's
+ * zone is known. The two screens still agree, because they now share the one
+ * component rather than two copies of the same formatting call.
  */
 export interface ConnectPayoffDetails {
   name: string;
@@ -64,8 +68,11 @@ export interface ConnectPayoffDetails {
   photoUrl: string | null;
   /** `meeting_locations.place_label`, or null when no location was captured. */
   placeLabel: string | null;
-  /** Time-of-day only. The meeting is seconds old; the date would be noise. */
-  whenLabel: string;
+  /**
+   * `meetings.occurred_at`, raw. Rendered time-of-day only — the meeting is
+   * seconds old, so the date would be noise.
+   */
+  occurredAt: string;
 }
 
 export async function loadConnectPayoff(
@@ -96,10 +103,7 @@ export async function loadConnectPayoff(
       initials: initialsFor(otherUser),
       photoUrl: await signedProfilePhotoUrl(supabase, otherUser.photo_path),
       placeLabel: location?.place_label ?? null,
-      whenLabel: new Date(meeting.occurred_at).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
+      occurredAt: meeting.occurred_at,
     };
   } catch {
     // See the header: every doubt resolves to "no details", never to a

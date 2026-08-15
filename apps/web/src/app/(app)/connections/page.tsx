@@ -7,7 +7,9 @@ import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { listOwnConnections, type ConnectionListItem } from "@/server/connections/connections-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 
-import { displayName, formatOccurredAt, initialsFor, verificationMethodLabel } from "./lib/format";
+import { LocalTimestamp } from "@/components/local-timestamp";
+
+import { displayName, initialsFor, verificationMethodLabel } from "./lib/format";
 import { AvatarDisc } from "./lib/avatar-disc";
 
 /**
@@ -204,7 +206,7 @@ async function ConnectionListRow({
             className="block truncate text-[12px] leading-[17px]"
             style={{ color: "var(--sc-text-subtle)" }}
           >
-            {formatOccurredAt(connection.occurredAt)}
+            <LocalTimestamp iso={connection.occurredAt} />
           </span>
         </span>
         <span

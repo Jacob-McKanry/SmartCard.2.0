@@ -581,6 +581,15 @@ These are design constraints, not tone preferences.
   individually. No system alerts; use the app's own glass.
 - **Absence is often normal.** "No location shown" gets no error styling and no
   nudge.
+- **A timestamp is shown on the reader's clock; where it can't be, it names the
+  zone it is on.** A moment that *happened* — a meeting, a card tap, an RSVP —
+  is a fact about the reader's day, so it renders in the reader's own time zone
+  (`components/local-timestamp.tsx`; the server cannot know that zone, so this
+  necessarily finishes in the browser). This is the opposite call from an event's
+  start time, which belongs to the venue, and the reason is the same in both
+  cases: render whichever clock the fact belongs to. Added 2026-08-15, after
+  every meeting time in the app rendered in the Vercel runtime's UTC and a 10 PM
+  connection was reported back to its owner as 4 AM.
 - **Never build a directory.** No profile URLs, no username search, no guest
   lists, no mutual-connection browsing, no share-profile link.
 - **Failures reveal nothing.** One generic message; never a distance, a reason

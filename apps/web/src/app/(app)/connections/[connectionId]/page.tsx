@@ -13,7 +13,9 @@ import {
   getOtherParticipantProfile,
 } from "@/server/connections/connections-service";
 
-import { displayName, formatOccurredAt, initialsFor, verificationMethodLabel } from "../lib/format";
+import { LocalTimestamp } from "@/components/local-timestamp";
+
+import { displayName, initialsFor, verificationMethodLabel } from "../lib/format";
 import { AvatarDisc } from "../lib/avatar-disc";
 import { deriveLocationSharingStatus } from "./location-sharing";
 import { LocationControls } from "./location-controls";
@@ -293,9 +295,9 @@ function MeetingFacts({
   location: MeetingLocationRow | null;
   placeFallback: string;
 }) {
-  const rows: readonly [string, string][] = [
+  const rows: readonly [string, React.ReactNode][] = [
     ["Who", `You and ${otherName}`],
-    ["When", formatOccurredAt(meeting.occurred_at)],
+    ["When", <LocalTimestamp key="when" iso={meeting.occurred_at} />],
     ["How", verificationMethodLabel(meeting.verification_method)],
     ["Where", location?.place_label ?? placeFallback],
   ];
@@ -357,13 +359,25 @@ function ConnectionRemoved({
 }) {
   // Built from the stored row, never asserted: the place clause disappears
   // entirely when no location was captured rather than becoming "somewhere".
+  // Unlike the "Where" row above this omits the label-less case too — in a
+  // sentence, ", location captured, no place name on file," is noise about a
+  // connection the reader has just ended, and leaving a clause out claims
+  // nothing either way.
   const where = location?.place_label;
-  const historyLine =
-    `The record of the meeting stays here as your history — ` +
-    `${formatOccurredAt(meeting.occurred_at)}` +
-    `${where ? `, ${where}` : ""}` +
-    `, ${verificationMethodLabel(meeting.verification_method).toLowerCase()}. ` +
-    `Nothing about it is shared any further, and ${otherName} can no longer see your profile.`;
+
+  // A fragment rather than one string, because the timestamp is a component
+  // now: it has to reach the browser as an element the inline script can
+  // correct to the reader's own zone, which a `${...}` interpolation into a
+  // template literal cannot be. See `@/components/local-timestamp`.
+  const historyLine = (
+    <>
+      The record of the meeting stays here as your history —{" "}
+      <LocalTimestamp iso={meeting.occurred_at} />
+      {where ? `, ${where}` : ""}
+      {`, ${verificationMethodLabel(meeting.verification_method).toLowerCase()}. `}
+      Nothing about it is shared any further, and {otherName} can no longer see your profile.
+    </>
+  );
 
   return (
     <main

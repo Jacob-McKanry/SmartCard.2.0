@@ -101,13 +101,21 @@ export function whereLine(venueName: string | null, cityName: string): string {
   return venue ? `${venue} · ${cityName}` : cityName;
 }
 
-/** `Sat, Aug 22 at 7:00 PM` for prose contexts (the queue's per-row timestamp). */
-export function askedAtLine(respondedAt: string): string {
-  return new Date(respondedAt).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
+/**
+ * `askedAtLine` USED TO LIVE HERE. THE QUEUE USES `<LocalTimestamp>` NOW.
+ *
+ * "When did this person ask?" is a fact about a moment in the reader's day,
+ * not about the event's venue, so it is the one timestamp on these screens
+ * that does *not* belong in the event's zone — it belongs in the host's. It
+ * was formatted with no `timeZone` at all inside a Server Component, which
+ * meant the Vercel runtime's UTC: an RSVP that arrived at 10:00 PM read
+ * "4:00 AM" to the host who was awake for it.
+ *
+ * `@/components/local-timestamp` is the shared fix, used by every "when did
+ * this happen" timestamp in the app. The event *times* above are untouched and
+ * must stay that way — the zone rule in this file's header is the opposite
+ * call, made for the opposite reason.
+ */
 
 /**
  * Whether an event is over, by the same rule the database uses:
