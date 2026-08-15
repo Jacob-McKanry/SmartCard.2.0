@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowRight, CalendarDays, QrCode, Ticket } from "lucide-react";
-import type { RsvpStatus } from "@smartcard/types";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { getOwnProfile } from "@/server/profile/profile-service";
@@ -13,6 +12,9 @@ import {
 import { listAttendingEvents, type AttendingEventItem } from "@/server/events/events-service";
 import { BlurUpPhoto } from "@/components/blur-up-photo";
 import { LocalDateLine } from "@/components/local-date-line";
+
+import { dayLabel, monthLabel, timeLabel } from "./events/lib/format";
+import { RsvpPill } from "./events/lib/rsvp-pill";
 
 /**
  * Home, ported from `docs/design/prototypes/SmartCard 2.0.dc.html`
@@ -264,80 +266,6 @@ function selectUpcomingEvents(attending: AttendingEventItem[]): AttendingEventIt
     .slice(0, HOME_EVENT_COUNT);
 }
 
-/**
- * §5's status pills, exactly the five treatments listed there plus `denied`.
- * "Never invent a sixth treatment" — so this is a total switch over
- * `RsvpStatus` rather than a lookup with a default, and adding a seventh status
- * to the enum becomes a type error here instead of a silently generic pill.
- *
- * §8: the colour is never the only signal. Every pill carries its own words.
- */
-function RsvpPill({ status }: { status: RsvpStatus }) {
-  const style = rsvpPillStyle(status);
-  return (
-    <span
-      className="shrink-0 rounded-full border px-[11px] py-[5px] text-[11px] leading-[14px] font-semibold"
-      style={{ background: style.background, color: style.color, borderColor: style.borderColor }}
-    >
-      {style.label}
-    </span>
-  );
-}
-
-function rsvpPillStyle(status: RsvpStatus): {
-  label: string;
-  background: string;
-  color: string;
-  borderColor: string;
-} {
-  switch (status) {
-    case "going":
-      // The only solid accent pill in the system (§5).
-      return {
-        label: "Going",
-        background: "var(--sc-accent)",
-        color: "#ffffff",
-        borderColor: "var(--sc-accent)",
-      };
-    case "interested":
-      return {
-        label: "Interested",
-        background: "rgba(11,96,255,.08)",
-        color: "var(--sc-accent-deep)",
-        borderColor: "rgba(11,96,255,.32)",
-      };
-    case "waitlist":
-      return {
-        label: "Waitlisted",
-        background: "rgba(11,96,255,.06)",
-        color: "var(--sc-accent-deep)",
-        borderColor: "rgba(11,96,255,.22)",
-      };
-    case "pending":
-      // §2: `--pending` means *waiting on someone*, and is text-only.
-      return {
-        label: "Waiting on host",
-        background: "rgba(255,255,255,.72)",
-        color: "var(--sc-pending)",
-        borderColor: "rgba(13,18,32,.14)",
-      };
-    case "not_going":
-      return {
-        label: "Not going",
-        background: "rgba(13,18,32,.04)",
-        color: "var(--sc-text-muted)",
-        borderColor: "rgba(13,18,32,.12)",
-      };
-    case "denied":
-      return {
-        label: "Not admitted",
-        background: "rgba(13,18,32,.04)",
-        color: "var(--sc-text-muted)",
-        borderColor: "rgba(13,18,32,.1)",
-      };
-  }
-}
-
 /* ----------------------------------------------------------------- latest */
 
 /**
@@ -513,56 +441,16 @@ function EmptyPanel({
 /* --------------------------------------------------------------- formatting */
 
 /**
- * Event dates render in the *event's own* timezone (`events.timezone`), not the
- * server's and not the viewer's. An event chip is a statement about when to turn
- * up somewhere, and 7pm at the venue is 7pm at the venue wherever you happen to
- * be reading about it. This is the opposite call from `LocalDateLine`,
- * deliberately, and for the same underlying reason: render whichever clock the
- * fact actually belongs to.
- *
- * WHEN NO ZONE IS STORED, THE TIME SAYS SO. `events.timezone` is nullable, and
- * `starts_at` alone only pins an instant — it does not say what the clock on the
- * venue's wall read. Rather than guess a zone (a guess is wrong by hours, and
- * silently), the time is rendered in UTC and *labelled* UTC. §7's rule is that
- * the screen must never imply something it cannot back; an unlabelled "7:00 PM"
- * would imply a local time nobody recorded.
+ * Event date/time formatting — including the rule that an unknown timezone
+ * renders as labelled UTC rather than as a guess — now lives in
+ * `events/lib/format.ts` and is imported above. It moved there when the Events
+ * screens were built: the zone fallback is a §7 honesty rule, and a rule with
+ * four copies is four chances for one of them to start rendering an unlabelled
+ * guess. Same reasoning for `RsvpPill`, which is a §5 component with an
+ * explicit "never invent a sixth treatment" invariant.
  */
-function eventZone(timezone: string | null): { zone: string; labelled: boolean } {
-  if (timezone === null || timezone.trim() === "") {
-    return { zone: "UTC", labelled: true };
-  }
-  try {
-    // `events.timezone` is a free-text column. A value `Intl` does not recognise
-    // throws a `RangeError` mid-render, which would take the whole of Home down
-    // over one badly-stored string.
-    new Intl.DateTimeFormat("en-US", { timeZone: timezone });
-    return { zone: timezone, labelled: false };
-  } catch {
-    return { zone: "UTC", labelled: true };
-  }
-}
-
-function monthLabel(startsAt: string, timezone: string | null): string {
-  return new Date(startsAt)
-    .toLocaleDateString("en-US", { month: "short", timeZone: eventZone(timezone).zone })
-    .toUpperCase();
-}
-
-function dayLabel(startsAt: string, timezone: string | null): string {
-  return new Date(startsAt).toLocaleDateString("en-US", {
-    day: "numeric",
-    timeZone: eventZone(timezone).zone,
-  });
-}
-
 function eventWhenAndWhere(item: AttendingEventItem): string {
-  const { zone, labelled } = eventZone(item.event.timezone);
-  const clock = new Date(item.event.starts_at).toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone: zone,
-  });
-  const time = labelled ? `${clock} UTC` : clock;
+  const time = timeLabel(item.event.starts_at, item.event.timezone);
   const venue = item.event.venue_name?.trim();
   return venue ? `${time} · ${venue}` : time;
 }
