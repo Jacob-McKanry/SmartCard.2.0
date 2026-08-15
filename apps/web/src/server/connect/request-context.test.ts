@@ -58,6 +58,43 @@ describe("clientIpFrom", () => {
     expect(clientIpFrom(new Headers())).toBeNull();
     expect(clientIpFrom(new Headers({ "x-forwarded-for": "   " }))).toBeNull();
   });
+
+  /**
+   * These three are the reason the Cloudflare branch exists, not a restatement
+   * of it. Cloudflare APPENDS the connecting IP to any `x-forwarded-for` the
+   * caller supplied, so behind the proxy the left-most entry is chosen by the
+   * caller — and the left-most entry is exactly what the block above trusts.
+   * Since the non-user card preview has no per-user rate-limit budget to fall
+   * back on, a spoofable subject key there is the same as no limit at all.
+   */
+  it("prefers cf-connecting-ip, which Cloudflare sets from the TCP peer", () => {
+    const headers = new Headers({
+      "cf-connecting-ip": "203.0.113.9",
+      "x-forwarded-for": "198.51.100.1, 203.0.113.9",
+    });
+    expect(clientIpFrom(headers)).toBe("203.0.113.9");
+  });
+
+  it("ignores a forged left-most x-forwarded-for when Cloudflare reports the peer", () => {
+    // What an evasion attempt looks like on the wire: the caller sends its own
+    // XFF, Cloudflare appends the address it actually connected from.
+    const headers = new Headers({
+      "x-forwarded-for": "1.2.3.4, 203.0.113.9",
+      "cf-connecting-ip": "203.0.113.9",
+    });
+    expect(clientIpFrom(headers)).toBe("203.0.113.9");
+    expect(clientIpFrom(headers)).not.toBe("1.2.3.4");
+  });
+
+  it("still falls through to x-forwarded-for when not proxied", () => {
+    // `.vercel.app` URLs and local dev never carry cf-connecting-ip, so the
+    // Cloudflare branch must be a preference rather than a requirement.
+    const headers = new Headers({ "x-forwarded-for": "203.0.113.7, 70.41.3.18" });
+    expect(clientIpFrom(headers)).toBe("203.0.113.7");
+    expect(clientIpFrom(new Headers({ "cf-connecting-ip": "  " , "x-real-ip": "198.51.100.4" }))).toBe(
+      "198.51.100.4",
+    );
+  });
 });
 
 describe("buildRequestContext", () => {
