@@ -64,10 +64,19 @@ import {
  * and `/profile` has no layout of its own, so it would resolve to the shared
  * `(app)` layout and purge every signed-in screen in the group. Naming the two
  * paths says exactly what changed and touches nothing else.
+ *
+ * `/onboarding` is the third, added with the onboarding flow. It reuses
+ * `PhotoUploader` verbatim, so an upload there runs `uploadPhotoAction` here —
+ * and without this line the step would keep rendering the `photoUrl` the page
+ * was built with, i.e. the person uploads a picture and the avatar does not
+ * change. Naming it here rather than special-casing it in the flow keeps the
+ * "the action that writes a screen's data revalidates that screen" rule in one
+ * place.
  */
 function revalidateProfileScreens(): void {
   revalidatePath("/profile");
   revalidatePath("/profile/edit");
+  revalidatePath("/onboarding");
 }
 
 async function requireContext(): Promise<AuthenticatedContext> {
