@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
@@ -130,20 +129,35 @@ export async function setMarkedPrivateAction(
 }
 
 /**
- * Removes the connection (`status: 'active' -> 'removed'`) and sends the
- * caller back to the list — there is nothing left on this page to manage
- * once the edge is gone, and re-fetching this same URL afterward would hit
- * the "removed" branch `page.tsx` renders instead of the controls.
+ * Removes the connection (`status: 'active' -> 'removed'`).
  *
  * No confirmation step lives here — that belongs to the client component
  * that calls this (`remove-connection.tsx`), which requires a second
  * explicit click before this ever runs. This action does not repeat that
  * check; it simply performs the one irreversible-by-this-UI thing it's
  * asked to do, same as `removePhotoAction` in the Profile feature.
+ *
+ * DELIBERATE DEVIATION FROM THIS ACTION'S ORIGINAL BEHAVIOUR (design pass)
+ *
+ * It used to `redirect("/connections")` on the grounds that "there is nothing
+ * left on this page to manage once the edge is gone". That was true when the
+ * removed branch of `page.tsx` was a one-paragraph fallback for a bookmarked
+ * URL. It is no longer true: `docs/design/DESIGN.md` §6 makes **Connection
+ * removed** a designed destination in its own right — history stays, the rings
+ * go dashed and greyed, and the screen's job is to state plainly that nothing
+ * restores it — and the prototype's own confirm handler routes to that screen
+ * rather than back to the list.
+ *
+ * Bouncing to the list instead would mean the one screen whose entire purpose
+ * is to say "this is permanent, and here is what remains" is the one screen a
+ * user never sees at the moment it applies. So the redirect is gone and both
+ * paths are revalidated: this route re-renders into its removed state, and the
+ * list drops the row. Nothing about *what is written* changed — the RLS
+ * transition and its one-wayness are identical.
  */
 export async function removeConnectionAction(connectionId: string): Promise<void> {
   const context = await requireContext();
   await removeConnection(context.supabase, connectionId);
   revalidatePath("/connections");
-  redirect("/connections");
+  revalidatePath(`/connections/${connectionId}`);
 }

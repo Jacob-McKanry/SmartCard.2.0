@@ -994,6 +994,18 @@ Plus §4.3's fail-closed table end to end (every row rejects), §4.2 step 7 as a
 
 Uses `SmartCard Web` (has a client secret). Standard authorization-code flow: redirect to Kinde → callback with a code → **server-side** exchange for tokens → stored in encrypted `HttpOnly` cookies, never touched by browser JavaScript (so an XSS bug can't steal the session). Handled by `@kinde-oss/kinde-auth-nextjs`.
 
+> **Amendment, 2026-08-14 — which credential the user actually presents, and why nobody should "fix" it.**
+>
+> The paragraph above specifies the *flow* and says nothing about the *credential*. In practice sign-in sends a one-time code to the user's email and asks for that; there is no password field. This surprised the project owner, who expected email + password, so it is recorded here rather than left to be rediscovered.
+>
+> **It is not configured anywhere in this repo.** `apps/web/src/app/api/auth/[kindeAuth]/route.ts` is a bare `handleAuth()`; both `LoginLink` call sites (`sign-in/page.tsx`, `card/[code]/page.tsx`) pass only `postLoginRedirectURL`; there is no middleware; and no `KINDE_*` variable selects an auth method. The authorization request we send carries no connection preference, so Kinde's own dashboard settings decide entirely. Email passwordless is **on by default in every new Kinde business**, and that default is simply what we inherited — it was never chosen, and never rejected either.
+>
+> This is passwordless, **not** MFA. The two are easy to confuse because both produce an emailed code. The tell: with passwordless there is no password field at all (the code *is* the factor); with MFA you enter a password first and the code only follows. MFA also lives on a different dashboard page (Settings → Environment → Multi-factor auth) and is a paid-plan feature.
+>
+> **Decision, 2026-08-14: keep the emailed code for the pilot.** Switching to passwords is a one-way door disguised as a toggle. Kinde does not permit passwordless and password auth on the same application at once, so enabling passwords immediately disables the only sign-in path that currently works — and **no user has a password to fall back on**: legacy bcrypt hashes were deliberately never imported (README, "Legacy passwords were never imported"), and all 337 migrated users hold Kinde ids created under passwordless. Flipping it locks out the entire pilot until every user completes a set-password flow. That is a user migration, not a settings change.
+>
+> If it is revisited later: change it at Kinde → Settings → Environment → Authentication → Password → Configure the Email tile for the `SmartCard Web` application, remembering that these settings are **per Kinde environment** (production is whichever environment `KINDE_ISSUER_URL` on the Vercel project points at, so changing the wrong one looks like nothing happened). Prove the set-password/reset email flow end-to-end on a non-production environment before cutting over. The trade being made in that direction is a phishing-resistant one-time code for a reusable secret, across a user base that has never had one — worth stating out loud, since the intuitive framing is that passwords are the more "normal" and therefore safer choice.
+
 ### 5.2 Mobile (Expo) — public client with PKCE
 
 Uses `SmartCard Mobile` (no secret). App opens Kinde in a secure system browser (`expo-auth-session`) using PKCE: a random secret generated per login, only its hash sent to Kinde, the original used to redeem the code — since a value embedded in a mobile binary can be extracted, PKCE avoids storing a secret at all. Tokens in `expo-secure-store` (Keychain/Keystore), never `AsyncStorage`. Requests carry `Authorization: Bearer <access_token>`.

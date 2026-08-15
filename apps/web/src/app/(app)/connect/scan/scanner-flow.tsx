@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 import { ConnectApiError, redeemQr } from "@smartcard/api-client";
 
-import { Button } from "@/components/ui/button";
-
+import { ConnectedPayoff, type PayoffViewer } from "../connected-payoff";
+import { QuietOutcome } from "../lib/connect-ui";
 import { getOrCreateDeviceId } from "../lib/device-id";
 import { getFreshLocation, locationDenialMessage } from "../lib/geolocation";
 import { parseConnectToken } from "../lib/qr-url";
@@ -30,8 +30,12 @@ const SCAN_INTERVAL_MS = 300;
  * tearing the stream down and asking again — the task's "scan again" is a
  * state transition, not a new permission prompt. The stream is only stopped
  * on `camera-denied` (nothing to stop) or on unmount.
+ *
+ * `viewer` is the signed-in person's own initials and photo, resolved on the
+ * server by `../page.tsx`, used only to draw their side of the success
+ * payoff's two-disc flourish. It is never sent anywhere.
  */
-export function ScannerFlow() {
+export function ScannerFlow({ viewer }: { viewer: PayoffViewer }) {
   const [state, dispatch] = useReducer(scannerReducer, initialScannerState);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const decoderRef = useRef<FrameDecoder | null>(null);
@@ -41,6 +45,23 @@ export function ScannerFlow() {
    * instead, read by the verifying-phase effect below.
    */
   const pendingTokenRef = useRef<string | null>(null);
+  /**
+   * The connection a successful redeem created — the one thing the payoff
+   * needs that the reducer does not carry.
+   *
+   * It lives in component state rather than in `scanner-state.ts` for the
+   * same reason `pendingTokenRef` does: that machine's `success` phase is
+   * deliberately payload-free and is pinned that way by
+   * `scanner-state.test.ts`, and widening a tested state machine for a
+   * presentational need is the wrong trade. It is `useState` rather than a
+   * ref because it is read during render, which a ref may not be.
+   *
+   * Set immediately before the `redeem-success` dispatch (both updates batch
+   * into the same render, so the success branch never paints without it), and
+   * cleared on "scan again" so a second scan can never show the first scan's
+   * meeting record.
+   */
+  const [connectionId, setConnectionId] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------
   // requesting-camera -> camera-ready | camera-denied. Runs once.
@@ -92,6 +113,20 @@ export function ScannerFlow() {
     const decoder = decoderRef.current;
     const video = videoRef.current;
     if (!decoder || !video) return;
+
+    // The camera stage is hidden (not unmounted) while an outcome is on
+    // screen, and a `display:none` video is allowed to be suspended by the
+    // browser. Nudging it back before the decode loop starts is what keeps
+    // "scan again" from returning to a viewfinder that is a frozen frame —
+    // which would look exactly like a camera that works and a code that
+    // never scans. Harmless when it is already playing.
+    if (video.paused) {
+      void video.play().catch(() => {
+        // Nothing to recover here: if the element refuses to resume, the
+        // decode loop below simply finds no code, which is the same as
+        // pointing at nothing.
+      });
+    }
 
     let cancelled = false;
     let busy = false;
@@ -161,6 +196,7 @@ export function ScannerFlow() {
         if (cancelled) return;
 
         if (response.ok) {
+          setConnectionId(response.connectionId);
           dispatch({ type: "redeem-success" });
         } else {
           // The API's own message, verbatim — never a distance, a reason
@@ -178,71 +214,129 @@ export function ScannerFlow() {
     };
   }, [state.phase]);
 
+  function scanAgain() {
+    // Cleared before the state change so the payoff can never re-mount
+    // holding the previous scan's connection.
+    setConnectionId(null);
+    dispatch({ type: "scan-again" });
+  }
+
+  // The camera stage stays mounted through every phase (see the header: the
+  // stream outlives any single scan) but is hidden once an outcome is on
+  // screen, so the payoff or the refusal is the only thing being looked at.
+  const stageVisible =
+    state.phase === "requesting-camera" || state.phase === "scanning" || state.phase === "verifying";
+
   return (
-    <div className="flex flex-col items-center gap-6 text-center">
-      {/* The video element is mounted for the whole camera-ready lifetime
-          (scanning, verifying, and every outcome after it) so the stream
-          never has to be re-attached — only its visibility changes. */}
-      <div className="relative overflow-hidden rounded-lg border bg-card">
-        <video
-          ref={videoRef}
-          muted
-          playsInline
-          className={
-            state.phase === "requesting-camera" || state.phase === "camera-denied"
-              ? "hidden"
-              : "aspect-square w-72 max-w-full object-cover"
-          }
+    <div className="flex w-full flex-col items-center gap-[18px]">
+      {state.phase === "scanning" && (
+        <p className="text-center text-[14px] leading-5" style={{ color: "var(--sc-text-muted)" }}>
+          Point your camera at the code they&rsquo;re showing.
+        </p>
+      )}
+
+      <div
+        className={stageVisible ? "relative size-72 max-w-full overflow-hidden rounded-[34px]" : "hidden"}
+        style={{
+          border: "1px solid var(--sc-glass-bd)",
+          boxShadow: "0 22px 50px -18px rgba(16,24,40,.4)",
+          background: "repeating-linear-gradient(120deg,#2a3040 0 12px,#333a4d 12px 24px)",
+        }}
+      >
+        <video ref={videoRef} muted playsInline className="size-full object-cover" />
+
+        {/*
+         * The reticle: a rounded window inset 38px, with a huge spread shadow
+         * standing in for a dimmed surround, plus the travelling scanline.
+         * Purely decorative — nothing about where a code must sit in frame is
+         * enforced here; `barcode-decoder.ts` reads the whole frame.
+         */}
+        <span
+          aria-hidden
+          className="absolute inset-[38px] rounded-[22px]"
+          style={{
+            border: "2px solid rgba(255,255,255,.7)",
+            boxShadow: "0 0 0 999px rgba(10,14,24,.28)",
+          }}
         />
+        <span
+          aria-hidden
+          className="absolute top-[38px] right-[38px] left-[38px] h-0.5"
+          style={{
+            background: "linear-gradient(90deg, transparent, var(--sc-accent), transparent)",
+            animation: "sc-scanline 2.6s cubic-bezier(.4,0,.6,1) infinite",
+          }}
+        />
+
+        {state.phase === "requesting-camera" && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <p
+              role="status"
+              className="rounded-lg px-2.5 py-1.5 font-mono text-[11px] leading-4"
+              style={{ background: "rgba(0,0,0,.4)", color: "rgba(255,255,255,.85)" }}
+            >
+              Starting the camera…
+            </p>
+          </div>
+        )}
+
+        {/*
+         * "That isn't a SmartCard code" is explicitly NOT a failure (see
+         * `scanner-state.ts`): the loop never pauses, so this is a note over
+         * a live viewfinder rather than an outcome panel.
+         */}
         {state.phase === "scanning" && state.note && (
-          <p className="absolute inset-x-0 bottom-0 bg-background/90 p-2 text-xs text-muted-foreground">
+          <p
+            role="status"
+            className="absolute inset-x-0 bottom-0 px-4 py-2.5 text-center text-[12px] leading-4"
+            style={{ background: "rgba(10,14,24,.62)", color: "rgba(255,255,255,.9)" }}
+          >
             {state.note}
           </p>
         )}
+
         {state.phase === "verifying" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80">
-            <p className="text-sm text-muted-foreground">Confirming…</p>
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{ background: "rgba(10,14,24,.55)" }}
+          >
+            <p role="status" className="text-[14px] leading-5 font-medium text-white">
+              Confirming…
+            </p>
           </div>
         )}
       </div>
 
-      {state.phase === "requesting-camera" && <Status message="Starting the camera…" />}
-
       {state.phase === "camera-denied" && (
-        <ErrorPanel
+        <QuietOutcome
           message={cameraDenialMessage(state.reason)}
           onRetry={() => window.location.reload()}
           retryLabel="Reload"
         />
       )}
 
-      {state.phase === "scanning" && (
-        <p className="text-sm text-muted-foreground">Point your camera at their code.</p>
-      )}
-
       {state.phase === "location-denied" && (
-        <ErrorPanel
-          message={locationDenialMessage(state.reason)}
-          onRetry={() => dispatch({ type: "scan-again" })}
-        />
+        <QuietOutcome message={locationDenialMessage(state.reason)} onRetry={scanAgain} />
       )}
 
       {state.phase === "success" && (
-        <div className="flex flex-col items-center gap-4">
-          <h2 className="text-xl font-semibold">You&rsquo;re connected.</h2>
-          <Button variant="outline" onClick={() => dispatch({ type: "scan-again" })}>
-            Scan another
-          </Button>
-        </div>
+        <ConnectedPayoff
+          viewer={viewer}
+          connectionId={connectionId}
+          onAgain={scanAgain}
+          againLabel="Connect again"
+        />
       )}
 
-      {state.phase === "failure" && (
-        <ErrorPanel message={state.message} onRetry={() => dispatch({ type: "scan-again" })} />
-      )}
+      {/*
+       * `failure` is the API's own refusal and `error` is a transport
+       * problem, and they render identically on purpose — see
+       * `QuietOutcome`'s header. The message is passed through untouched:
+       * nothing is appended, no icon varies, no code is shown.
+       */}
+      {state.phase === "failure" && <QuietOutcome message={state.message} onRetry={scanAgain} />}
 
-      {state.phase === "error" && (
-        <ErrorPanel message={state.message} onRetry={() => dispatch({ type: "scan-again" })} />
-      )}
+      {state.phase === "error" && <QuietOutcome message={state.message} onRetry={scanAgain} />}
     </div>
   );
 }
@@ -252,25 +346,4 @@ function apiErrorMessage(error: unknown): string {
   return error instanceof ConnectApiError
     ? error.message
     : "Couldn't reach SmartCard. Check your connection and try again.";
-}
-
-function Status({ message }: { message: string }) {
-  return <p className="text-sm text-muted-foreground">{message}</p>;
-}
-
-function ErrorPanel({
-  message,
-  onRetry,
-  retryLabel = "Try again",
-}: {
-  message: string;
-  onRetry: () => void;
-  retryLabel?: string;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-sm text-destructive">{message}</p>
-      <Button onClick={onRetry}>{retryLabel}</Button>
-    </div>
-  );
 }

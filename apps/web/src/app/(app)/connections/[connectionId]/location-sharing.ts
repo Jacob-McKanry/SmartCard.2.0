@@ -83,6 +83,56 @@ export function deriveLocationSharingStatus(inputs: LocationSharingInputs): Loca
 }
 
 /**
+ * The short mono, small-caps rendering of the same status — `docs/design/
+ * DESIGN.md` §6 asks the meeting record to show "the derived state as a mono
+ * label" beside the sharing controls.
+ *
+ * It is a *summary* of `locationSharingSummary`, never a replacement for it:
+ * five words cannot carry the "either of you can turn this off at any time"
+ * and "only you can undo your own private flag" rules, and §8 requires
+ * rule-bearing text to be a readable size in a readable colour. The record
+ * screen renders both — this as the glanceable state, the sentence beneath it
+ * as the explanation.
+ */
+export function locationSharingLabel(status: LocationSharingStatus, otherName: string): string {
+  switch (status) {
+    case "not-offered":
+      return "NOT SHARED";
+    case "waiting-on-you":
+      return "WAITING ON YOU";
+    case "waiting-on-them":
+      return `WAITING ON ${otherName.toUpperCase()}`;
+    case "shared":
+      return "SHARED WITH MUTUALS";
+    case "blocked-by-privacy":
+      return "HIDDEN BY A PRIVACY SETTING";
+  }
+}
+
+/**
+ * Which token the mono label above should be painted in. `--sc-pending` means
+ * exactly one thing per §2 — *waiting on somebody* — so it is used for the two
+ * waiting states and nowhere else; a blocked or not-offered meeting is a
+ * settled state, not a pending one, and colouring it amber would say the
+ * opposite of what is true. `shared` is the only state that gets accent,
+ * because it is the only one where something is actually visible to a third
+ * party. §8 still applies: the colour is never the only signal — the label
+ * itself says which state it is.
+ */
+export function locationSharingLabelColor(status: LocationSharingStatus): string {
+  switch (status) {
+    case "waiting-on-you":
+    case "waiting-on-them":
+      return "var(--sc-pending)";
+    case "shared":
+      return "var(--sc-accent-deep)";
+    case "not-offered":
+    case "blocked-by-privacy":
+      return "var(--sc-text-muted)";
+  }
+}
+
+/**
  * User-facing copy for each status, parameterised by the other participant's
  * display name so the same enum drives both the summary line and its tests.
  */
