@@ -482,6 +482,25 @@ This needs no schema change, but it is recorded rather than assumed because it i
 
 **`pending_connections`** — designed now, built later. `id` (PK), `initiator_user_id` (FK), `session_id` (FK → connection_sessions), `contact_name`, `contact_email` 🔒, `contact_phone` 🔒, `place_label` 🔒, `latitude`/`longitude` 🔒, `occurred_at`, `claimed_by_user_id` (FK, nullable), `claimed_at`, `status`. Hangs off `connection_sessions` — the same table QR/NFC already use — so the non-user flow slots in later without touching connection or graph tables.
 
+#### Amendment (2026-08-15) — half of "the non-user flow" is now built, and it is the half pointing the *other* way
+
+**`pending_connections` is still a schema slot with no table and no code path.** Nothing in this amendment changes that, and the deferral above stands exactly as written.
+
+What has been built shares the words "non-user flow" with it and is a different thing, so the distinction is recorded here rather than left for a reader to trip over:
+
+| | §2.8's `pending_connections` (still deferred) | The card preview (built 2026-08-15) |
+|---|---|---|
+| Direction | **Inbound.** Captures the *non-user's* details, so a member gets something out of meeting somebody not on the app | **Outbound.** Shows the *cardholder's* details to the non-user |
+| Whose data moves | The stranger's, into our database | The member's, out to the stranger |
+| Writes | A `pending_connections` row waiting to be claimed | Nothing but an audit row about the disclosure |
+| Creates a connection | Later, when the non-user signs up and claims it | Never, by construction |
+
+They are complements, not two stages of one feature, and building the outbound half brings the inbound half no closer to existing. The threat-model item that hangs off §2.8 — **§4.7 threat 3, "forwarding the share-your-contact-back link"** — is about the inbound half, so it remains unbuilt and untested; `threats.test.ts` still skips it and still says why.
+
+**What was actually built** (`apps/web/src/app/card/[code]/`, `apps/web/src/app/c/[token]/`, `apps/web/src/server/cards/card-preview-service.ts`, migrations `2026081512*`): a signed-out visitor who taps a card, or points a phone camera at a presenter's QR, sees the cardholder's name, company, role, bio, phone, email and photo, can download a vCard, and can sign in. That is the entire surface — there is no "connect" affordance on either page and there must never be one, because a card URL is permanent and forwardable and CLAUDE.md's non-negotiable rule forbids exactly that.
+
+**One new table, `card_preview_views`** (20260815120100) — service-role writes, subject-only reads, surfaced on `/activity`. It is not `pending_connections` and does not pre-empt it: it records disclosures the product made, not people a member met. Full build note in §4.5's 2026-08-15 amendment; what it costs is in §4.7 threat 1's.
+
 ### 2.9 Feed
 
 No feed table for the pilot. Both post types ("You met X" / "A met B") derive on read from `meetings` + `meeting_participants` + `connections` — simpler and always consistent at ~337 users, and avoids fan-out bugs when a meeting's visibility changes. Indexes needed: `connections(user_a_id)`, `connections(user_b_id)`, `meeting_participants(user_id)`, `meetings(occurred_at desc)`.
@@ -844,6 +863,39 @@ The client's claimed owner is never trusted — identity is resolved server-side
 
 **Not built, and out of scope for this pass:** the in-app surface this section also requires ("a recent-activity or connection list showing 'tapped your card' with the same revoke action, so that a user who never receives a push is not a user with no path to detection"). That is a screen, and no connect screens were built in this pass. **It is a real gap in threat 7's defence, not a nicety** — push delivery is best-effort on both platforms and users disable notifications — and it belongs with whichever phase builds the connections list.
 
+#### Amendment (2026-08-15) — step 2's "no app installed → web preview page" is now real, and it is the product's first unauthenticated read
+
+Step 2 of this section has always ended with the words **"no app installed → web preview page"**. Until now that clause described nothing: a signed-out visitor got a static sign-in prompt, the page touched the database zero times, and the tap effectively landed on a wall. This amendment records that the preview is built, what it discloses, and — at more length, because it is the part that matters — what it costs.
+
+**The project owner made four decisions and they are not up for re-litigation here.** They were made with the risks below written out in full:
+
+1. **Preview is ON for every assigned, active card.** No per-user opt-in or opt-out column, so there is no setting to add, migrate or explain, and no user for whom a tapped card silently does nothing.
+2. **The vCard includes phone number and email by default.** A contact card without contact details is not a contact card, and the whole point of a physical card is that handing it over shares those two things.
+3. **Auto-connect after sign-in is unchanged.** A signed-in visitor still hits `CardRedeemFlow` on mount, exactly as Q17 decided.
+4. **Both halves were built**: the card path (`/card/<code>`) and the QR path (`/c/<token>`).
+
+**The QR half fixed a live bug nobody had reported.** `connect/lib/qr-url.ts` has always encoded `<origin>/c/<token>` per §4.2 step 2, and the in-app scanner parses that shape back out — a closed loop that works. But **no `/c/` route existed**, so the other way a QR gets read in the real world (a phone camera, which offers to open the URL) 404'd. The presenter's screen was displaying a link to nothing. `/c/<token>` now runs §4.2 step 5's first five checks — signature, `exp`, live session, session lifetime, nonce — and shows the presenter's preview only if all five pass.
+
+**The nonce check is included even though nothing is being redeemed**, and that is a deliberate tightening rather than copy-paste. A preview does not strictly need a current nonce; the signature and the live session already prove the token is ours and the presenter is still displaying. It is checked anyway because dropping it would quietly reopen half of threat 1 on a brand-new surface: a photograph of somebody's QR would keep resolving to their phone number and email for the whole life of the session. Rotation exists so a screenshot goes stale in seconds, and it should go stale for every reader of the token, not only for the one trying to connect.
+
+**Every refusal is the same refusal, and this matters more here than on the redeem endpoints.** An unknown code, unassigned stock, a revoked card, a suspended or deleted owner, a forged token, an expired token, a consumed session, an exhausted budget, a missing config row and any thrown error all produce one `null` and one identical rendered page. §4.5's existing rule ("telling a tapper 'this card was revoked' confirms they are holding somebody's lost property and are being watched") applies with more force to an anonymous caller than to a signed-in one, because any distinction between refusals turns the route into an oracle for which of the 7,142 printed codes are real and which are live. This is asserted as a set — the tests take every failure mode and check that the number of distinct results is exactly one — not reviewed as copy.
+
+**Rate limiting had to be invented for this path, because §4.6's controls do not reach it.** Every limit that actually resists brute-forcing a card code is keyed to a user, and `nfc-verifier.ts` says so in as many words: it works "because a guesser has to be a signed-in user". There is no account to charge here. A new `card_preview` action was added with two budgets, both seeded as `app_config` rows (20260815120000) and both refusing rather than defaulting if the row is missing:
+
+| Budget | Value | What it is actually for |
+|---|---|---|
+| per IP, per hour | 40 | Stopping **one host scraping**. The realistic attack is not guessing 48-bit suffixes — it is somebody who already holds a list of codes (a photo of a stack of stock, a leaked print run) turning it into a contact database in one pass. |
+| per card, per hour | 20 | Capping what **one card** discloses before anyone notices. Consumed even by previews that are then refused, so probing a revoked card is not free. |
+
+Both count the preview page and the vCard download separately, because both are disclosures — so read them as roughly 20 and 10 previews respectively. Both are deliberately on the tight side, which is the *opposite* of §4.6's sizing call, and the inversion is intentional: a connect limit that bites breaks the product in front of the pilot audience, whereas a preview limit that bites shows a stranger "nothing here" on a courtesy page and is fixed by one UPDATE. Erring tight makes the mistake a visible refusal; erring loose makes it a silent scrape.
+
+**A new audit table, `card_preview_views`** (20260815120100 / 20260815120200), records every disclosure — never a refusal, because refusals already leave a row in `rate_limit_events` (which records before it counts) and adding a second unbounded, unpruned write reachable by an anonymous caller would be a worse trade than the signal is worth. The owner reads their own rows on `/activity`, through their own RLS-bound client, alongside the card-tap list. That surfacing is not decoration: a preview produces no tap, no connection and therefore **no push notification at all**, so without it the disclosure would be completely invisible to the person it is about — and detection is the whole of threat 7's defence on this path.
+
+**Two deviations from existing rules, recorded where the rules live rather than only in code.**
+
+- **`service-role-client.ts`'s "one caller" posture takes a sixth caller.** The check that file demands was made and a policy is impossible: every policy in this schema is a relationship between the reader and the row, evaluated against `auth.uid()`, and this reader has no account, no `users` row and no JWT. The only policy that could serve the page is one true for `anon` on `users`, which would open the table §3.4 exists to close. What replaces RLS is the TypeScript: two entry points, each taking only a credential, a hardcoded column list, no caller-supplied filter of any kind, no raw row ever returned, and **`social_links` never read at all** (20260809211100: exposing them "would be a searchable directory of people's off-platform handles"). The allowlist in `no-second-write-path.test.ts` was updated by hand with that reasoning attached.
+- **`photo-url.ts`'s "never the service role" rule is deviated from, for this path only.** That file forbids service-role signing because Storage enforces RLS at signing time. There is no caller client to bind to here, and the alternative was widening the `profile-photos` policy to `anon` — which would let anyone who obtained or guessed *any* path fetch the bytes for *every* user, a blast radius far past this feature. The narrower option was taken: sign inside the preview module, for one path already resolved from a credential, at a **five-minute** TTL rather than the hour a signed-in session gets. `photo-url.ts` remains the only sanctioned route for every signed-in surface.
+
 ### 4.6 Rate limiting
 
 | Endpoint | Limit |
@@ -878,6 +930,25 @@ The single exception is the per-IP limit on the redeem endpoints, which is enfor
 ### 4.7 Threat → mechanism mapping
 
 **Threat 1 — Screenshot the QR, forward to a remote person → Defeated.** Token `exp` (45s) + rotation (30s) + session-level single-use (any legitimate scan kills every outstanding token) + GPS gate as a second independent layer.
+
+> **Amendment (2026-08-15) — the card path now has a residual this threat did not previously have, and it is consciously accepted.**
+>
+> This threat was written about the QR, where "screenshot and forward" is defeated by time: the code in the picture is dead within 45 seconds. **The card path was never in scope for it because there was nothing to forward** — `/card/<code>` rendered a static sign-in prompt, touched the database zero times, and returned byte-identical bytes for a real code and for garbage. Screenshotting it accomplished nothing, so nobody had to say so.
+>
+> **That is no longer true.** `/card/<code>` now resolves to the cardholder's name, company, role, bio, phone number, email and photo for anybody who opens it with no account. And unlike a QR token, **a card code has no expiry at all**: it is stamped permanently into physical inventory (§2.2), so the URL is permanent, forwardable, and screenshot-able to the same effect as the page itself. Forwarding one is now equivalent to handing over the card, minus the part where you notice the card is gone.
+>
+> **What defends it, honestly listed, with what each one does *not* do:**
+>
+> - **48 bits of non-user-chosen entropy** in the code's suffix, unique across all 7,142 cards. This defeats *generating* codes. It does nothing about a code somebody already has.
+> - **A per-IP and a per-card budget** (§4.5's 2026-08-15 amendment). These bound *bulk* use — a leaked list turned into a database in one pass. They do nothing about one code forwarded to one person, which is indistinguishable from the intended use.
+> - **`cards.status = 'revoked'`**, the existing kill switch, which now also kills the preview. This is the only control that actually stops a forwarded URL, and it is reactive: it works once the owner knows.
+> - **`card_preview_views`, surfaced on `/activity`.** The owner can see that somebody without an account opened their card link and whether they saved the contact file. There is no name on those rows and there cannot be — the viewer has no account — so this tells the owner *that* it happened, never *who*.
+>
+> **Consciously accepted residual, stated plainly.** A SmartCard member's phone number and email are now reachable by anyone holding their card's URL, for as long as the card stays unrevoked, with no notification at the moment it happens. The project owner was shown this and chose it, for a specific reason: a physical card handed to somebody who is not on the app previously did *nothing whatsoever*, which is a product that does not work, and the details being disclosed are exactly the details the owner hands over on purpose every time they give somebody a card. The trade is that the disclosure is no longer gated on the recipient still having the card in their hand.
+>
+> **Two things to watch, and one thing not to build.** Watch the shape of `card_preview_views` in pilot data — repeated previews of one card from many distinct hashed IPs is what a forwarded or leaked URL looks like, and it is the signal that would justify tightening the per-card budget or adding a preview notification (deliberately not built now: a push per preview would train owners to ignore the alert that matters, which is the trap §4.5's coalescing amendment already names). And do **not** respond to this by adding a per-user opt-out column without deciding what a tapped card should then do — a card that silently resolves to "nothing here" for its own owner's visitors is a worse product than either alternative.
+>
+> The QR half of this threat is unaffected and, if anything, slightly better tested: `/c/<token>` enforces the same nonce rotation the redeem path does, so a photographed QR goes stale on the preview surface too rather than only at redeem.
 
 **Threat 2 — Live video relay (FaceTime, remote friend scans off the screen) → Defeated\*.** Rotation does *not* help — the code is genuinely current. Defeated only by GPS proximity, server-computed from both devices' independently-reported positions, with presenter freshness (90s) and an accuracy floor so a deliberately vague fix can't fuzz past the radius. **This is the entire reason GPS is mandatory.** (\*Except combined with GPS spoofing — accepted residual risk.)
 
