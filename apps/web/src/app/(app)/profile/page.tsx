@@ -11,9 +11,8 @@ import {
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 import { listOwnConnections } from "@/server/connections/connections-service";
 import { listAttendingEvents, type AttendingEventItem } from "@/server/events/events-service";
+import { LinkTiles } from "@/components/link-tiles";
 import { RingCentre, RingDiagram, type RingBandData } from "@/components/ring-diagram";
-
-import { LinkTiles } from "./link-tiles";
 
 /**
  * The Profile screen: the signed-in user's own identity, drawn to
