@@ -25,56 +25,204 @@
  * `dark:` utility classes, but driven by the OS setting until a real toggle
  * is a requirement worth adding next-themes for.
  */
+/*
+ * shadcn/ui tokens, re-pointed at the SmartCard palette.
+ *
+ * These are kept because `components/ui/*` (button, input, avatar, label,
+ * textarea) reference them, and those primitives are used across screens that
+ * have not been ported yet. Re-pointing rather than deleting means a shadcn
+ * Button and a hand-written glass control share one accent and one text
+ * colour during the port instead of drifting apart screen by screen.
+ *
+ * Values are the DESIGN.md §2 palette expressed in the format each token
+ * already used. `--radius` moves 0.625rem → 1rem because §2's shape rule is
+ * "no sharp corners anywhere"; pills and 22–26px cards are applied per
+ * component, but the shared default should not still be the shadcn 10px.
+ */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --radius: 1rem;
+  --background: #ffffff;
+  --foreground: #0d1220;
+  --card: #ffffff;
+  --card-foreground: #0d1220;
+  --popover: #ffffff;
+  --popover-foreground: #0d1220;
+  --primary: #0b60ff;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(13, 18, 32, 0.05);
+  --secondary-foreground: #0d1220;
+  --muted: rgba(13, 18, 32, 0.04);
+  --muted-foreground: #5b6478;
+  --accent: rgba(11, 96, 255, 0.12);
+  --accent-foreground: #0946bb;
+  --destructive: #b42318;
+  --destructive-foreground: #ffffff;
+  --border: rgba(13, 18, 32, 0.1);
+  --input: rgba(13, 18, 32, 0.12);
+  --ring: rgba(11, 96, 255, 0.45);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: oklch(0.141 0.005 285.823);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.21 0.006 285.885);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.21 0.006 285.885);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.92 0.004 286.32);
-    --primary-foreground: oklch(0.21 0.006 285.885);
-    --secondary: oklch(0.274 0.006 286.033);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.274 0.006 286.033);
-    --muted-foreground: oklch(0.705 0.015 286.067);
-    --accent: oklch(0.274 0.006 286.033);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --destructive-foreground: oklch(0.985 0 0);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.552 0.016 285.938);
+/*
+ * NO DARK MODE, DELIBERATELY.
+ *
+ * The `prefers-color-scheme: dark` block that used to sit here is gone, and
+ * that is a real behaviour change rather than an oversight. `docs/design/
+ * DESIGN.md` opens with "Glass and light … never dark" and its token table
+ * defines exactly one palette; the Design Lab prototypes it points to have no
+ * dark variant to port. Keeping an OS-driven dark theme would mean shipping a
+ * second look that was never designed, never reviewed, and — because glass
+ * surfaces are defined as translucent *white* over a light canvas — would
+ * render the whole system illegible on a dark background rather than merely
+ * different.
+ *
+ * If dark mode is wanted later it is a design deliverable first, not a CSS
+ * one: every token below needs a counterpart, and §2's "Glass" and "Canvas"
+ * rules need rewriting for a dark ground.
+ */
+
+/*
+ * SmartCard design tokens — docs/design/DESIGN.md §2.
+ *
+ * These are the source of truth for the app's look. The shadcn/ui variables
+ * above are kept (existing `components/ui/*` primitives reference them) but
+ * are re-pointed at these values further down, so a shadcn Button and a
+ * hand-written glass panel cannot drift apart.
+ *
+ * ACCENT: WHY #0b60ff AND NOT DESIGN.md's #0a84ff.
+ * The two artifacts handed over disagree. DESIGN.md's table documents
+ * `--accent: #0a84ff`, but the prototypes actually render `#0b60ff` — it is
+ * the default of their `accentColor` prop, and every screenshot, gradient and
+ * `--accent-tint` in `SmartCard 2.0.dc.html` is derived from it. The brief was
+ * to build the screens exactly as designed, so the rendered value wins and the
+ * discrepancy is recorded here rather than silently resolved. Changing it is a
+ * one-line edit to `--accent` plus the two derived values beneath it.
+ *
+ * `--accent-deep` and `--accent-tint` are not free choices: the prototype
+ * computes them as mix(accent, #06225e, 0.42) and alpha(accent, 0.12)
+ * respectively. The literals below are those functions evaluated for #0b60ff.
+ */
+:root {
+  --sc-text: #0d1220;
+  --sc-text-muted: #5b6478;
+  --sc-text-subtle: #8b93a5;
+
+  --sc-accent: #0b60ff;
+  --sc-accent-deep: #0946bb;
+  --sc-accent-tint: rgba(11, 96, 255, 0.12);
+  --sc-ink-deep: #0a3fb0;
+
+  --sc-danger: #b42318;
+  --sc-pending: #7a5c00;
+  --sc-canvas: #f1f4fa;
+
+  /*
+   * Glass, "standard" intensity. The prototype exposes three levels; standard
+   * is its default and DESIGN.md §2 names it the default too. The other two
+   * are provided as utilities below rather than as a swappable global, because
+   * the per-screen specs pick a level explicitly (Activity is flat, Connect is
+   * liquid) — a single global switch would erase that distinction.
+   */
+  --sc-glass-bg: rgba(255, 255, 255, 0.72);
+  --sc-glass-blur: 22px;
+  --sc-glass-bd: rgba(255, 255, 255, 0.78);
+  --sc-glass-sh: 0 10px 30px rgba(16, 24, 40, 0.08);
+
+  /* Motion — DESIGN.md §2. Glide for cross-fades/dismissals, spring for arrivals. */
+  --sc-ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --sc-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/*
+ * The canvas is never flat (DESIGN.md §2): three coloured blooms under a near
+ * -white base. They exist so the glass surfaces have something to refract —
+ * on a flat fill, `backdrop-filter` produces no visible effect and every
+ * panel reads as plain white.
+ */
+@layer base {
+  body {
+    background:
+      radial-gradient(700px 500px at 15% -5%, rgba(11, 96, 255, 0.13), transparent 60%),
+      radial-gradient(600px 420px at 95% 8%, rgba(124, 58, 237, 0.09), transparent 62%),
+      radial-gradient(700px 500px at 50% 108%, rgba(11, 96, 255, 0.07), transparent 60%),
+      var(--sc-canvas);
+    background-attachment: fixed;
+    color: var(--sc-text);
+  }
+}
+
+/*
+ * Prototype keyframes, copied verbatim from `SmartCard 2.0.dc.html`'s helmet
+ * block so ported screens animate identically rather than approximately.
+ */
+@keyframes sc-spring-in {
+  0% { transform: scale(0.4); opacity: 0; }
+  55% { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes sc-rise {
+  0% { transform: translateY(14px) scale(0.985); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes sc-sheet {
+  0% { transform: translateY(100%); }
+  100% { transform: translateY(0); }
+}
+@keyframes sc-shimmer {
+  0% { transform: translateX(-120%) rotate(8deg); }
+  100% { transform: translateX(220%) rotate(8deg); }
+}
+@keyframes sc-halo {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.06); opacity: 0.9; }
+}
+@keyframes sc-draw {
+  0% { stroke-dashoffset: 36; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes sc-blurup {
+  0% { filter: blur(14px); opacity: 0.4; transform: scale(1.04); }
+  100% { filter: blur(0); opacity: 1; transform: scale(1); }
+}
+@keyframes sc-orbit { to { transform: rotate(360deg); } }
+@keyframes sc-orbit-rev { to { transform: rotate(-360deg); } }
+@keyframes sc-merge { 0% { transform: translateX(26px); } 100% { transform: translateX(0); } }
+@keyframes sc-merge-l { 0% { transform: translateX(-26px); } 100% { transform: translateX(0); } }
+@keyframes sc-scanline {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(206px); }
+  100% { transform: translateY(0); }
+}
+
+/*
+ * Respect a reduced-motion preference. The prototypes animate freely because
+ * they are a design artifact; a shipped app must not. DESIGN.md §8 sets an
+ * accessibility floor and this is the motion half of it — entrances and
+ * springs collapse to near-instant, but nothing depends on an animation to
+ * become visible, so no state is lost.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-instrument-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-sc-text: var(--sc-text);
+  --color-sc-text-muted: var(--sc-text-muted);
+  --color-sc-text-subtle: var(--sc-text-subtle);
+  --color-sc-accent: var(--sc-accent);
+  --color-sc-accent-deep: var(--sc-accent-deep);
+  --color-sc-ink-deep: var(--sc-ink-deep);
+  --color-sc-danger: var(--sc-danger);
+  --color-sc-pending: var(--sc-pending);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -106,7 +254,12 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+  /*
+   * `body` deliberately does NOT get `@apply bg-background` any more. That rule
+   * painted a flat opaque fill over the canvas gradient defined above, which
+   * removed the only thing the glass surfaces have to refract — every
+   * `backdrop-filter` panel would have rendered as flat white. Text colour is
+   * set alongside the gradient rather than here for the same reason: one place
+   * owns the page ground.
+   */
 }
