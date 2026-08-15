@@ -95,12 +95,24 @@ export function ConnectedPayoff({
           className="-ml-3.5"
           style={{ animation: "sc-merge-l .9s var(--sc-ease-glide) both" }}
         >
-          {details === null ? <UnknownDisc /> : (
+          {/*
+           * The dashed unknown disc is reserved for "this screen is never
+           * told who" (the presenter path), and is chosen on `connectionId`
+           * rather than on `details` for exactly that reason. The scanner
+           * path always draws a real disc — briefly with no initials while
+           * the lookup is in flight, which is a plate waiting for a face, not
+           * a claim that the person is unknown. Keying it off `details` would
+           * flash "we don't know who this is" at somebody who is about to be
+           * shown a name.
+           */}
+          {connectionId === null ? (
+            <UnknownDisc />
+          ) : (
             <AvatarDisc
               size={84}
               fontSize={22}
-              initials={details.initials}
-              photoUrl={details.photoUrl}
+              initials={details?.initials ?? ""}
+              photoUrl={details?.photoUrl ?? null}
             />
           )}
         </div>
