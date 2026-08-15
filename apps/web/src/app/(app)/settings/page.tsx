@@ -9,6 +9,7 @@ import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 import { kindeSiteUrl } from "@/server/env";
 
 import { AvatarDisc } from "../connections/lib/avatar-disc";
+import { DeleteAccount } from "./delete-account";
 import { SignOutSheet } from "./sign-out-sheet";
 
 /**
@@ -24,10 +25,36 @@ import { SignOutSheet } from "./sign-out-sheet";
  * around the one control.
  *
  * ---------------------------------------------------------------------------
+ * AMENDMENT (2026-08-15) — "DELETE YOUR ACCOUNT" IS NOW REAL AND IS ON THIS
+ * SCREEN. THE LIST BELOW USED TO NAME IT AS THE SECOND OF FOUR LIES.
+ *
+ * The original reasoning was right and is left in place below in spirit: a row
+ * that opens a confirmation and then cannot delete anything is worse than no
+ * row, and until this pass `users.status` had a `'deleted'` value with no
+ * policy, no action and no service function behind it.
+ *
+ * What changed is the backend, not the standard.
+ * `public.soft_delete_own_account()` (20260815130300) marks the account
+ * deleted, revokes its cards, cancels the events it hosts and burns its live
+ * presentation sessions in ONE transaction; 20260815130200 makes a deleted row
+ * unreadable through the graph. The row below therefore describes something
+ * that happens. `settings-honesty.test.tsx`'s ban on this phrase was lifted in
+ * the same change rather than worked around, and replaced with an assertion
+ * that the copy does not overstate the delete as permanent — because it is not.
+ *
+ * 20260809211100's line that deletion "must never be one client request away"
+ * is honoured rather than overridden: this is not one client request. It is two
+ * taps behind the app's shared confirmation panel, and at the database it is a
+ * `security definer` function that takes no arguments — `authenticated` still
+ * holds no UPDATE grant on `users.status`, so there is no request a client can
+ * make that sets that column directly. What that sentence forbids is a writable
+ * `status`, and `status` is still not writable.
+ *
+ * ---------------------------------------------------------------------------
  * WHAT THE PROTOTYPE DRAWS THAT IS NOT BUILT HERE, AND WHY EACH ONE IS A LIE
  *
  * §7's "never invent a capability. Copy must not imply otherwise" is the whole
- * argument. Four rows were dropped, not deferred:
+ * argument. Three rows are still dropped, not deferred:
  *
  *  - **"Change your password."** This product is Kinde *passwordless*: sign-in
  *    emails a one-time code and there is no password field anywhere. See the
@@ -38,15 +65,9 @@ import { SignOutSheet } from "./sign-out-sheet";
  *    plainly that there is no password — which is the thing a person hunting
  *    for that row actually needs to know.
  *
- *  - **"Delete your account."** `users.status` has a `'deleted'` value and
- *    nothing implements it. There is no policy, no action and no service
- *    function; `20260809211100` states outright that deletion is an
- *    administrator's soft state change and "must never be one client request
- *    away". A row that opens a confirm and then cannot delete anything is worse
- *    than no row.
- *
  *  - **"Download your connections."** No export path exists anywhere in this
- *    codebase.
+ *    codebase, and — asked directly on 2026-08-15 — the project owner declined
+ *    to build one in this pass. Still a lie, therefore still absent.
  *
  *  - **Three of the four "what people see" toggles.** "Profile visible to
  *    people you meet", "City visible to mutual connections" and "Event
@@ -182,6 +203,27 @@ export default async function SettingsPage() {
             </Link>
           </RowShell>
         </Panel>
+      </Group>
+
+      <Group label="ACCOUNT">
+        <Panel>
+          <RowShell last>
+            <DeleteAccount />
+          </RowShell>
+        </Panel>
+        {/*
+         * The footnote states a rule, so it gets `--text-muted` like the other
+         * two. It says the reversible part out loud OUTSIDE the confirmation as
+         * well as inside it, because the person deciding whether to tap the row
+         * is reading this line, not the panel they have not opened yet — and
+         * "soft" is the entire difference between this and the thing they are
+         * probably imagining.
+         */}
+        <Footnote>
+          Deleting is reversible by an administrator: nothing is erased, your connections and
+          meeting history stay, and your account can be switched back on. Your cards do not switch
+          themselves back on — you do that from Activity.
+        </Footnote>
       </Group>
 
       <SignOutSheet
