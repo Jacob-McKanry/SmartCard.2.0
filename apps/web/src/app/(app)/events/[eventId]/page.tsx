@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ChevronLeft, Lock, Users } from "lucide-react";
+import { CalendarX2, ChevronLeft, Lock, Users } from "lucide-react";
+import type { RsvpStatus } from "@smartcard/types";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import {
@@ -119,6 +120,22 @@ export default async function EventDetailPage({
   const ended = eventHasEndedNow(event.starts_at, event.ends_at);
 
   /*
+   * A cancelled event is, today, one whose host deleted their account —
+   * `public.soft_delete_own_account()` (20260815130300) is the only writer of
+   * this column. You are seeing it because you already answered for it, were
+   * invited to it, or host it: the amended `private.can_see_event`
+   * (20260815130200) dropped cancelled events from the "any authenticated user
+   * may see a public event" branch, so nobody else finds it at all.
+   *
+   * Every control that could change the guest list is withheld below, and that
+   * is a correctness fix rather than tidiness: the trigger in 20260815130100
+   * refuses every INSERT and UPDATE on `event_rsvps` for a cancelled event, so
+   * an RSVP button here would be a control whose only possible outcome is an
+   * error.
+   */
+  const isCancelled = event.status === "cancelled";
+
+  /*
    * WHO SEES AN INVITE CONTROL, AND WHY THE TEST HAS TWO HALVES.
    *
    * `host or going` mirrors the `event_invites` INSERT policy — a UI offering
@@ -132,7 +149,9 @@ export default async function EventDetailPage({
    * load-bearing for access.
    */
   const canInvite =
-    event.visibility === "private" && (role === "host" || ownRsvp?.status === "going");
+    !isCancelled &&
+    event.visibility === "private" &&
+    (role === "host" || ownRsvp?.status === "going");
   const inviteCandidates = canInvite ? await buildInviteCandidates(supabase, event.id, userId) : [];
 
   return (
@@ -187,6 +206,8 @@ export default async function EventDetailPage({
         </div>
       </div>
 
+      {isCancelled ? <CancelledNotice ownStatus={ownRsvp?.status ?? null} /> : null}
+
       <HostRow
         name={host === null ? null : displayName(host)}
         initials={host === null ? "•" : initialsFor(host)}
@@ -206,15 +227,17 @@ export default async function EventDetailPage({
         </p>
       ) : null}
 
-      <RsvpBlock
-        eventId={event.id}
-        storedStatus={ownRsvp?.status ?? null}
-        requiresApproval={event.requires_approval}
-        isFull={counts?.isFull ?? false}
-        hasEnded={ended}
-        isPrivate={event.visibility === "private"}
-        isHost={role === "host"}
-      />
+      {isCancelled ? null : (
+        <RsvpBlock
+          eventId={event.id}
+          storedStatus={ownRsvp?.status ?? null}
+          requiresApproval={event.requires_approval}
+          isFull={counts?.isFull ?? false}
+          hasEnded={ended}
+          isPrivate={event.visibility === "private"}
+          isHost={role === "host"}
+        />
+      )}
 
       {role === "host" ? (
         <HostTools
@@ -406,6 +429,67 @@ function StatRow({ stats }: { stats: EventStat[] | null }) {
 }
 
 /* ------------------------------------------------------------ side notes */
+
+/**
+ * The banner a cancelled event carries, at the top of the page rather than
+ * beside the RSVP block.
+ *
+ * WHY IT IS THE FIRST THING UNDER THE COVER
+ *
+ * The whole reason a cancelled event stays visible is that "the event vanished"
+ * is a worse outcome for the people who answered than "the event is cancelled"
+ * — so the news has to arrive before the date, the venue and the stat row,
+ * which otherwise read as an event that is still on. A quiet badge next to the
+ * title would technically be present and practically be missed.
+ *
+ * WHAT IT DOES NOT SAY, AND WHY
+ *
+ * It does not say the host deleted their account. That is true today — this
+ * column has exactly one writer — but it is somebody else's private decision,
+ * and disclosing it to everyone who ever RSVP'd would be a much larger
+ * disclosure than the event's own status. The `users` policy was just amended to
+ * hide the person; announcing the reason on their events would put it straight
+ * back. "The host cancelled it" is what an attendee needs and all they are owed.
+ *
+ * It also does not invent a refund, a contact route or a rescheduling promise:
+ * §7's rule, and none of the three exists.
+ */
+function CancelledNotice({ ownStatus }: { ownStatus: RsvpStatus | null }) {
+  return (
+    <div
+      className="flex items-start gap-[11px] rounded-[22px] p-[15px]"
+      style={{ background: "rgba(217,45,32,.06)", border: "1px solid rgba(217,45,32,.22)" }}
+    >
+      <span
+        className="flex size-[30px] shrink-0 items-center justify-center rounded-[10px]"
+        style={{ background: "rgba(217,45,32,.1)", color: "var(--sc-danger)" }}
+        aria-hidden
+      >
+        <CalendarX2 size={15} strokeWidth={2} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[13px] leading-[17px] font-semibold">
+          This event was cancelled
+        </span>
+        <span
+          className="mt-[3px] block text-[12px] leading-[17px]"
+          style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
+        >
+          {/*
+           * The second sentence is chosen by what the person actually asked
+           * for, because "your request is still waiting" is the specific wrong
+           * impression a cancelled event's queue would otherwise leave — and
+           * nobody can answer it: the host's decision path refuses a cancelled
+           * event outright.
+           */}
+          {ownStatus === "pending" || ownStatus === "waitlist"
+            ? "It is not going ahead, so your request will not be answered. Nothing else about your account changes."
+            : "It is not going ahead. It stays here so you know, rather than disappearing from your list."}
+        </span>
+      </span>
+    </div>
+  );
+}
 
 function PrivateNote() {
   return (
