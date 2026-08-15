@@ -40,12 +40,18 @@ import { GLASS, PRIMARY_BUTTON, SECONDARY_BUTTON } from "../lib/surfaces";
  *
  * WHAT IS NOT ON THIS FORM
  *
- *  - **No cover photo.** `uploadEventCover` keys the object as
- *    `{event_id}/cover.{ext}`, so a cover cannot exist before the event does,
- *    and there is no Server Action wired to upload one afterwards.
- *    `createEventAction` sends `cover_image_path: null`. The prototype draws a
- *    dropzone here; drawing one that cannot work would be §7's "never invent a
- *    capability", so it is absent rather than disabled-with-a-promise.
+ *  - **No cover photo — it is set on the event's own page, one step later.**
+ *    `uploadEventCover` keys the object as `{event_id}/cover.{ext}` and the
+ *    Storage policies parse that id back out to check the host
+ *    (20260814051400), so a cover cannot exist before the event does: there is
+ *    no id to key it under here and no host for a policy to check. The prototype
+ *    draws a dropzone at this point in the flow; a dropzone that cannot work
+ *    would be §7's "never invent a capability". Since 2026-08-15 the control
+ *    exists on the host panel of `/events/[eventId]`, which this form navigates
+ *    to on success, so adding a cover is the next thing a host sees rather than
+ *    something they have to go looking for. `createEventAction` still sends
+ *    `cover_image_path: null`, and an event with no cover renders §5's striped
+ *    placeholder, which is a finished state and not a missing one.
  *  - **No latitude/longitude.** The columns exist and the action accepts them,
  *    but nothing in this app geocodes a venue address for an event, and a
  *    map-pin control that stores nothing would be theatre.

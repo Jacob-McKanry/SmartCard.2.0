@@ -20,6 +20,11 @@ import {
   withdrawRsvp,
   type RsvpMutationResult,
 } from "@/server/events/events-service";
+import {
+  InvalidCoverError,
+  removeEventCover,
+  replaceEventCover,
+} from "@/server/events/cover-upload";
 import type { EventActionState } from "./action-state";
 
 /**
@@ -228,6 +233,93 @@ export async function updateEventAction(
 
   try {
     await updateOwnEvent(context.supabase, context.userId, eventId, parsed.data);
+  } catch (error) {
+    return { error: messageOf(error) };
+  }
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+  return { success: true };
+}
+
+// -----------------------------------------------------------------------
+// The cover image
+// -----------------------------------------------------------------------
+
+/**
+ * Sets or replaces the cover of an event the caller hosts.
+ *
+ * WHY THIS IS ITS OWN ACTION AND NOT A FIELD ON `updateEventAction`
+ *
+ * A cover is two writes that have to agree — an object in Storage and the column
+ * that points at it — with a rollback in between if the second fails.
+ * `updateEventAction` is a partial column update and has no business owning
+ * that; `replaceEventCover` does, and its header sets out the ordering and what
+ * each failure leaves behind. It also means `cover_image_path` is never
+ * something a *form field* supplies: the path is computed from the event id and
+ * the file's media type inside the service, so no request can point an event's
+ * cover at an arbitrary object key.
+ *
+ * WHY THE EVENT HAS TO EXIST FIRST, AND WHY THAT IS NOT A LIMITATION TO ROUTE
+ * AROUND
+ *
+ * The Storage key is `{event_id}/cover.{ext}` and the policies parse the event
+ * id back out of it to ask whether the caller is the host (20260814051400), so
+ * there is nothing to authorise before the event row exists. The control
+ * therefore lives on the host panel of `/events/[eventId]`, not on the create
+ * form. `create-event-form.tsx` says so where a reader would otherwise wonder
+ * why the prototype's dropzone is missing.
+ *
+ * Nothing here checks that the caller is the host. Three things already do, and
+ * a fourth copy would only be a fourth place to get it wrong: the Storage
+ * INSERT/UPDATE policies, the `events` UPDATE policy, and `updateOwnEvent`'s own
+ * `host_user_id` filter.
+ */
+export async function uploadEventCoverAction(
+  eventId: string,
+  _prevState: EventActionState,
+  formData: FormData,
+): Promise<EventActionState> {
+  const context = await requireContext();
+
+  const file = formData.get("cover");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "Choose an image to use as the cover." };
+  }
+
+  try {
+    await replaceEventCover(context.supabase, context.userId, eventId, file);
+  } catch (error) {
+    // `InvalidCoverError` is the one whose text is written for a person to read
+    // — wrong format, too large. Everything else goes through `messageOf`.
+    if (error instanceof InvalidCoverError) {
+      return { error: error.message };
+    }
+    return { error: messageOf(error) };
+  }
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+  return { success: true };
+}
+
+/**
+ * Removes the cover from an event the caller hosts, returning it to §5's striped
+ * placeholder.
+ *
+ * A cover is the only thing on an event a host can put on and take off again
+ * (an invite cannot be taken back, an admitted guest is not un-admitted), so
+ * unlike those this one gets a real undo. No confirmation step: nothing is lost
+ * that cannot be re-uploaded from the file the host still has.
+ */
+export async function removeEventCoverAction(
+  eventId: string,
+  _prevState: EventActionState,
+): Promise<EventActionState> {
+  const context = await requireContext();
+
+  try {
+    await removeEventCover(context.supabase, context.userId, eventId);
   } catch (error) {
     return { error: messageOf(error) };
   }
