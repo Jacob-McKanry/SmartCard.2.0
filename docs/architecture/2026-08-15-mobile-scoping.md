@@ -299,6 +299,18 @@ The reasoning:
 
 **The honest counter-argument, stated so it can be weighed rather than skipped:** Phases 0-3 have a hard external dependency — Apple enrolment — with a tail that could be a month. If that enrolment stalls, insisting on push-before-pilot delays the pilot. **The mitigation is Android-first.** Google Play enrolment is $25 and days, not weeks; Expo's push service fans out to FCM identically; and a single Android device with a registered token proves the entire pipeline and closes the control for whoever is carrying it. **So: start Apple enrolment immediately, build Phases 0-3 against Android, and let iOS follow whenever Apple clears.** That removes the schedule risk from the security argument, which is the only reason the security argument was on the critical path.
 
+> **Amendment, 2026-08-15 — the owner already holds both developer accounts, and this removes the counter-argument above.**
+>
+> The paragraph above was written on the assumption that enrolment had not started. The project owner has confirmed they hold **both an Apple and a Google Play developer account**. The D-U-N-S dependency flagged in the cost table and called "the longest-lead item in the entire plan" is therefore **already resolved**, and the risk register entry telling the reader to "start it the day mobile is approved, before any code" is spent.
+>
+> Two things change as a result, and a third deliberately does not.
+>
+> **Android-first is no longer required.** It was a schedule mitigation for a delay that cannot now occur, not a technical preference. Build for whichever platform the owner actually carries and can hold against a physical card, because Phase 3's whole value is a real tap on real hardware. If that is an iPhone, start there.
+>
+> **The critical path moves inward.** With enrolment gone, nothing external gates Phases 0-3, and the long pole becomes the bearer-token auth path in §"What is missing" — the finding that no endpoint reads an `Authorization` header. That is Opus/xhigh work on the auth boundary and should be scheduled as the real constraint rather than treated as a preliminary.
+>
+> **What does not change: the still-manual steps.** Holding an account is not the same as having done the work behind it. The App Store Connect record, the APNs `.p8` uploaded to Expo, the NFC Tag Reading capability, device UDIDs or TestFlight, every submission, and physically tapping a card all remain human tasks an agent cannot perform. The list under "Genuinely needs a human" stands, minus the enrolment line.
+
 ---
 
 ## 8. What this document does not decide
