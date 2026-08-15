@@ -101,6 +101,8 @@ Design implication: an RSVP button needs at least these rendered states: not ans
 ### Host approval queue (host-only screen)
 Everyone `pending`, `waitlisted`, or `going`, each with name/photo, so the host can approve/deny (with an explicit "admit past capacity" override that's visually distinct from a normal approve — it's a recorded exception, not the default path). `interested` and `not_going` people never appear here.
 
+> **Built 2026-08-15 — the screen deliberately shows less than the backend offers.** `public.event_rsvp_queue` still returns the `going` rows described above; the queue screen filters them out, because "the actual attendee list: never exposed to anyone" (below) has no host exception and a list of names of people attending is an attendee list whoever reads it. Nothing is lost: `public.decide_event_rsvp` refuses any row that is not `pending` or `waitlist`, so a `going` row was never actionable — only viewable. The host still sees the going *count*. See `docs/design/DESIGN.md` §6's Events implementation notes.
+
 ### Invites (private events only)
 Who can send one: the host, or anyone currently `going`. Who it can reach: **only an existing SmartCard connection of the person sending it** — there's no "invite by link" or "invite by search" for private events (that's deliberately public-events-only territory, and public events don't need an invite UI at all). Sending an invite doesn't RSVP anyone — the invited person still has to answer for themselves once they can see the event. Design it as "give someone access to see this," not "add them to the guest list." No un-invite exists yet.
 
