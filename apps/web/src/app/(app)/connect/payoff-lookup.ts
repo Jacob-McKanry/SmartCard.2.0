@@ -66,7 +66,16 @@ export interface ConnectPayoffDetails {
   name: string;
   initials: string;
   photoUrl: string | null;
-  /** `meeting_locations.place_label`, or null when no location was captured. */
+  /**
+   * True when a `meeting_locations` row exists — i.e. the verification
+   * captured a GPS fix. Separate from `placeLabel` on purpose: reverse
+   * geocoding is allowed to fail (`server/connect/geocode.ts`), so "we know
+   * where you were, we just have no name for it" is a real and ordinary state
+   * that this screen must not report as "no location". Same three-state
+   * distinction the meeting record and the feed make.
+   */
+  hasLocation: boolean;
+  /** `meeting_locations.place_label`, null when unrecorded or not yet named. */
   placeLabel: string | null;
   /**
    * `meetings.occurred_at`, raw. Rendered time-of-day only — the meeting is
@@ -102,6 +111,7 @@ export async function loadConnectPayoff(
       name: displayName(otherUser),
       initials: initialsFor(otherUser),
       photoUrl: await signedProfilePhotoUrl(supabase, otherUser.photo_path),
+      hasLocation: location !== null,
       placeLabel: location?.place_label ?? null,
       occurredAt: meeting.occurred_at,
     };

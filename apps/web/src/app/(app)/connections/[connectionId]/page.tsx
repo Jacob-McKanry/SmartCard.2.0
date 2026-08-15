@@ -191,12 +191,7 @@ export default async function ConnectionDetailPage({
         <h2 id="meeting-heading" className="sr-only">
           How you connected
         </h2>
-        <MeetingFacts
-          otherName={otherName}
-          meeting={meeting}
-          location={location}
-          placeFallback={placeFallbackFor(meeting.verification_method)}
-        />
+        <MeetingFacts otherName={otherName} meeting={meeting} location={location} />
 
         {location === null ? (
           <>
@@ -288,18 +283,16 @@ function MeetingFacts({
   otherName,
   meeting,
   location,
-  placeFallback,
 }: {
   otherName: string;
   meeting: MeetingRow;
   location: MeetingLocationRow | null;
-  placeFallback: string;
 }) {
   const rows: readonly [string, React.ReactNode][] = [
     ["Who", `You and ${otherName}`],
     ["When", <LocalTimestamp key="when" iso={meeting.occurred_at} />],
     ["How", verificationMethodLabel(meeting.verification_method)],
-    ["Where", location?.place_label ?? placeFallback],
+    ["Where", placeRowFor(meeting.verification_method, location)],
   ];
 
   return (
@@ -315,12 +308,41 @@ function MeetingFacts({
 }
 
 /**
- * What the "Where" row says when no `meeting_locations` row exists. Two
- * different truths, so two different sentences: an NFC tap never captures
- * coordinates by design, while a QR meeting normally would.
+ * What the "Where" row says. THREE states, not two — collapsing the middle one
+ * into the first was a bug, and the one the owner reported as "it didn't
+ * confirm the location".
+ *
+ * A `meeting_locations` row exists if and only if the verification captured a
+ * GPS fix, and `place_label` is filled in *separately, afterwards*, by
+ * `server/connect/geocode.ts`, which is explicitly allowed to fail (§2.4: "a
+ * missing label is a cosmetic loss, not a security one"). So:
+ *
+ *  - **No row.** Nothing was captured. For `nfc_card` that is by design and
+ *    permanent; for `qr_gps` it is unusual, but still just an absence.
+ *  - **Row, no label.** The location *was* recorded — for a `qr_gps` meeting
+ *    it is the very thing that let the connection be made at all — and only
+ *    the human-readable name for it is missing.
+ *  - **Row with a label.** Say the place.
+ *
+ * The middle case used to print "Not recorded", which is a false statement
+ * about the record, on the screen whose entire job is to be the record. §7
+ * forbids a screen implying something it cannot back, and it forbids it in
+ * this direction too: understating what happened is as much a false claim as
+ * overstating it, and here it quietly told two people that the GPS check
+ * behind their connection had not happened.
+ *
+ * The wording is lifted verbatim from `feed/feed-item.tsx`'s `PlaceLine`,
+ * which already drew this distinction — deliberately word-for-word, so the two
+ * screens cannot drift into describing one state two ways.
  */
-function placeFallbackFor(method: MeetingRow["verification_method"]): string {
-  return method === "nfc_card" ? "Not recorded — an NFC tap doesn't use GPS" : "Not recorded";
+function placeRowFor(
+  method: MeetingRow["verification_method"],
+  location: MeetingLocationRow | null,
+): string {
+  if (location === null) {
+    return method === "nfc_card" ? "Not recorded — an NFC tap doesn't use GPS" : "Not recorded";
+  }
+  return location.place_label ?? "Location captured, no place name on file";
 }
 
 /* ------------------------------------------------- the removed-state screen */

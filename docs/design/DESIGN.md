@@ -581,6 +581,16 @@ These are design constraints, not tone preferences.
   individually. No system alerts; use the app's own glass.
 - **Absence is often normal.** "No location shown" gets no error styling and no
   nudge.
+- **Absence and incompleteness are different states, and understating is as
+  dishonest as overstating.** "Not recorded" and "recorded, but we have no name
+  for it" are two different facts about a meeting, and a screen that prints the
+  first when the second is true denies something that actually happened. Applies
+  wherever a value arrives in two steps — a meeting's location is captured by the
+  verification itself and *named* afterwards by reverse geocoding, which is
+  allowed to fail (§2.4). Added 2026-08-15, after the meeting record told two
+  people who had just connected in person that their location was "Not
+  recorded", when it had been recorded and was the very thing that let them
+  connect at all.
 - **A timestamp is shown on the reader's clock; where it can't be, it names the
   zone it is on.** A moment that *happened* — a meeting, a card tap, an RSVP —
   is a fact about the reader's day, so it renders in the reader's own time zone
