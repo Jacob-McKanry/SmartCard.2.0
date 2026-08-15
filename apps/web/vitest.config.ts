@@ -29,6 +29,21 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    /*
+     * `.tsx` was added when the Events screens landed, and the header above
+     * needs an amendment rather than a rewrite: there is still no jsdom and no
+     * React Testing Library, and component *behaviour* is still not tested.
+     * What `events/lib/access-rules.test.tsx` does is render presentational
+     * components to a static string with `react-dom/server` and assert on the
+     * markup — that a pending count, a list of attendee names, or a connection's
+     * identity never appears in the output for a viewer not entitled to it.
+     *
+     * That is a security assertion rather than a UI one, and it needs the
+     * render: a pure-function test can prove the access-rule module returns the
+     * right answer, but only the markup can prove no component quietly renders a
+     * value the module said to withhold. `renderToStaticMarkup` needs no DOM, so
+     * this stays a plain Node run.
+     */
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });
