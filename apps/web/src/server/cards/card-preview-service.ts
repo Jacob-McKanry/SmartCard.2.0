@@ -270,9 +270,17 @@ export interface CardPreviewRequest {
 export async function resolveCardCodePreview(
   code: string,
   request: CardPreviewRequest,
-  deps: CardPreviewDeps = defaultCardPreviewDeps(),
+  injectedDeps?: CardPreviewDeps,
 ): Promise<CardPreview | null> {
   return refuseOnThrow("card_code", async () => {
+    // Resolved INSIDE the try, not as a default parameter. `defaultCardPreviewDeps()`
+    // reads two required environment variables and constructs the service-role
+    // client, any of which can throw — and a throw evaluated in a default
+    // parameter happens outside this catch, which would produce a framework
+    // error page instead of the one shared refusal. A misconfigured server must
+    // look exactly like an unknown card code, or the difference is itself a
+    // signal.
+    const deps = injectedDeps ?? defaultCardPreviewDeps();
     const { store } = deps;
     const audit = auditFieldsFrom(request.headers);
     const limits = await store.loadLimits();
@@ -351,9 +359,11 @@ export async function resolveCardCodePreview(
 export async function resolveQrTokenPreview(
   token: string,
   request: CardPreviewRequest,
-  deps: CardPreviewDeps = defaultCardPreviewDeps(),
+  injectedDeps?: CardPreviewDeps,
 ): Promise<CardPreview | null> {
   return refuseOnThrow("qr_token", async () => {
+    // Inside the try, for the reason `resolveCardCodePreview` gives above.
+    const deps = injectedDeps ?? defaultCardPreviewDeps();
     const { store, signingSecret } = deps;
     const audit = auditFieldsFrom(request.headers);
     const now = request.now ?? new Date();

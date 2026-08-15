@@ -527,6 +527,17 @@ describe("the preview and the vCard see the same person", () => {
     expect(page).toStrictEqual(file);
   });
 
+  it("refuses identically when the server itself is misconfigured", async () => {
+    // No injected deps, and no SUPABASE_URL / QR_SIGNING_SECRET in this
+    // process: `defaultCardPreviewDeps()` throws while building the
+    // service-role client. It is resolved inside the try for exactly this
+    // reason — as a default parameter the throw would escape the catch and
+    // produce a framework error page, which is a visibly different answer from
+    // "nothing here" and therefore a signal.
+    await expect(resolveCardCodePreview(GOOD_CODE, request())).resolves.toBeNull();
+    await expect(resolveQrTokenPreview(await validToken(), request())).resolves.toBeNull();
+  });
+
   it("degrades to no photo rather than refusing when signing the URL fails", async () => {
     // Otherwise the refusal would be distinguishable by whether the person had
     // ever uploaded a picture.
