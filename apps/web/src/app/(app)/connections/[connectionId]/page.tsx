@@ -117,11 +117,24 @@ export default async function ConnectionDetailPage({
     getOtherParticipantProfile(supabase, otherUserId),
   ]);
 
-  // `meetings.id` is NOT NULL/UNIQUE-referenced by `connections.origin_meeting_id`
-  // with ON DELETE RESTRICT (§2.3), and the `users` policy already let this
-  // connection's row resolve to `otherUserId` in the first place — so a null
-  // here means something is structurally wrong, not that access was denied.
-  // Failing closed with a 404 either way, rather than crashing the page.
+  /*
+   * A null `meeting` still means something is structurally wrong: `meetings.id`
+   * is referenced by `connections.origin_meeting_id` with ON DELETE RESTRICT
+   * (§2.3), so it cannot go missing under a live edge.
+   *
+   * AMENDED 2026-08-15 — A NULL `otherUser` NOW HAS AN ORDINARY CAUSE. This
+   * comment used to say the same about both, on the grounds that the `users`
+   * policy had already let the connection resolve to `otherUserId`. Since
+   * 20260815130200 that policy drops its `are_connected` branch for a person
+   * whose account is `deleted`, so the other party's profile legitimately stops
+   * resolving while the connection row stays exactly where it was — the edge is
+   * left `active` on purpose, because removing it is one-way and would make the
+   * soft delete irreversible.
+   *
+   * Both still 404, which is the right answer for the new case as well as the
+   * old one: there is no meeting record to show without the other person, and
+   * this page is reached from a list they have already disappeared from.
+   */
   if (meeting === null || otherUser === null) {
     notFound();
   }

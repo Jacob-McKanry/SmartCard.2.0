@@ -100,11 +100,20 @@ export async function listOwnConnections(
   const usersById = new Map(users.map((u) => [u.id, u]));
   const meetingsById = new Map(meetings.map((m) => [m.id, m]));
 
-  // A missing user or meeting row here would mean a connection whose
-  // counterpart or origin evidence disappeared out from under an active edge
-  // — the FK constraints (`ON DELETE CASCADE`/`RESTRICT`, §2.3) make that
-  // untrue in practice, but the fetch fails closed (skips the row rather than
-  // rendering a half-populated card) instead of assuming the invariant holds.
+  // A missing user or meeting row makes this fail closed: the connection is
+  // skipped rather than rendered half-populated.
+  //
+  // AMENDED 2026-08-15 — THIS BRANCH IS NO LONGER HYPOTHETICAL. It used to say
+  // that the FK constraints (`ON DELETE CASCADE`/`RESTRICT`, §2.3) made a
+  // missing row untrue in practice, and that the skip was defensive programming
+  // against an invariant that always held. Self-serve account deletion changed
+  // that: the `users` select policy amended by 20260815130200 drops the
+  // `are_connected` branch for a row whose status is `deleted`, so the
+  // connection row still resolves and the person behind it does not. The edge is
+  // deliberately left `active` — flipping it to `removed` is one-way and would
+  // make the soft delete irreversible — which means this skip is now the
+  // mechanism by which a deleted person leaves everybody's People list. It is
+  // load-bearing; do not turn it into a throw.
   return connections.flatMap((connection): ConnectionListItem[] => {
     const otherUserId = connection.user_a_id === userId ? connection.user_b_id : connection.user_a_id;
     const otherUser = usersById.get(otherUserId);
