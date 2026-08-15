@@ -56,6 +56,34 @@ export function hashIpAddress(ip: string): string {
  * rate-limit subject rather than skipping the limit — see the route helper.
  */
 export function clientIpFrom(headers: Headers): string | null {
+  /**
+   * CLOUDFLARE FIRST, AND THIS ORDER IS LOAD-BEARING.
+   *
+   * `smartcard.tech` sits behind Cloudflare's proxy. Cloudflare does not
+   * replace `x-forwarded-for` — it APPENDS the connecting IP to whatever the
+   * client already sent. So a request that arrives carrying a forged
+   * `X-Forwarded-For: 1.2.3.4` reaches us as `1.2.3.4, <real ip>`, and the
+   * left-most entry — the one the block below trusts as "the original client"
+   * — is chosen by the caller.
+   *
+   * `cf-connecting-ip` is different: Cloudflare sets it from the TCP peer and
+   * overwrites any value the client supplied, so it cannot be forged from
+   * outside. It is only present on proxied requests, which is why this is a
+   * preference and not a requirement — `.vercel.app` URLs and local dev still
+   * fall through to the headers below.
+   *
+   * WHY THIS MATTERS MORE THAN THE COMMENT BELOW SAYS. That comment's reasoning
+   * — "acceptable because the limit is generous and never an authorization
+   * input" — was written when every rate limit that did real work was keyed to
+   * a signed-in USER. The non-user card preview broke that assumption: an
+   * anonymous caller has no account to charge, so the per-IP budget is the only
+   * thing bounding how much contact data one host can pull. A spoofable subject
+   * key would hand that caller a fresh budget on every request, which is the
+   * same as having no limit at all.
+   */
+  const cloudflare = headers.get("cf-connecting-ip");
+  if (cloudflare !== null && cloudflare.trim() !== "") return cloudflare.trim();
+
   const forwarded = headers.get("x-forwarded-for");
   if (forwarded !== null && forwarded.trim() !== "") {
     // Left-most entry is the original client; the rest are proxies.
