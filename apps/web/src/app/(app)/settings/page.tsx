@@ -129,8 +129,8 @@ export default async function SettingsPage() {
          * this sentence becomes false and has to change with it.
          */}
         <Footnote>
-          There is no password to change. Signing in emails you a one-time code, so there is no
-          password on this account for anyone — including someone else — to guess, reuse or reset.
+          There is no password to change. Signing in emails you a one-time code instead, so this
+          account has no password for anyone to guess, reuse or steal.
         </Footnote>
       </Group>
 
