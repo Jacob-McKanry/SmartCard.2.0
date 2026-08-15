@@ -162,6 +162,12 @@ Conventions: primary keys are **UUIDs, not sequential integers** (guards against
 
 One row per human — no personas, no alternate profiles.
 
+> **Amendment 2026-08-15 — `has_completed_signup` has no writer, and that is what blocks the designed onboarding flow.** Recorded next to the column because it was found while building the auth screens and is invisible from the schema alone.
+>
+> The column exists and defaults to false. `ensureUser()` deliberately leaves it false ("onboarding is a thing the server observes finishing, not a thing a fresh row claims") and `20260809211100` deliberately excludes it from the column-level UPDATE grant ("the server asserts onboarding finished, not the client claiming it did"). Both decisions are right. The gap is that **no server path asserts it either** — nothing in this codebase has ever written the column, so it is false on every account that has ever signed in and can only ever be false.
+>
+> The consequence is concrete. The three onboarding screens in `docs/design/prototypes/Auth flow.dc.html` collect nothing the shipped profile actions and photo uploader cannot already write, so the screens themselves need no new backend — but a gate reading this flag is a wizard that re-runs on every sign-in, forever, which is why they were not built. Unblocking it is a decision about *which* server code is entitled to assert completion (a service-role write at the end of the flow is the obvious candidate, precisely because the client is correctly forbidden from claiming it), not a UI task. The 337 migrated accounts are the other half of that decision: they already carry their identity and their rows also read false, so whatever asserts completion has to treat an account that already has a name as already done — otherwise every migrated user is sent through setup on their first sign-in, which §5.1's pilot notes explicitly want to feel like a return rather than a signup.
+
 **`social_links`** — `id` (PK), `user_id` (FK → users, cascade delete), `platform`, `url`, `display_order`, timestamps.
 
 ### 2.2 Cards

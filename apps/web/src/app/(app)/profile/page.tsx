@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { SquarePen } from "lucide-react";
+import { Settings, SquarePen } from "lucide-react";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import {
@@ -104,6 +104,8 @@ export default async function ProfilePage() {
       className="mx-auto flex w-full max-w-[560px] flex-col gap-3.5 px-5 pt-5 sm:px-7 sm:pt-8"
       style={{ animation: "sc-rise .5s var(--sc-ease-glide) both" }}
     >
+      <SettingsButton />
+
       {/*
        * §6: Profile is "calm: no rotation, one blur-up". The bands are static —
        * the slow orbit belongs to Connect, which is a moment rather than a page
@@ -238,6 +240,51 @@ function ContactRow({ label, value }: { label: string; value: string }) {
       >
         {value}
       </dd>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- settings */
+
+/**
+ * The way into `/settings`, and the reason it is a quiet icon at the top rather
+ * than a second floating pill at the bottom.
+ *
+ * §6 gives this screen exactly one floating affordance — the Edit pill — and
+ * calls Profile "the calm, static anchor of the app". A second pill beside it
+ * would double the screen's only piece of chrome and force a person to read two
+ * labels to work out which one they want, on the one screen the design asks to
+ * stay still.
+ *
+ * WHY IT IS ON PROFILE AT ALL, AND WHY IT IS NOT PART OF EDIT
+ *
+ * Editing your profile and managing your account are different kinds of
+ * destination, even though both are "your stuff". Edit changes what other
+ * people see; Settings is about the session, the sign-in behind it and the
+ * cards tied to it — nothing on it is visible to anyone else. Folding Settings
+ * into `/profile/edit` would bury the app's only sign-out inside a form, where
+ * somebody on a borrowed phone would never think to look. Profile is the right
+ * parent because it is the "you" slot in the nav, and this placement keeps that
+ * slot lit while you are in Settings (see `nav.tsx`).
+ *
+ * §8: an icon-only control carries a label, so it has one; and the target is
+ * 44px even though the glyph is 19px.
+ */
+function SettingsButton() {
+  return (
+    <div className="-mb-2 flex justify-end sm:-mb-1">
+      <Link
+        href="/settings"
+        aria-label="Settings"
+        className="flex size-11 items-center justify-center rounded-full"
+        style={{
+          border: "1px solid rgba(13,18,32,.1)",
+          background: "rgba(255,255,255,.7)",
+          color: "var(--sc-text-muted)",
+        }}
+      >
+        <Settings size={19} strokeWidth={1.9} aria-hidden />
+      </Link>
     </div>
   );
 }

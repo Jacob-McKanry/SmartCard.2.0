@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
+import { AuthFailureScreen, classifyAuthFailure } from "@/components/auth-failure-screen";
 
 import { Nav } from "./nav";
 
@@ -30,11 +31,35 @@ import { Nav } from "./nav";
  * `<Nav>` is what used to not exist at all — every one of these five screens
  * was reachable only by typing its URL. Rendered here, once, so it's
  * impossible for a page under this group to forget it.
+ *
+ * A THIRD JOB, ADDED WITH THE AUTH DESIGN PASS: THE GATE CAN ALSO *FAIL*
+ *
+ * `getAuthenticatedContext()` has three documented ways to throw for a person
+ * holding a perfectly valid Kinde session — a suspended account, an email
+ * already bound to a different identity, and a sign-in that returned no email
+ * at all (see `server/auth/ensure-user.ts`). Until now every one of them
+ * surfaced as Next's unstyled error page on whatever screen the person happened
+ * to be opening. They are caught here because this is the one component that
+ * runs before every signed-in page, so one catch covers the whole group.
+ *
+ * It fails closed. The catch renders a screen *instead of* `children`, so no
+ * page under this layout executes; a Server Component is only evaluated when it
+ * is rendered into the tree. And it re-throws anything it does not recognise —
+ * a database outage must not be presented to somebody as "your account is on
+ * hold", which is exactly the reassuring, confident, wrong answer that a
+ * catch-all would produce.
  */
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const context = await getAuthenticatedContext();
+  let context;
+  try {
+    context = await getAuthenticatedContext();
+  } catch (error) {
+    const failure = classifyAuthFailure(error);
+    if (failure === null) throw error;
+    return <AuthFailureScreen failure={failure} />;
+  }
 
   if (context === null) {
     redirect("/sign-in");
