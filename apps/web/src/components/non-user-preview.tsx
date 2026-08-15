@@ -1,5 +1,7 @@
 import { LoginLink } from "@kinde-oss/kinde-auth-nextjs/components";
 
+import { LinkTiles } from "@/components/link-tiles";
+import { RingCentre, RingDiagram, type RingBandData } from "@/components/ring-diagram";
 import type { CardPreview } from "@/server/cards/card-preview-service";
 
 /**
@@ -28,6 +30,37 @@ import type { CardPreview } from "@/server/cards/card-preview-service";
  * CLAUDE.md's non-negotiable rule forbids "any 'connect' action reachable from
  * a shareable profile URL", and a card URL is permanent and forwardable. The
  * only two things a visitor can do here are save the contact and sign in.
+ *
+ * WHY THIS NOW LOOKS LIKE PROFILE (2026-08-15)
+ *
+ * DESIGN.md §6, "Profile as a visitor sees it": "identical fields (one identity,
+ * shown the same to everyone), no edit affordance anywhere". This screen shipped
+ * as a cut-down version of that — an avatar, a name, two contact rows — and the
+ * owner asked for the rest. So it draws the same three things Profile draws, out
+ * of the same components rather than lookalikes of them: §3's ring diagram
+ * (`RingDiagram` + `RingCentre`, same `profile` preset, same two bands), §5's
+ * link tiles (`LinkTiles`, the component Profile itself renders), and the
+ * contact sheet.
+ *
+ * Two of Profile's parts are deliberately still absent, and both are absences
+ * §6 asks for rather than gaps:
+ *
+ *   * The Edit pill. "No edit affordance anywhere" — a visitor has no account.
+ *   * The `email_opt_in` row. It is a setting, not an identity field: whether
+ *     somebody wants occasional email from SmartCard is between them and
+ *     SmartCard, and nothing a stranger holding their card has any business
+ *     reading.
+ *
+ * §6 also names a "provenance card" that explains why the page is reachable.
+ * The sign-in blurb each route passes is that explanation for this surface —
+ * "somebody handed you a card" — and it is per-route because the honest answer
+ * differs between a permanent card and a live QR code.
+ *
+ * EVERY PART DEGRADES TO ABSENT. `counts === null` draws the medallion with no
+ * rings; no links renders no link block at all. Neither is an error state and
+ * neither gets error styling: the service returns those values both when the
+ * person genuinely has none and when the read failed, deliberately, so that the
+ * page cannot become a signal for which of the two happened.
  */
 
 /** Everything a visitor can do, as data, so the two routes state it rather than restyle it. */
@@ -49,6 +82,7 @@ export function NonUserPreview({
 }) {
   const name = previewDisplayName(preview);
   const subtitle = previewSubtitle(preview);
+  const bands = previewBands(preview);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col justify-center gap-6 px-5 py-10">
@@ -56,21 +90,19 @@ export function NonUserPreview({
         className="flex flex-col items-center gap-4 rounded-[28px] border p-7 text-center"
         style={glassSurface}
       >
-        <span
-          className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-full text-[22px] font-semibold"
-          style={{
-            background: "linear-gradient(140deg, rgba(11,96,255,.16), rgba(124,58,237,.14))",
-            color: "var(--sc-accent-deep)",
-            lineHeight: 1,
-          }}
-        >
-          {preview.photoUrl === null ? (
-            <span aria-hidden>{previewInitials(preview)}</span>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed Storage URL, not a static asset next/image can optimise.
-            <img src={preview.photoUrl} alt="" className="size-full object-cover" />
-          )}
-        </span>
+        {/*
+         * §6: Profile is "calm: no rotation, one blur-up", and this is Profile
+         * as a visitor sees it, so the bands are static here too. `bands` is
+         * empty when the counts could not be computed, which `RingDiagram`
+         * renders as the medallion alone — the same picture this screen showed
+         * before the rings existed.
+         */}
+        <RingDiagram
+          preset="profile"
+          bands={bands}
+          summary={ringSummary(name, preview.counts)}
+          centre={<RingCentre photoUrl={preview.photoUrl} initials={previewInitials(preview)} />}
+        />
 
         <div className="flex flex-col gap-1">
           <h1 className="text-[26px] leading-[30px] font-semibold" style={{ letterSpacing: "-.02em" }}>
@@ -107,6 +139,20 @@ export function NonUserPreview({
             )}
           </dl>
         )}
+
+        {/*
+         * §5's link tiles, from the component Profile renders — see
+         * `link-tiles.tsx` for why it moved out of the profile route folder.
+         * `emptyState="omit"` because a visitor has nowhere to add a link and a
+         * heading over empty space would remark on an absence §7 calls normal.
+         *
+         * `text-left` because the tiles are a list of rows inside a card that is
+         * otherwise centred; a centred handle under a left-aligned brand plate
+         * reads as a layout bug.
+         */}
+        <div className="w-full text-left">
+          <LinkTiles links={preview.socialLinks} emptyState="omit" />
+        </div>
 
         <a
           href={actions.vcardHref}
@@ -222,4 +268,57 @@ function previewInitials(preview: CardPreview): string {
   const last = preview.lastName?.trim().charAt(0) ?? "";
   const combined = `${first}${last}`.toUpperCase();
   return combined !== "" ? combined : "•";
+}
+
+/**
+ * The ring diagram's bands — the same two, in the same order, in the same
+ * colours, with the same nouns as `/profile`. Copying those four facts rather
+ * than importing them is a deliberate small duplication: the alternative is a
+ * shared "profile bands" helper that both screens depend on, which is more
+ * coupling than two literals are worth, and `ring-geometry.test.ts` asserts the
+ * layout is legal for every band list the app ships.
+ *
+ * DESIGN.md §3's third band ("cities met people in") is absent here because it
+ * is absent from Profile: the schema has no city on a meeting, and §3's
+ * implementation notes record why approximating one would be a number the app
+ * cannot stand behind. A preview showing a band the owner's own profile does
+ * not show would be inventing a fact about somebody for strangers.
+ *
+ * An empty array when the counts are unknown, which draws the medallion and no
+ * rings — never zeroes, which would be a claim rather than an absence (§7).
+ */
+function previewBands(preview: CardPreview): RingBandData[] {
+  const counts = preview.counts;
+  if (counts === null) return [];
+
+  return [
+    {
+      key: "connections",
+      count: counts.connections,
+      color: "var(--sc-accent)",
+      noun: { one: "connection", many: "connections" },
+    },
+    {
+      key: "events",
+      count: counts.eventsAttended,
+      color: "var(--sc-text)",
+      noun: { one: "event attended", many: "events attended" },
+    },
+  ];
+}
+
+/**
+ * §8: the rings are decoration and are hidden from assistive tech, so the
+ * diagram's `aria-label` is where its content actually lives. Matches
+ * `/profile`'s `ringSummary` wording, and falls back to the bare name when there
+ * are no counts — a screen reader should hear "Sam Rivera" rather than a
+ * sentence about numbers that are not on the screen.
+ */
+function ringSummary(name: string, counts: CardPreview["counts"]): string {
+  if (counts === null) return name;
+  const c = `${counts.connections} ${counts.connections === 1 ? "connection" : "connections"}`;
+  const e = `${counts.eventsAttended} ${
+    counts.eventsAttended === 1 ? "event attended" : "events attended"
+  }`;
+  return `${name}: ${c}, ${e}.`;
 }

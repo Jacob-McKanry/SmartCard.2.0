@@ -34,6 +34,9 @@ import {
   type CardPreviewLimits,
   type CardPreviewStore,
   type CardPreviewViewRecord,
+  type PreviewCounts,
+  type PreviewPhoto,
+  type PreviewSocialLink,
   type PreviewSubjectRow,
 } from "./card-preview-service";
 
@@ -92,6 +95,15 @@ function liveSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
   };
 }
 
+const SOCIAL_LINKS: PreviewSocialLink[] = [
+  { id: "link-1", platform: "Instagram", url: "https://instagram.com/samrivera" },
+  { id: "link-2", platform: "GitHub", url: "https://github.com/samrivera" },
+];
+
+const COUNTS: PreviewCounts = { connections: 9, eventsAttended: 4 };
+
+const PHOTO: PreviewPhoto = { vCardType: "WEBP", base64: "UklGRg==" };
+
 interface FakeWorld {
   limits?: CardPreviewLimits | (() => never);
   cards?: Record<string, CardRecord>;
@@ -100,19 +112,33 @@ interface FakeWorld {
   /** Return false to put the subject over budget. Called for every consume. */
   allowRateLimit?: (request: RateLimitRequest) => boolean;
   photoUrl?: string | null;
+  socialLinks?: PreviewSocialLink[];
+  counts?: PreviewCounts;
+  photoBytes?: PreviewPhoto | null;
   recordViewThrows?: boolean;
   loadSubjectThrows?: boolean;
+  /** The three enrichment reads, each independently breakable — they must degrade, not refuse. */
+  socialLinksThrow?: boolean;
+  countsThrow?: boolean;
+  photoBytesThrow?: boolean;
+  photoUrlThrows?: boolean;
 }
 
 interface Fake {
   deps: CardPreviewDeps;
   consumed: RateLimitRequest[];
   recorded: CardPreviewViewRecord[];
+  /** Every `(userId, now)` the counts were asked for, so tests can assert they weren't. */
+  countsAsked: { userId: string; now: Date }[];
+  /** Every path the vCard byte reader was asked for. Empty on the preview surface. */
+  photoBytesAsked: (string | null)[];
 }
 
 function fakeWorld(world: FakeWorld = {}): Fake {
   const consumed: RateLimitRequest[] = [];
   const recorded: CardPreviewViewRecord[] = [];
+  const countsAsked: { userId: string; now: Date }[] = [];
+  const photoBytesAsked: (string | null)[] = [];
 
   const store: CardPreviewStore = {
     async loadLimits(): Promise<CardPreviewLimits> {
@@ -133,9 +159,25 @@ function fakeWorld(world: FakeWorld = {}): Fake {
       if (world.loadSubjectThrows) throw new Error("boom");
       return world.subjects?.[userId] ?? null;
     },
+    async listPreviewSocialLinks(): Promise<PreviewSocialLink[]> {
+      if (world.socialLinksThrow) throw new Error("social links read failed");
+      return world.socialLinks ?? SOCIAL_LINKS;
+    },
+    async loadPreviewCounts(userId: string, now: Date): Promise<PreviewCounts> {
+      countsAsked.push({ userId, now });
+      if (world.countsThrow) throw new Error("aggregate failed");
+      return world.counts ?? COUNTS;
+    },
     async signedPhotoUrl(photoPath: string | null): Promise<string | null> {
+      if (world.photoUrlThrows) throw new Error("signing failed");
       if (photoPath === null) return null;
       return world.photoUrl === undefined ? "https://storage.example/signed" : world.photoUrl;
+    },
+    async loadPhotoBytes(photoPath: string | null): Promise<PreviewPhoto | null> {
+      photoBytesAsked.push(photoPath);
+      if (world.photoBytesThrow) throw new Error("download failed");
+      if (photoPath === null) return null;
+      return world.photoBytes === undefined ? PHOTO : world.photoBytes;
     },
     async recordView(view: CardPreviewViewRecord): Promise<void> {
       if (world.recordViewThrows) throw new Error("audit write failed");
@@ -143,7 +185,13 @@ function fakeWorld(world: FakeWorld = {}): Fake {
     },
   };
 
-  return { deps: { store, signingSecret: SIGNING_SECRET }, consumed, recorded };
+  return {
+    deps: { store, signingSecret: SIGNING_SECRET },
+    consumed,
+    recorded,
+    countsAsked,
+    photoBytesAsked,
+  };
 }
 
 /** A world in which everything is fine, so a test only has to break one thing. */
@@ -174,8 +222,23 @@ async function validToken(overrides: { nonce?: string; expOffsetSeconds?: number
 
 // ---------------------------------------------------------------------------
 
+/** The complete disclosed key set, in one place, so a widening has to edit it. */
+const DISCLOSED_KEYS = [
+  "bio",
+  "companyName",
+  "companyRole",
+  "counts",
+  "email",
+  "firstName",
+  "lastName",
+  "phoneNumber",
+  "photo",
+  "photoUrl",
+  "socialLinks",
+].sort();
+
 describe("what a successful card preview discloses", () => {
-  it("returns exactly the seven hardcoded fields plus a signed photo URL", async () => {
+  it("returns exactly the hardcoded field list and nothing else", async () => {
     const fake = fakeWorld(healthyWorld());
     const preview = await resolveCardCodePreview(GOOD_CODE, request(), fake.deps);
 
@@ -183,36 +246,54 @@ describe("what a successful card preview discloses", () => {
     // if somebody widens the disclosure by spreading a row, and it is the
     // reason `discloseSubject` maps field by field from a literal.
     expect(preview).not.toBeNull();
-    expect(Object.keys(preview as CardPreview).sort()).toEqual(
-      [
-        "bio",
-        "companyName",
-        "companyRole",
-        "email",
-        "firstName",
-        "lastName",
-        "phoneNumber",
-        "photoUrl",
-      ].sort(),
-    );
+    expect(Object.keys(preview as CardPreview).sort()).toEqual(DISCLOSED_KEYS);
   });
 
-  it("never carries social links, a username, an id, an admin flag or a raw storage path", async () => {
-    // `social_links` is the specific thing 20260809211100 forbids exposing —
-    // "a searchable directory of people's off-platform handles". The store this
-    // module talks to has no method that could return one, which is the real
-    // guarantee; this asserts the shape that guarantee produces.
+  it("never carries a username, an id, an admin flag, a status or a raw storage path", async () => {
     const fake = fakeWorld(healthyWorld());
     const preview = await resolveCardCodePreview(GOOD_CODE, request(), fake.deps);
     const serialised = JSON.stringify(preview);
 
-    for (const forbidden of ["socialLinks", "social_links", "username", "is_admin", "status", "id"]) {
+    for (const forbidden of ["username", "is_admin", "status", "id", "photo_path"]) {
       expect(Object.keys(preview as CardPreview)).not.toContain(forbidden);
     }
     // The storage object key must be exchanged for a signed URL, never handed
     // over as-is: a raw path plus a public bucket would be an ungated copy of
     // gated data (§6.5).
     expect(serialised).not.toContain("avatar.jpg");
+  });
+
+  it("discloses social links as three fields each, never as rows", async () => {
+    // 20260809211100's objection was to a *directory*, and its amendment
+    // records why this is not one. What that amendment does not license is
+    // handing over the rows themselves: `user_id` is an internal identifier and
+    // the timestamps are a behavioural detail about when somebody edited their
+    // profile, neither of which a link tile has ever rendered.
+    const fake = fakeWorld(healthyWorld());
+    const preview = await resolveCardCodePreview(GOOD_CODE, request(), fake.deps);
+
+    expect(preview?.socialLinks).toHaveLength(2);
+    for (const link of preview?.socialLinks ?? []) {
+      expect(Object.keys(link).sort()).toEqual(["id", "platform", "url"]);
+    }
+    expect(JSON.stringify(preview?.socialLinks)).not.toContain(OWNER_ID);
+  });
+
+  it("discloses counts as two numbers, and asks for them against the request's own clock", async () => {
+    const fake = fakeWorld(healthyWorld());
+    const preview = await resolveCardCodePreview(GOOD_CODE, request(), fake.deps);
+
+    expect(preview?.counts).toStrictEqual({ connections: 9, eventsAttended: 4 });
+    expect(Object.keys(preview?.counts ?? {}).sort()).toEqual(["connections", "eventsAttended"]);
+    // Every count is a number. Nothing in this object can be a name, an id or a
+    // row, and this asserts the property rather than trusting the query.
+    for (const value of Object.values(preview?.counts ?? {})) {
+      expect(typeof value).toBe("number");
+    }
+    // The clock is the one injected for the whole request, not a fresh
+    // `new Date()` inside the store — otherwise "events that have already
+    // started" answers against a different instant from everything else.
+    expect(fake.countsAsked).toEqual([{ userId: OWNER_ID, now: NOW }]);
   });
 
   it("records one audit row per disclosure, attributed to the right person and card", async () => {
@@ -341,6 +422,24 @@ describe("every refusal on the card path is the same refusal", () => {
       healthyWorld({ recordViewThrows: true }),
       GOOD_CODE,
     ],
+    // Added 2026-08-15 with the links, counts and embedded photo. A refusal must
+    // stay one refusal now that a success carries considerably more, and the
+    // enrichment reads must not become a new way for one to differ from another.
+    [
+      "a revoked card whose owner also has links and counts to leak",
+      healthyWorld({ cards: { [GOOD_CODE]: assignedCard({ status: "revoked" }) } }),
+      GOOD_CODE,
+    ],
+    [
+      "a suspended owner whose social links read would have succeeded",
+      healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ status: "suspended" }) } }),
+      GOOD_CODE,
+    ],
+    [
+      "an unknown code in a world where every enrichment read is broken",
+      healthyWorld({ socialLinksThrow: true, countsThrow: true, photoBytesThrow: true }),
+      UNKNOWN_CODE,
+    ],
   ];
 
   it.each(cases)("refuses %s", async (_name, world, code) => {
@@ -378,6 +477,52 @@ describe("every refusal on the card path is the same refusal", () => {
       fakeWorld(healthyWorld({ cards: { [GOOD_CODE]: assignedCard({ status: "revoked" }) } })).deps,
     );
     expect(unknown).toStrictEqual(revoked);
+  });
+
+  it("an unknown code and a revoked card stay identical on the vCard surface too", async () => {
+    // The download surface is the one that now carries image bytes, so it is
+    // the one where a refusal has the most to accidentally differ by.
+    const unknown = await resolveCardCodePreview(
+      UNKNOWN_CODE,
+      request("vcard"),
+      fakeWorld(healthyWorld()).deps,
+    );
+    const revoked = await resolveCardCodePreview(
+      GOOD_CODE,
+      request("vcard"),
+      fakeWorld(healthyWorld({ cards: { [GOOD_CODE]: assignedCard({ status: "revoked" }) } })).deps,
+    );
+    expect(unknown).toBeNull();
+    expect(unknown).toStrictEqual(revoked);
+  });
+
+  it("a refusal is identical whether the subject is link-rich or has nothing at all", async () => {
+    // The thing that would make this fail is an enrichment read moved above the
+    // owner-status check: a page that took visibly longer, or errored
+    // differently, for somebody with twelve links than for somebody with none.
+    // Asserted as one distinct result across four differently-populated worlds.
+    const worlds: FakeWorld[] = [
+      healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) } }),
+      healthyWorld({
+        subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) },
+        socialLinks: [],
+        counts: { connections: 0, eventsAttended: 0 },
+      }),
+      healthyWorld({
+        subjects: { [OWNER_ID]: activeOwner({ status: "deleted", photo_path: null }) },
+      }),
+      healthyWorld({
+        subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) },
+        socialLinksThrow: true,
+        countsThrow: true,
+      }),
+    ];
+
+    const results = await Promise.all(
+      worlds.map((world) => resolveCardCodePreview(GOOD_CODE, request(), fakeWorld(world).deps)),
+    );
+    expect(new Set(results.map((r) => JSON.stringify(r))).size).toBe(1);
+    expect(results.every((r) => r === null)).toBe(true);
   });
 
   it("still charges the card's budget for a revoked card, so probing one is not free", async () => {
@@ -507,6 +652,17 @@ describe("every refusal on the QR path is the same refusal", () => {
       [goodToken, healthyWorld({ allowRateLimit: () => false })],
       [goodToken, healthyWorld({ recordViewThrows: true })],
       ["garbage", healthyWorld()],
+      // The enrichment reads must not create a new distinguishable QR refusal
+      // either, in any combination with the checks that were already here.
+      [goodToken, healthyWorld({ sessions: {}, socialLinksThrow: true, countsThrow: true })],
+      [
+        goodToken,
+        healthyWorld({
+          subjects: { [OWNER_ID]: activeOwner({ status: "suspended" }) },
+          socialLinks: [],
+        }),
+      ],
+      [staleNonceToken, healthyWorld({ counts: { connections: 0, eventsAttended: 0 } })],
     ];
 
     const results = await Promise.all(
@@ -520,11 +676,58 @@ describe("every refusal on the QR path is the same refusal", () => {
 // ---------------------------------------------------------------------------
 
 describe("the preview and the vCard see the same person", () => {
-  it("both surfaces resolve identical field values, so the file cannot say more than the page", async () => {
+  it("the embedded photo is the ONLY field that differs between the two surfaces", async () => {
+    // This used to be a flat `toStrictEqual`. It cannot be any more — the page
+    // does not download the image bytes, because the browser is about to fetch
+    // the same picture itself from `photoUrl`. So the property is asserted the
+    // long way instead of weakened: every other field is compared, and the set
+    // of differing keys is asserted to be exactly `{photo}`.
     const fake = fakeWorld(healthyWorld());
     const page = await resolveCardCodePreview(GOOD_CODE, request("preview"), fake.deps);
     const file = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
-    expect(page).toStrictEqual(file);
+
+    expect(page).not.toBeNull();
+    expect(file).not.toBeNull();
+    const differing = DISCLOSED_KEYS.filter(
+      (key) =>
+        JSON.stringify(page?.[key as keyof CardPreview]) !==
+        JSON.stringify(file?.[key as keyof CardPreview]),
+    );
+    expect(differing).toEqual(["photo"]);
+  });
+
+  it("the page never downloads the photo bytes, and the file always tries to", async () => {
+    const pageFake = fakeWorld(healthyWorld());
+    const page = await resolveCardCodePreview(GOOD_CODE, request("preview"), pageFake.deps);
+    expect(pageFake.photoBytesAsked).toEqual([]);
+    expect(page?.photo).toBeNull();
+
+    const fileFake = fakeWorld(healthyWorld());
+    const file = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fileFake.deps);
+    expect(fileFake.photoBytesAsked).toEqual([`${OWNER_ID}/avatar.jpg`]);
+    expect(file?.photo).toStrictEqual(PHOTO);
+  });
+
+  it("the file cannot contain a fact the page did not have", async () => {
+    // The invariant `vcard.ts` states, checked from the data side: everything
+    // the vCard builder reads must be present and equal on the page's own
+    // object. The photo is the exception and is licensed by the test above —
+    // it is the same image the page rendered, in a durable form.
+    const fake = fakeWorld(healthyWorld());
+    const page = await resolveCardCodePreview(GOOD_CODE, request("preview"), fake.deps);
+    const file = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
+
+    for (const key of [
+      "firstName",
+      "lastName",
+      "companyName",
+      "companyRole",
+      "bio",
+      "phoneNumber",
+      "email",
+    ] as const) {
+      expect(file?.[key]).toStrictEqual(page?.[key]);
+    }
   });
 
   it("refuses identically when the server itself is misconfigured", async () => {
@@ -545,5 +748,105 @@ describe("the preview and the vCard see the same person", () => {
     const preview = await resolveCardCodePreview(GOOD_CODE, request(), fake.deps);
     expect(preview).not.toBeNull();
     expect(preview?.photoUrl).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The other direction of failing closed, and the one that is easy to get
+ * backwards.
+ *
+ * The gates above `discloseSubject` fail closed by REFUSING. The three
+ * enrichment reads fail closed by DISCLOSING LESS, and they have to: a read
+ * that turned into a refusal would make "Nothing here" depend on a fact about
+ * the subject — whether their avatar downloads, whether an aggregate timed out
+ * — which is exactly the distinguishable refusal the rest of this file exists
+ * to prevent.
+ */
+describe("a failed enrichment read discloses less, never refuses and never lies", () => {
+  const brokenWorlds: [name: string, world: FakeWorld][] = [
+    ["the social-links read throwing", healthyWorld({ socialLinksThrow: true })],
+    ["the aggregate queries throwing", healthyWorld({ countsThrow: true })],
+    ["the photo download throwing", healthyWorld({ photoBytesThrow: true })],
+    ["the photo signing throwing", healthyWorld({ photoUrlThrows: true })],
+    ["every enrichment read failing at once", healthyWorld({
+      socialLinksThrow: true,
+      countsThrow: true,
+      photoBytesThrow: true,
+      photoUrlThrows: true,
+    })],
+  ];
+
+  it.each(brokenWorlds)("still returns a preview when %s", async (_name, world) => {
+    const fake = fakeWorld(world);
+    const preview = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
+
+    expect(preview).not.toBeNull();
+    // The identity fields are untouched by any of these failures — the preview
+    // is degraded, not partial-and-wrong.
+    expect(preview?.firstName).toBe("Sam");
+    expect(preview?.email).toBe("sam@northwind.example");
+    // And it is still logged as a disclosure, because it still was one.
+    expect(fake.recorded).toHaveLength(1);
+  });
+
+  it("a failed links read looks exactly like having no links", async () => {
+    const broken = await resolveCardCodePreview(
+      GOOD_CODE,
+      request(),
+      fakeWorld(healthyWorld({ socialLinksThrow: true })).deps,
+    );
+    const genuinelyEmpty = await resolveCardCodePreview(
+      GOOD_CODE,
+      request(),
+      fakeWorld(healthyWorld({ socialLinks: [] })).deps,
+    );
+    expect(broken?.socialLinks).toEqual([]);
+    expect(broken).toStrictEqual(genuinelyEmpty);
+  });
+
+  it("a failed aggregate omits the diagram rather than reporting zero", async () => {
+    // A ring diagram of zeroes is a claim about somebody's life, and it is one
+    // the app has no basis for. §7: never imply more than is known.
+    const fake = fakeWorld(healthyWorld({ countsThrow: true }));
+    const preview = await resolveCardCodePreview(GOOD_CODE, request(), fake.deps);
+    expect(preview?.counts).toBeNull();
+
+    const genuineZero = await resolveCardCodePreview(
+      GOOD_CODE,
+      request(),
+      fakeWorld(healthyWorld({ counts: { connections: 0, eventsAttended: 0 } })).deps,
+    );
+    expect(genuineZero?.counts).toStrictEqual({ connections: 0, eventsAttended: 0 });
+  });
+
+  it("a failed photo download still produces a preview whose page photo works", async () => {
+    // The two photo paths are independent: the download can fail while the
+    // signed URL is fine, and the visitor should still see the picture.
+    const fake = fakeWorld(healthyWorld({ photoBytesThrow: true }));
+    const preview = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
+    expect(preview?.photo).toBeNull();
+    expect(preview?.photoUrl).toBe("https://storage.example/signed");
+  });
+
+  it("a subject with no photo is asked for no bytes and gets none", async () => {
+    const fake = fakeWorld(
+      healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ photo_path: null }) } }),
+    );
+    const preview = await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
+    expect(preview?.photo).toBeNull();
+    expect(preview?.photoUrl).toBeNull();
+  });
+
+  it("never reads links, counts or photo bytes for a subject it is about to refuse", async () => {
+    // The enrichment reads sit after the owner-status check and after the audit
+    // row, so a suspended owner's links are never touched at all.
+    const fake = fakeWorld(
+      healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ status: "suspended" }) } }),
+    );
+    await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
+    expect(fake.countsAsked).toEqual([]);
+    expect(fake.photoBytesAsked).toEqual([]);
   });
 });

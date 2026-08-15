@@ -36,6 +36,9 @@ const SAM = {
   email: "sam@northwind.example",
 };
 
+/** A short, valid embedded image — the WebP magic bytes, base64'd. */
+const PHOTO = { vCardType: "WEBP", base64: Buffer.from("RIFF....WEBP").toString("base64") };
+
 describe("escaping", () => {
   it("escapes the backslash first, so later escapes are not double-escaped", () => {
     // `a\;b` must become `a\\\;b`: one escaped backslash, then one escaped
@@ -64,7 +67,7 @@ describe("escaping", () => {
 });
 
 describe("field list", () => {
-  it("emits exactly the six permitted properties and the three structural lines", () => {
+  it("emits exactly the six text properties and the three structural lines when there is no photo", () => {
     const properties = buildVCard(SAM)
       .split("\r\n")
       .filter((line) => line !== "")
@@ -83,14 +86,22 @@ describe("field list", () => {
     ]);
   });
 
-  it("never emits PHOTO or URL, whatever it is given", () => {
-    // The two properties the brief rules out. PHOTO would put private-bucket
-    // bytes into a forwardable file; URL is how `social_links` would sneak in,
-    // and 20260809211100 is explicit that exposing those makes a searchable
-    // directory of off-platform handles.
+  it("never emits URL, whatever it is given", () => {
+    // `social_links` does reach this feature now, and the preview page renders
+    // it as tiles — but the FILE still carries no links. `vcard.ts`'s header
+    // states the invariant this protects and it is one-directional: the file
+    // may say less than the page, never more. So this assertion stays, with a
+    // different reason behind it than the one it was written for.
+    const vcard = buildVCard({ ...SAM, photo: PHOTO });
+    expect(vcard).not.toMatch(/^URL/m);
+    expect(vcard).not.toContain("instagram");
+  });
+
+  it("emits no PHOTO when there is no photo, and the file is still valid without one", () => {
     const vcard = buildVCard(SAM);
     expect(vcard).not.toMatch(/^PHOTO/m);
-    expect(vcard).not.toMatch(/^URL/m);
+    expect(vcard.startsWith("BEGIN:VCARD\r\nVERSION:3.0\r\n")).toBe(true);
+    expect(vcard.endsWith("END:VCARD\r\n")).toBe(true);
   });
 
   it("omits a property rather than emitting an empty one", () => {
@@ -102,6 +113,115 @@ describe("field list", () => {
   it("uses CRLF and terminates the final line", () => {
     expect(buildVCard(SAM).endsWith("END:VCARD\r\n")).toBe(true);
     expect(buildVCard(SAM)).not.toMatch(/[^\r]\n/);
+  });
+});
+
+/**
+ * The embedded photo, added 2026-08-15.
+ *
+ * The interesting cases are not "does it appear" — they are the two ways an
+ * embedded binary breaks a text format: a value that terminates its own
+ * property, and a line long enough that parsers stop agreeing about it.
+ */
+describe("the embedded PHOTO property", () => {
+  it("emits PHOTO last, base64-encoded, with the type it was given", () => {
+    const properties = buildVCard({ ...SAM, photo: PHOTO })
+      .split("\r\n")
+      .filter((line) => line !== "" && !line.startsWith(" "))
+      .map((line) => line.split(/[;:]/)[0]);
+
+    // Immediately before END, so a parser that gives up on a property it does
+    // not understand has already read every text field.
+    expect(properties).toEqual([
+      "BEGIN",
+      "VERSION",
+      "FN",
+      "ORG",
+      "TITLE",
+      "NOTE",
+      "TEL",
+      "EMAIL",
+      "PHOTO",
+      "END",
+    ]);
+    expect(buildVCard({ ...SAM, photo: PHOTO })).toContain(
+      `PHOTO;ENCODING=b;TYPE=WEBP:${PHOTO.base64}`,
+    );
+  });
+
+  it("survives a round trip: unfolding the file returns the exact bytes", () => {
+    // The test that would actually catch a folding off-by-one. A continuation
+    // line carries 74 payload characters, not 75, because the leading space is
+    // structure — get that wrong and the base64 decodes to a different image or
+    // to nothing, silently.
+    const base64 = Buffer.from(
+      Uint8Array.from({ length: 4096 }, (_, i) => (i * 7 + 13) % 256),
+    ).toString("base64");
+    const vcard = buildVCard({ ...SAM, photo: { vCardType: "WEBP", base64 } });
+
+    const unfolded = vcard.replace(/\r\n /g, "");
+    const line = unfolded.split("\r\n").find((l) => l.startsWith("PHOTO"));
+    expect(line).toBe(`PHOTO;ENCODING=b;TYPE=WEBP:${base64}`);
+    expect(Buffer.from(line!.split(":")[1]!, "base64").byteLength).toBe(4096);
+  });
+
+  it("folds at 75 octets, and every continuation is a single leading space", () => {
+    const base64 = Buffer.alloc(2048, 7).toString("base64");
+    const lines = buildVCard({ ...SAM, photo: { vCardType: "WEBP", base64 } }).split("\r\n");
+
+    const photoStart = lines.findIndex((line) => line.startsWith("PHOTO"));
+    const photoLines = [lines[photoStart]!];
+    for (let i = photoStart + 1; i < lines.length && lines[i]!.startsWith(" "); i++) {
+      photoLines.push(lines[i]!);
+    }
+
+    expect(photoLines.length).toBeGreaterThan(1);
+    for (const line of photoLines) {
+      expect(line.length).toBeLessThanOrEqual(75);
+    }
+    for (const line of photoLines.slice(1)) {
+      expect(line.startsWith(" ")).toBe(true);
+      expect(line.startsWith("  ")).toBe(false);
+    }
+  });
+
+  it("refuses a photo whose value could break out of its own property", () => {
+    // The whole reason `usablePhoto` validates rather than trusts. A CRLF in
+    // the value would end the PHOTO property and let whatever follows be parsed
+    // as new vCard properties — an injection into the file's structure.
+    const hostile = [
+      { vCardType: "WEBP", base64: "AAAA\r\nEMAIL;TYPE=INTERNET:attacker@example.test" },
+      { vCardType: "WEBP\r\nX-EVIL", base64: "AAAA" },
+      { vCardType: "WEBP", base64: "AA AA" },
+      { vCardType: "WEBP", base64: "" },
+      { vCardType: "", base64: "AAAA" },
+    ];
+
+    for (const photo of hostile) {
+      const vcard = buildVCard({ ...SAM, photo });
+      expect(vcard).not.toMatch(/^PHOTO/m);
+      expect(vcard).not.toContain("attacker@example.test");
+      expect(vcard).not.toContain("X-EVIL");
+      // Still a well-formed card — a rejected photo omits one property, it does
+      // not produce a broken file.
+      expect(vcard.endsWith("END:VCARD\r\n")).toBe(true);
+    }
+  });
+
+  it("treats an absent, null and undefined photo as the same file", () => {
+    // `photo` is optional so that every caller and fixture predating it keeps
+    // meaning "no photo" — this pins that the three spellings agree.
+    expect(buildVCard(SAM)).toBe(buildVCard({ ...SAM, photo: null }));
+    expect(buildVCard(SAM)).toBe(buildVCard({ ...SAM, photo: undefined }));
+  });
+
+  it("still serves the file over HTTP with the same headers", () => {
+    const response = vCardResponse({ ...SAM, photo: PHOTO });
+    expect(response.headers.get("content-type")).toBe("text/vcard; charset=utf-8");
+    expect(response.headers.get("cache-control")).toBe("no-store, private");
+    expect(response.headers.get("content-disposition")).toBe(
+      'attachment; filename="Sam-Rivera.vcf"',
+    );
   });
 });
 

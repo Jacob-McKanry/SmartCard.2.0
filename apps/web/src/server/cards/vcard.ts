@@ -17,17 +17,31 @@
  * preview costs up to two units.
  *
  * WHAT IS IN IT, AND WHAT IS DELIBERATELY NOT
- * FN, ORG, TITLE, NOTE, TEL, EMAIL. That is the whole list, fixed by the build
- * brief, and it matches the preview page field-for-field — there is no field a
- * person can get out of the file that they could not already read on screen.
+ * FN, ORG, TITLE, NOTE, TEL, EMAIL, PHOTO. The invariant is one-directional and
+ * is the one to preserve: there is no field a person can get out of the file
+ * that they could not already read on the preview page. The file may say less
+ * than the page. It must never say more.
  *
- *   * No PHOTO. Embedding the image would put the bytes of a private-bucket
- *     object into a file that gets forwarded, which is a materially different
- *     disclosure from a five-minute signed URL rendered once.
- *   * No URL entries. `social_links` never reaches this feature at all — see
- *     `card-preview-service.ts`'s header, and 20260809211100's reason:
- *     anything looser than the profile's own gate "would be a searchable
- *     directory of people's off-platform handles".
+ *   * PHOTO was added 2026-08-15 and the paragraph here used to argue against
+ *     it: "embedding the image would put the bytes of a private-bucket object
+ *     into a file that gets forwarded, which is a materially different
+ *     disclosure from a five-minute signed URL rendered once". The owner asked
+ *     for it, and the argument does not survive contact with what the page
+ *     already does — the same visitor is already being shown the same image,
+ *     and a person who wants to keep it can right-click it. What the file adds
+ *     is durability, not access, and that is the same trade already accepted for
+ *     the phone number and the email, which are equally forwardable and rather
+ *     more sensitive. `card-preview-service.ts`'s `loadPhotoBytes` carries the
+ *     rest of the reasoning: why the bytes are embedded rather than referenced
+ *     by URI (a signed URL expires in five minutes; a saved contact does not),
+ *     and why there is a size cap.
+ *   * Still no URL entries, and now for a different reason than before. This
+ *     used to say `social_links` "never reaches this feature at all"; as of
+ *     2026-08-15 it does, and the preview page renders it as link tiles. They
+ *     are omitted from the file only because nobody asked for them and the
+ *     invariant above permits the file to say less. Adding
+ *     `URL:<link.url>` per link is a two-line change, and the disclosure
+ *     decision behind it has already been made.
  *   * No N (the structured name). vCard 3.0 nominally requires it and its
  *     absence means some clients import the whole name into the first-name
  *     field. The brief named six properties and N was not among them, so this
@@ -35,14 +49,23 @@
  *     `N:Last;First;;;` is a one-line change if the owner wants clean
  *     first/last splitting on import.
  *
- * WHY THERE IS NO LINE FOLDING
- * RFC 2426 says lines SHOULD be folded at 75 octets. This does not fold, on
- * purpose. Every mainstream consumer (iOS Contacts, Android, Google Contacts,
- * Outlook) accepts unfolded long lines, whereas folding implemented against
- * character counts instead of octets is subtly wrong for any non-ASCII name or
- * bio and produces a corrupted file rather than an ugly one. Between "slightly
- * non-conformant and correct" and "conformant-looking and occasionally
- * mangled", the first is the better failure.
+ * WHY THERE IS NO LINE FOLDING, EXCEPT FOR THE PHOTO
+ * RFC 2426 says lines SHOULD be folded at 75 octets. The text properties do not
+ * fold, on purpose. Every mainstream consumer (iOS Contacts, Android, Google
+ * Contacts, Outlook) accepts unfolded long lines, whereas folding implemented
+ * against character counts instead of octets is subtly wrong for any non-ASCII
+ * name or bio and produces a corrupted file rather than an ugly one. Between
+ * "slightly non-conformant and correct" and "conformant-looking and
+ * occasionally mangled", the first is the better failure.
+ *
+ * PHOTO is folded, and that is consistent with the paragraph above rather than
+ * an exception to it. The objection to folding is that a character count is not
+ * an octet count — which is true of a name or a bio and is exactly false of
+ * base64, whose alphabet is ASCII, one octet per character, by definition. So
+ * the failure mode that argument is about cannot occur here. Meanwhile the
+ * property being folded is not a long line, it is a ~230,000-character one, and
+ * that is the size at which "every mainstream consumer accepts it" stops being
+ * something anybody has actually tested.
  */
 
 /** vCard 3.0 rather than 4.0: 3.0 is what every mainstream contacts app parses without argument. */
@@ -55,9 +78,18 @@ const VCARD_VERSION = "3.0";
 const CRLF = "\r\n";
 
 /**
- * The seven values a preview may disclose, minus the photo (which never enters
- * the file). Identical in shape to what the preview page renders, so the two
- * cannot drift into disclosing different things.
+ * RFC 2426 §2.6's fold width: a content line SHOULD be no longer than 75
+ * octets, excluding the line break. Continuation lines begin with a single
+ * space, which the parser strips before concatenating — so a continuation
+ * carries 74 payload characters, not 75. Getting that off by one corrupts
+ * base64 into a different image or into nothing.
+ */
+const FOLD_WIDTH = 75;
+
+/**
+ * The values a preview may disclose, in the shape the file needs them.
+ * Structurally satisfied by `CardPreview`, so the page and the file cannot
+ * drift into disclosing different things.
  */
 export interface VCardFields {
   firstName: string | null;
@@ -67,6 +99,20 @@ export interface VCardFields {
   bio: string | null;
   phoneNumber: string | null;
   email: string | null;
+  /**
+   * The embedded image, or null/absent for no PHOTO property. Optional so that
+   * every existing caller and test constructing a `VCardFields` by hand keeps
+   * compiling and keeps meaning "no photo".
+   */
+  photo?: VCardPhoto | null;
+}
+
+/** Base64 image bytes plus the `TYPE=` token naming their format. */
+export interface VCardPhoto {
+  /** e.g. `WEBP`. Comes from a fixed allowlist in `card-preview-service.ts`. */
+  vCardType: string;
+  /** Standard base64, unfolded — `buildVCard` folds it. */
+  base64: string;
 }
 
 /**
@@ -96,6 +142,44 @@ function usable(value: string | null): string | null {
   if (value === null) return null;
   const trimmed = value.trim();
   return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * `usable`'s counterpart for the photo: an absent, empty or malformed one omits
+ * the property rather than writing `PHOTO;ENCODING=b;TYPE=:` — a property with
+ * no value, which some importers treat as a corrupt card rather than ignoring.
+ *
+ * The base64 alphabet is checked here rather than trusted from the caller. This
+ * is defence in depth against exactly one thing: a value containing a CRLF would
+ * terminate the property and let the rest of it be parsed as new vCard
+ * properties — an injection into the file's structure. `card-preview-service.ts`
+ * produces this string from `Buffer.toString("base64")` and can only ever
+ * produce a clean one, so this check should never fire; it is here because the
+ * cost is one regex and the failure it prevents is a file that says something
+ * nobody wrote.
+ */
+function usablePhoto(photo: VCardPhoto | null | undefined): VCardPhoto | null {
+  if (photo === null || photo === undefined) return null;
+  if (!/^[A-Za-z0-9]+$/.test(photo.vCardType)) return null;
+  if (photo.base64 === "" || !/^[A-Za-z0-9+/]+={0,2}$/.test(photo.base64)) return null;
+  return photo;
+}
+
+/**
+ * RFC 2426 §2.6 folding, applied only to the PHOTO line — see the file header
+ * for why folding is right there and wrong for the text properties.
+ *
+ * The first line carries `FOLD_WIDTH` characters. Every continuation begins
+ * with the single space the spec requires and therefore carries one fewer.
+ */
+export function foldVCardLine(line: string): string {
+  if (line.length <= FOLD_WIDTH) return line;
+
+  const parts: string[] = [line.slice(0, FOLD_WIDTH)];
+  for (let i = FOLD_WIDTH; i < line.length; i += FOLD_WIDTH - 1) {
+    parts.push(` ${line.slice(i, i + FOLD_WIDTH - 1)}`);
+  }
+  return parts.join(CRLF);
 }
 
 /**
@@ -148,6 +232,18 @@ export function buildVCard(fields: VCardFields): string {
 
   const email = usable(fields.email);
   if (email !== null) lines.push(`EMAIL;TYPE=INTERNET:${escapeVCardValue(email)}`);
+
+  const photo = usablePhoto(fields.photo);
+  if (photo !== null) {
+    // NOT run through `escapeVCardValue`. That function is for text values, and
+    // base64's alphabet (A–Z a–z 0–9 + / =) contains none of the characters it
+    // escapes — but it would escape nothing and cost a pass over a quarter of a
+    // megabyte, and more importantly calling it here would suggest the value is
+    // text a user typed. It is not: `vCardType` comes from a fixed allowlist and
+    // `base64` is machine-generated, which is what makes it safe to interpolate
+    // into a property parameter at all.
+    lines.push(foldVCardLine(`PHOTO;ENCODING=b;TYPE=${photo.vCardType}:${photo.base64}`));
+  }
 
   lines.push("END:VCARD");
 
