@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#e6e9f0;font-family:'Instrument Sans',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#0b60ff;text-decoration:none}a:hover{color:#0847c4}
+*{box-sizing:border-box}
+input,textarea,button{font-family:inherit}
+@keyframes rise{0%{transform:translateY(14px) scale(.985);opacity:0}100%{transform:translateY(0) scale(1);opacity:1}}
+@keyframes spring{0%{transform:scale(.4);opacity:0}55%{transform:scale(1.12);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes draw{0%{stroke-dashoffset:36}100%{stroke-dashoffset:0}}
+@keyframes halo{0%,100%{transform:scale(1);opacity:.55}50%{transform:scale(1.06);opacity:.9}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{transform:translateX(-120%) rotate(8deg)}100%{transform:translateX(220%) rotate(8deg)}}
+@keyframes blurup{0%{filter:blur(14px);opacity:.4;transform:scale(1.04)}100%{filter:blur(0);opacity:1;transform:scale(1)}}
+@keyframes sheet{0%{transform:translateY(100%)}100%{transform:translateY(0)}}
+</style></helmet>
+
+<div style="--a:{{ accent }};--ad:{{ accentDeep }};--at:{{ accentTint }};min-height:100vh;padding:30px 34px 60px;color:#0d1220;background:radial-gradient(1100px 700px at 8% -10%,rgba(11,96,255,.10),transparent 62%),radial-gradient(900px 600px at 92% 2%,rgba(124,58,237,.08),transparent 60%),#eef1f7">
+
+  <div style="max-width:820px;display:flex;flex-direction:column;gap:11px;margin-bottom:24px">
+    <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:8px;background:#0d1220;color:#fff;border-radius:999px;padding:6px 13px;font:500 10.5px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase">Auth &amp; onboarding &middot; interactive</div>
+    <h1 style="margin:0;font:600 30px/34px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Getting in</h1>
+    <p style="margin:0;font:400 15px/23px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Four branches, all walkable. Sign-in is handled by a hosted page, so the app never sees a password and never renders a credential field &mdash; the screens we own are the two gates either side of it, plus what happens on the way back. Nothing on any screen names a vendor or explains our plumbing to the user.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:2px">
+      <span style="display:flex;align-items:center;gap:7px;font:500 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478"><span style="width:9px;height:9px;border-radius:3px;background:#0d1220"></span>Shipped &mdash; recreated from source</span>
+      <span style="display:flex;align-items:center;gap:7px;font:500 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478"><span style="width:9px;height:9px;border-radius:3px;background:var(--a)"></span>Proposed &mdash; new design</span>
+      <span style="display:flex;align-items:center;gap:7px;font:500 11.5px/16px 'Instrument Sans',sans-serif;color:#5b6478"><span style="width:9px;height:9px;border-radius:3px;background:repeating-linear-gradient(115deg,#c3c9d6 0 3px,#dfe5f0 3px 6px)"></span>Not ours &mdash; hosted page</span>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+    <sc-for list="{{ branchTabs }}" as="b" hint-placeholder-count="5">
+      <button onClick="{{ b.go }}" style="display:flex;align-items:center;gap:8px;border:1px solid {{ b.bd }};background:{{ b.bg }};color:{{ b.fg }};border-radius:999px;padding:9px 16px;font:600 12.5px/16px 'Instrument Sans',sans-serif;cursor:pointer;transition:all .22s cubic-bezier(.32,.72,0,1)">{{ b.label }}<span style="font:500 10px/13px 'Geist Mono',monospace;opacity:.6">{{ b.count }}</span></button>
+    </sc-for>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:22px">
+    <sc-for list="{{ stepRail }}" as="s" hint-placeholder-count="5">
+      <button onClick="{{ s.go }}" style="display:flex;align-items:center;gap:7px;border:1px solid {{ s.bd }};background:{{ s.bg }};color:{{ s.fg }};border-radius:12px;padding:7px 12px;font:{{ s.weight }} 11.5px/15px 'Instrument Sans',sans-serif;cursor:pointer;transition:all .22s ease"><span style="font:500 9.5px/13px 'Geist Mono',monospace;opacity:.55">{{ s.num }}</span>{{ s.label }}</button>
+    </sc-for>
+    <sc-if value="{{ isErrorBranch }}">
+      <span style="width:1px;height:20px;background:rgba(13,18,32,.12);margin:0 4px"></span>
+      <sc-for list="{{ errorTabs }}" as="e" hint-placeholder-count="4">
+        <button onClick="{{ e.go }}" style="border:1px solid {{ e.bd }};background:{{ e.bg }};color:{{ e.fg }};border-radius:12px;padding:7px 12px;font:600 11.5px/15px 'Instrument Sans',sans-serif;cursor:pointer;transition:all .22s ease">{{ e.label }}</button>
+      </sc-for>
+    </sc-if>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:30px;align-items:flex-start">
+
+    <div data-screen-label="Auth screen" style="position:relative;width:402px;height:858px;border-radius:52px;padding:11px;background:linear-gradient(160deg,#2b3140,#12151c);box-shadow:0 40px 80px -20px rgba(13,18,32,.35),0 2px 6px rgba(13,18,32,.2);flex-shrink:0">
+      <div style="position:relative;width:100%;height:100%;border-radius:42px;overflow:hidden;background:{{ screenBg }}">
+
+        <div style="position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 6px;font:600 13px/16px 'Instrument Sans',sans-serif;color:{{ statusFg }};z-index:40;pointer-events:none">
+          <span>9:41</span>
+          <span style="width:17px;height:10px;border:1.5px solid {{ statusFg }};border-radius:3px;position:relative;opacity:.85"><span style="position:absolute;inset:1.5px;right:5px;background:{{ statusFg }};border-radius:1px"></span></span>
+        </div>
+
+        <div style="position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;padding:52px 0 0">
+          <div style="width:100%;padding:0 26px">
+
+            <sc-if value="{{ isGate }}" hint-placeholder-val="{{ true }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:26px;text-align:center;padding:20px 0;animation:rise .5s cubic-bezier(.32,.72,0,1) both">
+                <div style="position:relative;display:flex;align-items:center;justify-content:center;width:78px;height:78px;border-radius:26px;background:linear-gradient(150deg,var(--a),var(--ad));box-shadow:0 20px 44px -14px rgba(11,96,255,.6);overflow:hidden">
+                  <span style="position:absolute;top:-40%;left:0;width:36%;height:180%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);animation:shimmer 3.8s cubic-bezier(.32,.72,0,1) infinite"></span>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M21 21v.01"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M3 12h.01"></path><path d="M12 3h.01"></path><path d="M12 16v.01"></path><path d="M16 12h1"></path><path d="M21 12v.01"></path><path d="M12 21v-1"></path></svg>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <h1 style="margin:0;font:600 30px/34px 'Instrument Sans',sans-serif;letter-spacing:-.035em">SmartCard</h1>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;width:100%">
+                  <button onClick="{{ goSignIn }}" style="border:0;border-radius:999px;padding:16px;font:600 15px/19px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--a),var(--ad));color:#fff;box-shadow:0 16px 32px -12px rgba(11,96,255,.6);cursor:pointer;transition:transform .3s cubic-bezier(.34,1.56,.64,1)" style-hover="transform:translateY(-2px)">Sign in</button>
+                  <button onClick="{{ goCreate }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.7);border-radius:999px;padding:15px;font:600 15px/19px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Create an account</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isHandoff }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:22px;text-align:center;animation:rise .4s cubic-bezier(.32,.72,0,1) both">
+                <div style="display:flex;align-items:center;gap:14px">
+                  <span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:17px;background:linear-gradient(150deg,var(--a),var(--ad))"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M12 3h.01"></path><path d="M16 12h1"></path></svg></span>
+                  <span style="display:flex;gap:4px">
+                    <span style="width:5px;height:5px;border-radius:999px;background:var(--a);animation:halo 1.4s ease-in-out infinite"></span>
+                    <span style="width:5px;height:5px;border-radius:999px;background:var(--a);animation:halo 1.4s ease-in-out .18s infinite"></span>
+                    <span style="width:5px;height:5px;border-radius:999px;background:var(--a);animation:halo 1.4s ease-in-out .36s infinite"></span>
+                  </span>
+                  <span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:17px;background:rgba(255,255,255,.75);border:1px solid rgba(13,18,32,.08);color:#7b8398"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg></span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <h2 style="margin:0;font:600 20px/25px 'Instrument Sans',sans-serif;letter-spacing:-.025em">One moment</h2>
+                  <p style="margin:0;font:400 13.5px/20px 'Instrument Sans',sans-serif;color:#5b6478;max-width:30ch">Taking you to our secure sign-in.</p>
+                </div>
+                <button onClick="{{ next }}" style="border:0;background:transparent;color:var(--a);font:600 13px/17px 'Instrument Sans',sans-serif;cursor:pointer;padding:8px">Continue &rarr;</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isKinde }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;justify-content:center;gap:16px;animation:rise .4s cubic-bezier(.32,.72,0,1) both">
+                <div style="display:flex;align-items:center;gap:8px;padding:9px 13px;border-radius:14px;background:rgba(13,18,32,.05);border:1px solid rgba(13,18,32,.09)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5b6478" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                  <span style="flex:1;font:500 11px/15px 'Instrument Sans',sans-serif;color:#5b6478">Secure sign-in</span>
+                </div>
+                <div style="border-radius:26px;border:1px dashed rgba(13,18,32,.22);background:repeating-linear-gradient(115deg,rgba(223,229,240,.75) 0 10px,rgba(233,237,245,.75) 10px 20px);padding:26px 22px;display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center">
+                  <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#7b8398">HOSTED SIGN-IN</span>
+                  <div style="width:100%;display:flex;flex-direction:column;gap:9px">
+                    <div style="height:46px;border-radius:14px;background:rgba(255,255,255,.85);border:1px solid rgba(13,18,32,.1);display:flex;align-items:center;padding:0 14px;font:400 13px/18px 'Instrument Sans',sans-serif;color:#a4abbb">Email address</div>
+                    <div style="height:46px;border-radius:14px;background:rgba(255,255,255,.85);border:1px solid rgba(13,18,32,.1);display:flex;align-items:center;padding:0 14px;font:400 13px/18px 'Instrument Sans',sans-serif;color:#a4abbb">Password or one-time code</div>
+                    <div style="height:46px;border-radius:14px;background:rgba(13,18,32,.75);display:flex;align-items:center;justify-content:center;font:600 13px/18px 'Instrument Sans',sans-serif;color:#fff">Continue</div>
+                  </div>
+                </div>
+                <button onClick="{{ next }}" style="border:0;border-radius:999px;padding:14px;font:600 14px/18px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--a),var(--ad));color:#fff;box-shadow:0 14px 30px -10px rgba(11,96,255,.55);cursor:pointer">Simulate a successful sign-in &rarr;</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isSignup }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;gap:18px;padding-top:26px;animation:rise .45s cubic-bezier(.32,.72,0,1) both">
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <h1 style="margin:0;font:600 28px/32px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Create your account</h1>
+                  <p style="margin:0;font:400 14px/21px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Your name is what the person you meet sees. You&rsquo;ll set a password on the next step.</p>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:11px;padding:17px;border-radius:24px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07)">
+                  <div style="display:flex;gap:10px">
+                    <label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">FIRST</span><input placeholder="Jacob" style="width:100%;height:46px;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:0 14px;font:500 15px/20px 'Instrument Sans',sans-serif;color:#0d1220;outline:none"></label>
+                    <label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">LAST</span><input placeholder="McKanry" style="width:100%;height:46px;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:0 14px;font:500 15px/20px 'Instrument Sans',sans-serif;color:#0d1220;outline:none"></label>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">EMAIL</span><input placeholder="you@company.com" style="width:100%;height:46px;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:0 14px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+                  <div style="display:flex;align-items:flex-start;gap:9px;padding:11px 13px;border-radius:15px;background:rgba(13,18,32,.04);border:1px solid rgba(13,18,32,.07)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7b8398" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    <span style="font:400 11.5px/17px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Your password is set on our secure sign-in step, so it never passes through the app.</span>
+                  </div>
+                </div>
+                <div style="flex:1"></div>
+                <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:26px">
+                  <button onClick="{{ next }}" style="border:0;border-radius:999px;padding:16px;font:600 15px/19px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--a),var(--ad));color:#fff;box-shadow:0 16px 32px -12px rgba(11,96,255,.55);cursor:pointer">Continue</button>
+                  <div style="display:flex;justify-content:center;gap:6px;font:400 13px/18px 'Instrument Sans',sans-serif;color:#5b6478">Already have an account?<button onClick="{{ goSignIn }}" style="border:0;background:transparent;padding:0;color:var(--a);font:600 13px/18px 'Instrument Sans',sans-serif;cursor:pointer">Sign in</button></div>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isCallback }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:22px;text-align:center;animation:rise .35s cubic-bezier(.32,.72,0,1) both">
+                <div style="position:relative;width:64px;height:64px">
+                  <span style="position:absolute;inset:0;border-radius:999px;border:3px solid rgba(11,96,255,.14)"></span>
+                  <span style="position:absolute;inset:0;border-radius:999px;border:3px solid transparent;border-top-color:var(--a);animation:spin .9s linear infinite"></span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <h2 style="margin:0;font:600 19px/24px 'Instrument Sans',sans-serif;letter-spacing:-.025em">{{ callbackTitle }}</h2>
+                  <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478;max-width:30ch;text-wrap:pretty">{{ callbackBody }}</p>
+                </div>
+                <div style="width:100%;display:flex;flex-direction:column;gap:2px;border-radius:20px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07);padding:6px 0">
+                  <sc-for list="{{ callbackSteps }}" as="c" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:10px;padding:11px 15px">
+                      <span style="display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:{{ c.dotBg }};color:#fff;flex-shrink:0"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+                      <span style="flex:1;text-align:left;font:500 12px/16px 'Instrument Sans',sans-serif;color:{{ c.fg }}">{{ c.label }}</span>
+                      <span style="font:400 9.5px/13px 'Geist Mono',monospace;color:#a4abbb">{{ c.tag }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+                <button onClick="{{ next }}" style="border:0;background:transparent;color:var(--a);font:600 13px/17px 'Instrument Sans',sans-serif;cursor:pointer;padding:8px">Continue &rarr;</button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isOnbPhoto }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;gap:20px;padding-top:24px;animation:rise .45s cubic-bezier(.32,.72,0,1) both">
+                <div style="display:flex;gap:5px">
+                  <span style="flex:1;height:3px;border-radius:2px;background:var(--a)"></span>
+                  <span style="flex:1;height:3px;border-radius:2px;background:rgba(13,18,32,.1)"></span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <h1 style="margin:0;font:600 26px/30px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Add a photo</h1>
+                  <p style="margin:0;font:400 14px/21px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">So the person you just met remembers which conversation you were.</p>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:center;gap:15px;padding:26px 18px;border-radius:26px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07)">
+                  <div style="position:relative;width:124px;height:124px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,rgba(11,96,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font:600 32px/1 'Instrument Sans',sans-serif;animation:blurup 1s cubic-bezier(.32,.72,0,1) both">JM
+                    <span style="position:absolute;bottom:-2px;right:-2px;display:flex;align-items:center;justify-content:center;width:38px;height:38px;border-radius:999px;background:#0d1220;border:3px solid #f1f4fa"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 2a2 2 0 0 1 1.664.89l.812 1.22A2 2 0 0 0 17.54 5H18a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h.46a2 2 0 0 0 1.664-.89l.812-1.22A2 2 0 0 1 10.6 2z"></path><circle cx="12" cy="12" r="3"></circle></svg></span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;width:100%">
+                    <button style="border:0;border-radius:999px;padding:13px;font:600 13.5px/18px 'Instrument Sans',sans-serif;background:#0d1220;color:#fff;cursor:pointer">Take a photo</button>
+                    <button style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.8);border-radius:999px;padding:12px;font:600 13.5px/18px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Choose from library</button>
+                  </div>
+                  <p style="margin:0;font:400 11px/15px 'Geist Mono',monospace;color:#a4abbb">WEBP, up to 5MB</p>
+                </div>
+                <div style="flex:1"></div>
+                <div style="display:flex;gap:9px;margin-bottom:26px">
+                  <button onClick="{{ next }}" style="flex:1;border:0;border-radius:999px;padding:16px;font:600 15px/19px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--a),var(--ad));color:#fff;box-shadow:0 16px 32px -12px rgba(11,96,255,.55);cursor:pointer">Use this photo</button>
+                  <sc-if value="{{ photoSkippable }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ next }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.6);border-radius:999px;padding:16px 20px;font:600 15px/19px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Skip</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isOnbDetails }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;gap:18px;padding-top:24px;animation:rise .45s cubic-bezier(.32,.72,0,1) both">
+                <div style="display:flex;gap:5px">
+                  <span style="flex:1;height:3px;border-radius:2px;background:var(--a)"></span>
+                  <span style="flex:1;height:3px;border-radius:2px;background:var(--a)"></span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <h1 style="margin:0;font:600 26px/30px 'Instrument Sans',sans-serif;letter-spacing:-.035em">What should people see?</h1>
+                  <p style="margin:0;font:400 14px/21px 'Instrument Sans',sans-serif;color:#5b6478">All optional, all editable later.</p>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:11px;padding:17px;border-radius:24px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07)">
+                  <div style="display:flex;gap:10px">
+                    <label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">COMPANY</span><input placeholder="SmartCard" style="width:100%;height:46px;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:0 14px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+                    <label style="flex:1;min-width:0;display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">ROLE</span><input placeholder="Founder" style="width:100%;height:46px;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:0 14px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">BIO</span><textarea rows="3" placeholder="One line people will remember you by." style="width:100%;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:11px 14px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none;resize:vertical"></textarea></label>
+                  <label style="display:flex;flex-direction:column;gap:6px"><span style="font:600 11px/15px 'Instrument Sans',sans-serif;color:#8b93a5">PHONE</span><input placeholder="+1 415 555 0148" style="width:100%;height:46px;border-radius:15px;border:1px solid rgba(13,18,32,.1);background:rgba(255,255,255,.9);padding:0 14px;font:400 14px/20px 'Instrument Sans',sans-serif;outline:none"></label>
+                  <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;font:500 13px/18px 'Instrument Sans',sans-serif;cursor:pointer">Email me occasional updates<span style="width:44px;height:26px;border-radius:999px;background:rgba(13,18,32,.14);position:relative;flex-shrink:0"><span style="position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.14)"></span></span></label>
+                </div>
+                <div style="flex:1"></div>
+                <div style="display:flex;gap:9px;margin-bottom:26px">
+                  <button onClick="{{ next }}" style="flex:1;border:0;border-radius:999px;padding:16px;font:600 15px/19px 'Instrument Sans',sans-serif;background:linear-gradient(150deg,var(--a),var(--ad));color:#fff;box-shadow:0 16px 32px -12px rgba(11,96,255,.55);cursor:pointer">Done</button>
+                  <button onClick="{{ next }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.6);border-radius:999px;padding:16px 20px;font:600 15px/19px 'Instrument Sans',sans-serif;color:#5b6478;cursor:pointer">Later</button>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isHome }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;gap:22px;padding-top:16px;animation:rise .5s cubic-bezier(.32,.72,0,1) both">
+                <sc-if value="{{ isFirstRun }}">
+                  <div style="display:flex;align-items:flex-start;gap:11px;padding:14px;border-radius:20px;background:linear-gradient(150deg,rgba(11,96,255,.1),rgba(124,58,237,.07));border:1px solid rgba(11,96,255,.2)">
+                    <span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:11px;background:rgba(255,255,255,.8);flex-shrink:0"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--ad)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg></span>
+                    <span style="min-width:0"><span style="display:block;font:600 13px/17px 'Instrument Sans',sans-serif">You&rsquo;re set up</span><span style="display:block;margin-top:2px;font:400 12px/17px 'Instrument Sans',sans-serif;color:#5b6478">Your feed fills in the first time you meet someone.</span></span>
+                  </div>
+                </sc-if>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="font:500 12px/16px 'Geist Mono',monospace;color:#8b93a5;letter-spacing:.04em">TUESDAY, AUG 18</div>
+                  <h1 style="margin:0;font:600 34px/38px 'Instrument Sans',sans-serif;letter-spacing:-.03em">{{ homeGreeting }}</h1>
+                  <p style="margin:0;font:400 15px/22px 'Instrument Sans',sans-serif;color:#5b6478">{{ homeSub }}</p>
+                </div>
+                <button style="position:relative;overflow:hidden;text-align:left;border:1px solid rgba(255,255,255,.55);border-radius:28px;padding:22px;cursor:pointer;background:linear-gradient(150deg,var(--a),var(--ad));box-shadow:0 18px 40px -12px rgba(11,96,255,.55);color:#fff">
+                  <span style="position:absolute;top:-40%;left:0;width:36%;height:180%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent);animation:shimmer 3.6s cubic-bezier(.32,.72,0,1) infinite"></span>
+                  <span style="position:relative;display:flex;align-items:center;gap:16px">
+                    <span style="display:flex;align-items:center;justify-content:center;width:52px;height:52px;border-radius:18px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);flex-shrink:0"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="5" height="5" x="3" y="3" rx="1"></rect><rect width="5" height="5" x="16" y="3" rx="1"></rect><rect width="5" height="5" x="3" y="16" rx="1"></rect><path d="M21 16h-3a2 2 0 0 0-2 2v3"></path><path d="M12 7v3a2 2 0 0 1-2 2H7"></path><path d="M12 3h.01"></path><path d="M16 12h1"></path></svg></span>
+                    <span style="min-width:0"><span style="display:block;font:600 20px/24px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Connect</span><span style="display:block;font:400 13px/18px 'Instrument Sans',sans-serif;color:rgba(255,255,255,.82);margin-top:2px">Show your code, or scan theirs</span></span>
+                  </span>
+                </button>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isError }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:20px;text-align:center;animation:rise .4s cubic-bezier(.32,.72,0,1) both">
+                <div style="display:flex;align-items:center;justify-content:center;width:76px;height:76px;border-radius:26px;background:{{ errIconBg }};border:1px solid {{ errIconBd }};color:{{ errIconFg }}">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" dangerouslySetInnerHTML="{{ errIcon }}"></svg>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <h2 style="margin:0;font:600 23px/28px 'Instrument Sans',sans-serif;letter-spacing:-.03em">{{ err.title }}</h2>
+                  <p style="margin:0;font:400 14px/21px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">{{ err.body }}</p>
+                </div>
+                <sc-if value="{{ err.support }}">
+                  <div style="width:100%;display:flex;flex-direction:column;gap:7px;padding:14px;border-radius:20px;background:rgba(255,255,255,.7);border:1px solid rgba(13,18,32,.08);text-align:left">
+                    <span style="font:600 11.5px/16px 'Instrument Sans',sans-serif;color:#0d1220">{{ err.support }}</span>
+                    <span style="font:400 11.5px/17px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">{{ err.supportBody }}</span>
+                  </div>
+                </sc-if>
+                <div style="display:flex;flex-direction:column;gap:9px;width:100%">
+                  <sc-if value="{{ mailSent }}">
+                    <div style="display:flex;align-items:center;justify-content:center;gap:9px;border-radius:999px;padding:15px;background:rgba(11,96,255,.08);border:1px solid rgba(11,96,255,.2);color:var(--ad);font:600 14px/19px 'Instrument Sans',sans-serif;animation:rise .35s cubic-bezier(.34,1.56,.64,1) both">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Opening your mail app
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ mailPending }}" hint-placeholder-val="{{ true }}">
+                    <button onClick="{{ err.action }}" style="border:0;border-radius:999px;padding:15px;font:600 14.5px/19px 'Instrument Sans',sans-serif;background:{{ err.primaryBg }};color:{{ err.primaryFg }};cursor:pointer">{{ err.primary }}</button>
+                  </sc-if>
+                  <sc-if value="{{ err.secondary }}">
+                    <button onClick="{{ goGate }}" style="border:0;background:transparent;color:#5b6478;font:600 13.5px/18px 'Instrument Sans',sans-serif;cursor:pointer;padding:9px">{{ err.secondary }}</button>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ showSettings }}">
+              <div style="min-height:740px;display:flex;flex-direction:column;gap:16px;padding-top:22px;padding-bottom:26px;animation:rise .45s cubic-bezier(.32,.72,0,1) both">
+                <h1 style="margin:0;font:600 28px/32px 'Instrument Sans',sans-serif;letter-spacing:-.035em">Settings</h1>
+
+                <div style="display:flex;align-items:center;gap:13px;padding:15px;border-radius:22px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07)">
+                  <span style="display:flex;align-items:center;justify-content:center;width:48px;height:48px;border-radius:999px;background:linear-gradient(140deg,rgba(11,96,255,.2),rgba(124,58,237,.16));border:1px solid rgba(255,255,255,.92);font:600 16px/1 'Instrument Sans',sans-serif;flex-shrink:0">JM</span>
+                  <span style="min-width:0;flex:1"><span style="display:block;font:600 15px/20px 'Instrument Sans',sans-serif">Jacob McKanry</span><span style="display:block;font:500 11.5px/16px 'Geist Mono',monospace;color:#8b93a5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">jacob@smartcard.tech</span></span>
+                  <button style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.9);border-radius:999px;padding:8px 14px;font:600 12.5px/16px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer;flex-shrink:0">Edit</button>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#8b93a5;padding-left:4px">SIGNING IN</span>
+                  <div style="border-radius:22px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07);overflow:hidden">
+                    <button style="width:100%;display:flex;align-items:center;gap:11px;padding:14px 15px;border:0;border-bottom:1px solid rgba(13,18,32,.055);background:transparent;cursor:pointer;text-align:left">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b6478" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                      <span style="flex:1;min-width:0"><span style="display:block;font:500 13.5px/18px 'Instrument Sans',sans-serif;color:#0d1220">Change your password</span><span style="display:block;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#8b93a5">Opens our secure sign-in page</span></span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a4abbb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 18 6-6-6-6"></path></svg>
+                    </button>
+                    <div style="display:flex;align-items:center;gap:11px;padding:14px 15px">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b6478" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"></path><rect x="2" y="4" width="20" height="16" rx="2"></rect></svg>
+                      <span style="flex:1;min-width:0"><span style="display:block;font:500 13.5px/18px 'Instrument Sans',sans-serif;color:#0d1220">Email address</span><span style="display:block;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#8b93a5">Tied to how you sign in — support can change it</span></span>
+                      <span style="border-radius:8px;padding:5px 9px;background:rgba(13,18,32,.05);color:#8b93a5;font:600 10.5px/14px 'Instrument Sans',sans-serif;flex-shrink:0">Locked</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#8b93a5;padding-left:4px">YOUR CARDS</span>
+                  <div style="display:flex;flex-direction:column;gap:2px;border-radius:22px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07);padding:5px 0">
+                    <sc-for list="{{ cardRows }}" as="c" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:center;gap:12px;padding:12px 15px">
+                        <span style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+                          <span style="font:500 12.5px/17px 'Geist Mono',monospace;color:{{ c.codeFg }};letter-spacing:.02em">{{ c.code }}</span>
+                          <span style="font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#8b93a5;text-wrap:pretty">{{ c.label }}</span>
+                        </span>
+                        <button onClick="{{ c.act }}" style="border:1px solid {{ c.btnBd }};background:{{ c.btnBg }};border-radius:10px;padding:6px 11px;font:600 11.5px/15px 'Instrument Sans',sans-serif;color:{{ c.btnFg }};cursor:{{ c.cursor }};flex-shrink:0">{{ c.btn }}</button>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <p style="margin:0;padding-left:4px;font:400 11px/16px 'Instrument Sans',sans-serif;color:#8b93a5;text-wrap:pretty">Revoking asks twice — a revoked card stops working for good.</p>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#8b93a5;padding-left:4px">WHAT PEOPLE SEE</span>
+                  <div style="display:flex;flex-direction:column;border-radius:22px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07);overflow:hidden">
+                    <sc-for list="{{ toggleRows }}" as="t" hint-placeholder-count="4">
+                      <button onClick="{{ t.flip }}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;border:0;border-top:{{ t.bt }};background:transparent;cursor:pointer;text-align:left;width:100%">
+                        <span style="min-width:0;flex:1"><span style="display:block;font:500 13.5px/18px 'Instrument Sans',sans-serif;color:#0d1220">{{ t.label }}</span><span style="display:block;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#8b93a5;text-wrap:pretty">{{ t.hint }}</span></span>
+                        <span style="width:44px;height:26px;border-radius:999px;background:{{ t.trackBg }};position:relative;flex-shrink:0;transition:background .22s ease"><span style="position:absolute;top:3px;left:{{ t.knobX }};width:20px;height:20px;border-radius:999px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.16);transition:left .22s cubic-bezier(.32,.72,0,1)"></span></span>
+                      </button>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#8b93a5;padding-left:4px">YOUR DATA</span>
+                  <div style="border-radius:22px;background:rgba(255,255,255,.72);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.07);overflow:hidden">
+                    <button style="width:100%;display:flex;align-items:center;gap:11px;padding:14px 15px;border:0;border-bottom:1px solid rgba(13,18,32,.055);background:transparent;cursor:pointer;text-align:left">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b6478" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                      <span style="flex:1;min-width:0"><span style="display:block;font:500 13.5px/18px 'Instrument Sans',sans-serif;color:#0d1220">Download your connections</span><span style="display:block;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#8b93a5">Everyone you’ve met, as a file you keep</span></span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a4abbb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 18 6-6-6-6"></path></svg>
+                    </button>
+                    <button style="width:100%;display:flex;align-items:center;gap:11px;padding:14px 15px;border:0;background:transparent;cursor:pointer;text-align:left">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#b42318" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M3 6h18"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path></svg>
+                      <span style="flex:1;min-width:0"><span style="display:block;font:500 13.5px/18px 'Instrument Sans',sans-serif;color:#b42318">Delete your account</span><span style="display:block;font:400 11.5px/16px 'Instrument Sans',sans-serif;color:#8b93a5">Removes you from other people’s records too</span></span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a4abbb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="m9 18 6-6-6-6"></path></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <button onClick="{{ askSignout }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.7);border-radius:999px;padding:14px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer;margin-top:2px">Sign out</button>
+                <p style="margin:0;text-align:center;font:400 10.5px/15px 'Geist Mono',monospace;color:#a4abbb">SMARTCARD 2.0 &middot; BUILD 214</p>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ isSignout }}">
+              <div style="position:absolute;inset:0;z-index:60;display:flex;flex-direction:column;justify-content:flex-end;background:rgba(13,18,32,.3);backdrop-filter:blur(4px)">
+                <div style="display:flex;flex-direction:column;gap:12px;padding:24px 22px 28px;border-radius:32px 32px 0 0;background:rgba(255,255,255,.9);backdrop-filter:blur(32px) saturate(1.8);-webkit-backdrop-filter:blur(32px) saturate(1.8);border-top:1px solid rgba(255,255,255,.9);box-shadow:0 -20px 60px rgba(13,18,32,.24);animation:sheet .44s cubic-bezier(.32,.72,0,1) both">
+                  <div style="font:600 18px/23px 'Instrument Sans',sans-serif;letter-spacing:-.02em">Sign out of SmartCard?</div>
+                  <p style="margin:0;font:400 13px/19px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Your connections, cards and meeting records stay exactly as they are &mdash; signing out only ends this session on this device. Signing back in needs the same email.</p>
+                  <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+                    <button onClick="{{ goGate }}" style="border:0;border-radius:999px;padding:14px;font:600 14px/18px 'Instrument Sans',sans-serif;background:#0d1220;color:#fff;cursor:pointer">Sign out</button>
+                    <button onClick="{{ backToSettings }}" style="border:1px solid rgba(13,18,32,.12);background:rgba(255,255,255,.7);border-radius:999px;padding:13px;font:600 14px/18px 'Instrument Sans',sans-serif;color:#0d1220;cursor:pointer">Cancel</button>
+                  </div>
+                  <p style="margin:2px 0 0;font:400 10.5px/15px 'Geist Mono',monospace;color:#a4abbb">Not destructive, so one tap &mdash; unlike revoke card or delete account</p>
+                </div>
+              </div>
+            </sc-if>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ showNotes }}" hint-placeholder-val="{{ true }}">
+    <div style="width:400px;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;flex-direction:column;gap:12px;padding:20px;border-radius:26px;background:rgba(255,255,255,.72);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);border:1px solid rgba(255,255,255,.85);box-shadow:0 10px 30px rgba(16,24,40,.08)">
+        <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+          <span style="border-radius:999px;padding:5px 11px;background:{{ note.badgeBg }};color:{{ note.badgeFg }};font:600 10px/14px 'Instrument Sans',sans-serif;letter-spacing:.02em">{{ note.badge }}</span>
+          <span style="font:500 11px/15px 'Geist Mono',monospace;color:#5b6478">{{ note.route }}</span>
+        </div>
+        <h3 style="margin:0;font:600 17px/22px 'Instrument Sans',sans-serif;letter-spacing:-.02em">{{ note.title }}</h3>
+        <p style="margin:0;font:400 13.5px/21px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">{{ note.body }}</p>
+        <div style="height:1px;background:rgba(13,18,32,.08)"></div>
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#a4abbb">WHY IT LOOKS LIKE THIS</span>
+          <p style="margin:0;font:400 13px/20px 'Instrument Sans',sans-serif;color:#0d1220;text-wrap:pretty">{{ note.rule }}</p>
+        </div>
+        <sc-if value="{{ note.source }}">
+          <div style="display:flex;align-items:center;gap:7px;padding:9px 12px;border-radius:13px;background:rgba(13,18,32,.04)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8b93a5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path></svg>
+            <span style="font:400 10.5px/15px 'Geist Mono',monospace;color:#5b6478;word-break:break-all">{{ note.source }}</span>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;padding:18px;border-radius:24px;background:rgba(13,18,32,.04);border:1px solid rgba(13,18,32,.07)">
+        <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#8b93a5">DELIBERATELY NOT DESIGNED</span>
+        
+        <p style="margin:0;font:400 13px/20px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Password reset, email verification and &ldquo;wrong password&rdquo; all live on the hosted sign-in page. There&rsquo;s no version of them for us to draw.</p>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:9px;padding:18px;border-radius:24px;background:rgba(255,255,255,.6);border:1px solid rgba(13,18,32,.07)">
+        <span style="font:500 9.5px/13px 'Geist Mono',monospace;letter-spacing:.14em;color:#8b93a5">NEEDS A DECISION</span>
+        <p style="margin:0;font:400 13px/20px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">Onboarding is proposed, not shipped &mdash; the flag exists on a new user&rsquo;s row but nothing reads it yet, so a gate has to be wired for these three steps to appear at all. Worth confirming: should a half-finished signup be allowed to Connect, or is a name the minimum before anyone can be met?</p>
+        <p style="margin:0;font:400 13px/20px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">The 337 migrated accounts already carry their identity, so they skip onboarding entirely. Their first sign-in should feel like a return, not a setup.</p>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+
+  <div style="max-width:820px;margin-top:28px;display:flex;flex-direction:column;gap:8px">
+    <div style="font:500 11px/1 'Geist Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8b93a5">Try next</div>
+    <p style="margin:0;font:400 14px/22px 'Instrument Sans',sans-serif;color:#5b6478;text-wrap:pretty">&ldquo;Collapse onboarding into one screen&rdquo; &middot; &ldquo;Make a name mandatory before Connect unlocks&rdquo; &middot; &ldquo;Brand the hosted sign-in page to match&rdquo; &middot; &ldquo;Fold these into the main prototype&rdquo;</p>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:1080},&quot;handoffScreen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Flow&quot;,&quot;label&quot;:&quot;Announce the jump to Kinde&quot;},&quot;photoRequired&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Flow&quot;,&quot;label&quot;:&quot;Photo required at signup&quot;},&quot;showAnnotations&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Presentation&quot;,&quot;label&quot;:&quot;Show reasoning panel&quot;},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#0b60ff&quot;,&quot;#1f6feb&quot;,&quot;#0a84ff&quot;,&quot;#3b3bd6&quot;],&quot;default&quot;:&quot;#0b60ff&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Surface&quot;}}">
+const FLOWS = {
+  returning: { label: "Returning user", steps: ["gate", "handoff", "kinde", "callback", "home"] },
+  first: { label: "Create an account", steps: ["gate", "signup", "handoff", "kinde", "callback", "onbPhoto", "onbDetails", "home"] },
+  errors: { label: "When it fails", steps: ["error"] },
+  settings: { label: "Settings", steps: ["settings", "signout", "gate"] },
+};
+
+const STEP_LABELS = {
+  gate: "Sign-in gate", handoff: "Handoff", kinde: "Sign-in page", callback: "Coming back",
+  home: "Home", onbPhoto: "Photo", onbDetails: "Details",
+  signup: "Your details", settings: "Settings", error: "Failure", signout: "Sign out",
+};
+
+/** Every error here maps to a real thrown class or a real transport failure. */
+const ERRORS = {
+  suspended: {
+    label: "Suspended account",
+    icon: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    tone: "neutral",
+    title: "This account can\u2019t sign in",
+    body: "This account is on hold, so you can\u2019t sign in right now. Nothing has been deleted.",
+    support: "What unblocks it",
+    supportBody: "Our team has to lift the hold \u2014 trying again won\u2019t change it.",
+    primary: "Email support",
+    secondary: "Back to sign in",
+    source: "UserNotActiveError \u2014 thrown when status !== active, before any token is minted",
+  },
+  emailBound: {
+    label: "Email already used",
+    icon: '<path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"/><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m17 17 4 4"/><path d="m21 17-4 4"/>',
+    tone: "neutral",
+    title: "That email is already on an account",
+    body: "There\u2019s already an account on this email, created a different way. We won\u2019t merge the two automatically \u2014 that\u2019s how accounts get taken over.",
+    support: "A person has to resolve this",
+    supportBody: "We can confirm both are you and join them up.",
+    primary: "Email support",
+    secondary: "Try a different account",
+    source: "EmailAlreadyBoundToAnotherIdentityError \u2014 unique violation on users.email, never auto-linked",
+  },
+  noEmail: {
+    label: "No email returned",
+    icon: '<path d="M12 16v.01"/><path d="M12 8v4"/><circle cx="12" cy="12" r="10"/>',
+    tone: "neutral",
+    title: "We didn\u2019t get an email address",
+    body: "Your sign-in came back without an email address, and we need one to make an account. This one\u2019s on us, not you.",
+    support: "Nothing for you to fix",
+    supportBody: "Trying again will hit the same thing until we fix it.",
+    primary: "Email support",
+    secondary: "Back to sign in",
+    source: "MissingEmailClaimError \u2014 users.email is NOT NULL, so no row can be inserted",
+  },
+  transport: {
+    label: "Couldn\u2019t reach us",
+    icon: '<path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/>',
+    tone: "neutral",
+    title: "Couldn\u2019t reach SmartCard",
+    body: "Check your connection and try again. Nothing was lost.",
+    support: null,
+    supportBody: null,
+    primary: "Try again",
+    secondary: "Back to sign in",
+    source: "Transport failure \u2014 no response to read a message from, so the copy is ours, not the API\u2019s",
+  },
+};
+
+const NOTES = {
+  gate: {
+    badge: "SHIPPED", route: "/sign-in", title: "One gate for the whole app",
+    body: "Every signed-out page redirects here \u2014 one gate, replacing five near-identical copies of the same block.",
+    rule: "Two buttons, one hosted page in two states \u2014 it works out whether you already exist either way, so we never build a second form. Six words of positioning is all the copy this screen earns: nobody reads a paragraph before signing in, and the product explains itself the first time you meet someone.",
+    source: "apps/web/src/app/sign-in/page.tsx",
+  },
+  handoff: {
+    badge: "PROPOSED", route: "\u2192 /api/auth/login", title: "Naming the jump",
+    body: "A brief interstitial while the redirect happens, showing the domain you\u2019re about to land on.",
+    rule: "Today this is an unannounced redirect \u2014 you tap and the address bar changes to a domain you\u2019ve never seen, which is exactly what a phishing flow looks like. Naming the destination first costs one moment and buys trust. It self-advances; nothing waits on a tap.",
+    source: null,
+  },
+  kinde: {
+    badge: "NOT OURS", route: "hosted sign-in", title: "The page we don\u2019t own",
+    body: "Email, password or one-time code, reset, verification and every credential error live here. Our app never receives a password at all.",
+    rule: "Drawn as a placeholder on purpose \u2014 mocking it in our own style would imply we control copy and validation we don\u2019t. We can set logo, colour and type, and we should: this is the one screen in the flow that can feel like a different company.",
+    source: "apps/web/src/app/api/auth/",
+  },
+  signup: {
+    badge: "PROPOSED", route: "/create-account", title: "The one form we do own",
+    body: "Name and email, asked in our own screen before the handoff. The credential step still happens on the hosted page \u2014 this collects only what the profile needs.",
+    rule: "Splitting it this way is what lets a new account have a name from the first screen instead of an untitled row, and it means the create path never starts on a page that looks like a different company. It also removes the old \u201cconfirm your name\u201d step \u2014 asking twice for something you just typed is the kind of wizard people abandon.",
+    source: "identity.firstName / identity.lastName \u2014 written on the callback insert",
+  },
+  callback: {
+    badge: "PROPOSED", route: "returning from sign-in", title: "The moment identity resolves",
+    body: "Coming back, we confirm the sign-in, find or create your account, and open the session. Three real steps, shown as they complete \u2014 in plain words, not status codes.",
+    rule: "Usually a blank flash \u2014 fine when it\u2019s fast, awful when it isn\u2019t, and it\u2019s the exact moment all three identity failures can fire. Showing the steps means a slow one has somewhere to sit and an error has a place to appear, instead of a spinner that turns into a bare error page.",
+    source: "apps/web/src/server/auth/ensure-user.ts",
+  },
+  onbPhoto: {
+    badge: "PROPOSED", route: "/welcome/photo", title: "The most valuable field",
+    body: "Skippable, and honest that most accounts have no photo yet.",
+    rule: "This matters more here than on any other product: your profile only ever opens for someone who physically met you, and a face is what makes that meeting recoverable. Asked at signup because nobody returns to fill it in later \u2014 but a hard requirement would block people mid-conversation, so Skip is a real option, not a dark pattern.",
+    source: "WEBP up to 5MB, served as a signed URL minted per render",
+  },
+  onbDetails: {
+    badge: "PROPOSED", route: "/welcome/details", title: "Everything optional, together",
+    body: "Company, role, bio, phone and the email opt-in on one screen, all skippable.",
+    rule: "One screen rather than four, because none of it is required and a five-step wizard for optional fields is how signups get abandoned. The opt-in is off by default \u2014 pre-checked consent isn\u2019t consent.",
+    source: "Fields from the shipped profile form",
+  },
+  home: {
+    badge: "SHIPPED", route: "/", title: "Everyone lands here",
+    body: "The app deliberately doesn\u2019t return you to the page that triggered sign-in \u2014 a shared gate can\u2019t know which page that was, and pretending otherwise would mean threading state through for a nicety.",
+    rule: "So the landing does the work instead: a first-run banner sets expectations for a feed that\u2019s honestly empty, and Connect is the one large target. A new account with no connections has exactly one useful action.",
+    source: "apps/web/src/app/(app)/layout.tsx",
+  },
+  error: {
+    badge: "PROPOSED", route: "/sign-in", title: "Four ways in can fail",
+    body: "Two are account-identity problems that only a human can resolve, one is our own misconfiguration, one is the network. Pick any of them at right.",
+    rule: "Each one is thrown by real code today with no screen attached, so they currently surface as unstyled error pages. None of them promise a fix they can\u2019t deliver \u2014 a retry button appears only where retrying can actually work.",
+    source: "apps/web/src/server/auth/ensure-user.ts",
+  },
+  settings: {
+    badge: "PROPOSED", route: "/settings", title: "Everything account-shaped, one screen",
+    body: "Who you are, how you sign in, the physical cards tied to you, what other people can see, and the two data actions. Grouped by who each row affects \u2014 you, your cards, or the people you\u2019ve met.",
+    rule: "The rows that can\u2019t change say so in place rather than hiding: an email locked to your sign-in is a fact about the system, and greying it out without a reason just reads as a bug. Revoke and delete are the only destructive things here, so they\u2019re the only rows that carry weight \u2014 red is spent once, on the one action that reaches into other people\u2019s records.",
+    source: "Cards, sharing and profile fields from the shipped schema",
+  },
+  signout: {
+    badge: "PROPOSED", route: "/api/auth/logout", title: "One tap, not two",
+    body: "A sheet that says what signing out does and doesn\u2019t do, then ends the session.",
+    rule: "Revoking a card and removing a connection are two-step confirms because they\u2019re permanent. This isn\u2019t \u2014 so it gets one tap, and the copy spends its words ruling out the fear that data goes with it. Matching the destructive pattern here would imply a risk that doesn\u2019t exist.",
+    source: null,
+  },
+};
+
+class Component extends DCLogic {
+  state = {
+    branch: "returning", step: 0, errorKind: "suspended", mailSent: false,
+    toggles: { visible: true, location: true, invites: true, updates: false },
+    revoked: {},
+  };
+
+  /** The handoff interstitial is a proposal, so it can be taken back out. */
+  steps(branch) {
+    const raw = FLOWS[branch].steps;
+    return (this.props.handoffScreen ?? true) ? raw : raw.filter((k) => k !== "handoff");
+  }
+
+  screen() {
+    const st = this.steps(this.state.branch);
+    return st[Math.min(this.state.step, st.length - 1)];
+  }
+
+  accent() {
+    const a = this.props.accentColor ?? "#0b60ff";
+    return { a, deep: this.mix(a, "#06225e", 0.42), tint: this.alpha(a, 0.12) };
+  }
+
+  alpha(hex, o) {
+    const [r, g, b] = this.rgb(hex);
+    return "rgba(" + r + "," + g + "," + b + "," + o + ")";
+  }
+
+  mix(x, y, t) {
+    const p = this.rgb(x), q = this.rgb(y);
+    return "#" + p.map((v, i) => Math.round(v + (q[i] - v) * t).toString(16).padStart(2, "0")).join("");
+  }
+
+  rgb(hex) {
+    const h = hex.replace("#", "");
+    const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+    return [parseInt(n.slice(0, 2), 16), parseInt(n.slice(2, 4), 16), parseInt(n.slice(4, 6), 16)];
+  }
+
+  go(branch) {
+    return () => this.setState({ branch, step: 0, mailSent: false });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const A = this.accent();
+    const steps = this.steps(s.branch);
+    const screen = this.screen();
+    const err = ERRORS[s.errorKind];
+    const note = NOTES[screen] ?? NOTES.gate;
+    const badgeTone = note.badge === "SHIPPED"
+      ? { bg: "#0d1220", fg: "#fff" }
+      : note.badge === "PROPOSED"
+        ? { bg: A.a, fg: "#fff" }
+        : { bg: "rgba(13,18,32,.07)", fg: "#5b6478" };
+
+    return {
+      accent: A.a, accentDeep: A.deep, accentTint: A.tint,
+      screenBg: "radial-gradient(700px 500px at 15% -5%,rgba(11,96,255,.13),transparent 60%),radial-gradient(600px 420px at 95% 8%,rgba(124,58,237,.09),transparent 62%),#f1f4fa",
+      statusFg: "#0d1220",
+
+      branchTabs: Object.keys(FLOWS).map((k) => ({
+        label: FLOWS[k].label,
+        count: this.steps(k).length + (k === "errors" ? "\u00d74" : ""),
+        go: this.go(k),
+        bg: k === s.branch ? "#0d1220" : "rgba(255,255,255,.66)",
+        fg: k === s.branch ? "#fff" : "#5b6478",
+        bd: k === s.branch ? "#0d1220" : "rgba(13,18,32,.1)",
+      })),
+
+      stepRail: steps.map((k, i) => ({
+        num: String(i + 1),
+        label: STEP_LABELS[k],
+        go: () => this.setState({ step: i }),
+        bg: i === s.step ? A.tint : "rgba(255,255,255,.6)",
+        fg: i === s.step ? A.deep : "#5b6478",
+        bd: i === s.step ? this.alpha(A.a, 0.35) : "rgba(13,18,32,.09)",
+        weight: i === s.step ? 600 : 500,
+      })),
+
+      next: () => this.setState((st) => ({ step: Math.min(st.step + 1, this.steps(st.branch).length - 1) })),
+      goHome: () => this.setState({ branch: "returning", step: this.steps("returning").length - 1 }),
+      goGate: () => this.setState({ branch: "returning", step: 0 }),
+      goSignIn: () => this.setState({ branch: "returning", step: 1, mailSent: false }),
+      goCreate: () => this.setState({ branch: "first", step: 1, mailSent: false }),
+
+      isGate: screen === "gate",
+      isHandoff: screen === "handoff",
+      isKinde: screen === "kinde",
+      isSignup: screen === "signup",
+      isCallback: screen === "callback",
+      isOnbPhoto: screen === "onbPhoto",
+      isOnbDetails: screen === "onbDetails",
+      isHome: screen === "home",
+      isError: screen === "error",
+      mailSent: s.mailSent,
+      mailPending: !s.mailSent,
+      isSignout: screen === "signout",
+      showSettings: screen === "settings" || screen === "signout",
+      askSignout: () => this.setState({ branch: "settings", step: 1 }),
+      backToSettings: () => this.setState({ branch: "settings", step: 0 }),
+
+      cardRows: [
+        { code: "SC-4F2A91", label: "Metal card \u00b7 assigned to you", key: "SC-4F2A91" },
+        { code: "SC-88C013", label: "Paper card \u00b7 assigned to you", key: "SC-88C013" },
+      ].map((c) => {
+        const off = !!s.revoked[c.key];
+        return {
+          code: c.code, label: off ? "Revoked \u00b7 no longer connects" : c.label,
+          codeFg: off ? "#a4abbb" : "#0d1220",
+          btn: off ? "Revoked" : "Revoke",
+          btnBg: off ? "rgba(13,18,32,.05)" : "#fff",
+          btnBd: off ? "transparent" : "rgba(13,18,32,.12)",
+          btnFg: off ? "#8b93a5" : "#b42318",
+          cursor: off ? "default" : "pointer",
+          act: off ? () => {} : () => this.setState((st) => ({ revoked: { ...st.revoked, [c.key]: true } })),
+        };
+      }),
+
+      toggleRows: [
+        { k: "visible", label: "Profile visible to people you meet", hint: "Off means a tap connects but shows nothing" },
+        { k: "location", label: "City visible to mutual connections", hint: "City only \u2014 never a live location" },
+        { k: "invites", label: "Event invitations", hint: "From hosts you\u2019ve connected with" },
+        { k: "updates", label: "Occasional product email", hint: "Off by default" },
+      ].map((t, i) => ({
+        label: t.label, hint: t.hint,
+        bt: i === 0 ? "0" : "1px solid rgba(13,18,32,.055)",
+        trackBg: s.toggles[t.k] ? A.a : "rgba(13,18,32,.14)",
+        knobX: s.toggles[t.k] ? "21px" : "3px",
+        flip: () => this.setState((st) => ({ toggles: { ...st.toggles, [t.k]: !st.toggles[t.k] } })),
+      })),
+
+      photoSkippable: !(this.props.photoRequired ?? false),
+      showNotes: this.props.showAnnotations ?? true,
+      isFirstRun: s.branch === "first",
+      homeGreeting: s.branch === "first" ? "Welcome, Jacob" : "Hey, Jacob",
+      homeSub: s.branch === "first" ? "No connections yet \u2014 the next person you meet is the first." : "12 connections, all made in person.",
+
+      // A returning user is a lookup; a new one is an insert. Same screen, honest labels.
+      callbackTitle: s.branch === "first" ? "Setting up your account" : "Signing you in",
+      callbackBody: s.branch === "first"
+        ? "Creating your account, then we\u2019ll ask two quick things."
+        : "Finding your account and picking up where you left off.",
+      callbackSteps: [
+        { label: "Sign-in confirmed", tag: "", dotBg: A.a, fg: "#0d1220" },
+        { label: s.branch === "first" ? "Account created" : "Welcome back, Jacob", tag: "", dotBg: A.a, fg: "#0d1220" },
+        { label: "Almost there", tag: "", dotBg: "rgba(13,18,32,.18)", fg: "#8b93a5" },
+      ],
+
+      isErrorBranch: s.branch === "errors",
+      errorTabs: Object.keys(ERRORS).map((k) => ({
+        label: ERRORS[k].label,
+        go: () => this.setState({ branch: "errors", step: 0, errorKind: k, mailSent: false }),
+        bg: k === s.errorKind ? A.a : "rgba(255,255,255,.7)",
+        fg: k === s.errorKind ? "#fff" : "#5b6478",
+        bd: k === s.errorKind ? A.a : "rgba(13,18,32,.1)",
+      })),
+      errIcon: { __html: err.icon },
+      errIconBg: "rgba(13,18,32,.05)",
+      errIconBd: "rgba(13,18,32,.09)",
+      errIconFg: "#5b6478",
+      err: {
+        title: err.title,
+        body: err.body,
+        support: err.support,
+        supportBody: err.supportBody,
+        primary: err.primary,
+        secondary: err.secondary,
+        source: err.source,
+        primaryBg: s.errorKind === "transport" ? A.a : "#0d1220",
+        primaryFg: "#fff",
+        action: s.errorKind === "transport"
+          ? () => this.setState({ branch: "returning", step: this.steps("returning").indexOf("callback") })
+          : () => this.setState({ mailSent: true }),
+      },
+
+      note: {
+        badge: note.badge,
+        badgeBg: badgeTone.bg,
+        badgeFg: badgeTone.fg,
+        route: note.route,
+        title: note.title,
+        body: note.body,
+        rule: note.rule,
+        source: note.source,
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>
