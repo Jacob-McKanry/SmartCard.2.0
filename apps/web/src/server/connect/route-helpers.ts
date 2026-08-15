@@ -5,6 +5,7 @@ import { userFacingMessage, type RequestContext } from "@smartcard/core";
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { ConnectRefusedError } from "@/server/connect/connect-service";
 import { buildRequestContext } from "@/server/connect/request-context";
+import { checkSameOrigin } from "@/server/connect/same-origin";
 
 /**
  * Shared plumbing for the `/api/connect/*` Route Handlers.
@@ -22,6 +23,16 @@ import { buildRequestContext } from "@/server/connect/request-context";
  * property the Profile Server Actions were written against. The UI that calls
  * these routes is not a security boundary and is not built yet at all; these
  * checks are the whole of the boundary.
+ *
+ * WHY THE SAME-ORIGIN CHECK COMES BEFORE THE AUTHENTICATION CHECK
+ * These endpoints are authenticated by a cookie, which the browser attaches
+ * because of where the request is going rather than because of who caused it to
+ * be sent — so "is the caller signed in?" is the wrong first question. A
+ * cross-site forged POST is sent BY a signed-in victim and passes every
+ * downstream check on its way to creating a connection nobody was present for.
+ * `checkSameOrigin` refuses to let a third-party page be the thing that asks,
+ * before any session is read or any token is minted. Read `same-origin.ts` for
+ * what it checks and why `SameSite=Lax` is not treated as sufficient on its own.
  *
  * WHY THE ERROR SHAPE IS SO PLAIN
  * §4.2 step 7: a rejection tells the user that it did not work and nothing
@@ -56,6 +67,23 @@ export class HttpError extends Error {
 export async function readAuthenticatedRequest(
   request: Request,
 ): Promise<AuthenticatedConnectRequest> {
+  // BEFORE the session is read — see the header. A forged cross-site request
+  // carries a perfectly valid session, so authenticating first would prove
+  // nothing about whether this app asked for the request.
+  const sameOrigin = checkSameOrigin(request.headers, request.url);
+  if (!sameOrigin.ok) {
+    // Logged with the specific reason so a spike is diagnosable; the caller is
+    // told nothing beyond "no", matching §4.2 step 7's posture everywhere else
+    // on this path.
+    console.warn("[connect] refused a cross-site request", {
+      reason: sameOrigin.reason,
+      // Safe to log: this is the attacker's own origin, not the victim's data.
+      origin: request.headers.get("origin"),
+      secFetchSite: request.headers.get("sec-fetch-site"),
+    });
+    throw new HttpError(403, "That request wasn't valid.");
+  }
+
   const auth = await getAuthenticatedContext();
   if (auth === null) {
     throw new HttpError(401, "You need to be signed in to connect.");

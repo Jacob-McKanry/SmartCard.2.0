@@ -20,3 +20,20 @@ nodeLinker: hoisted
 allowBuilds:
   esbuild: true
   unrs-resolver: true
+
+# Security overrides, from the 2026-08-14 audit. Lives here rather than under a
+# `pnpm.overrides` key in package.json because pnpm 11 stopped reading that key
+# — the same relocation `.npmrc`'s comment describes for `nodeLinker`. pnpm warns
+# but does not fail when the setting is left in the old place, so an override put
+# there would silently do nothing, which for a security pin is the worst outcome.
+#
+# uuid: GHSA-w5hq-g745-h8pq — missing buffer bounds check in v3/v5/v6 when the
+# optional `buf` argument is supplied. Reached only through
+# apps/mobile -> expo -> @expo/config-plugins -> xcode, which pins uuid 7.0.3
+# (itself deprecated upstream). Not actually reachable in this project: xcode's
+# single call site is `uuid.v4()` with no `buf`, and v4 is not one of the
+# affected generators — but v11 is API-compatible for that call (`v4` is a named
+# CJS export in both), the bump is free, and leaving a known-vulnerable
+# deprecated package in the tree makes the next audit noisier for no reason.
+overrides:
+  uuid@<11.1.1: ^11.1.1
