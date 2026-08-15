@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Settings, SquarePen } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import {
@@ -10,9 +11,10 @@ import {
 } from "@/server/profile/profile-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 import { listOwnConnections } from "@/server/connections/connections-service";
-import { listAttendingEvents, type AttendingEventItem } from "@/server/events/events-service";
+import { countEventsAttended } from "@/server/events/attendance-count";
 import { LinkTiles } from "@/components/link-tiles";
 import { RingCentre, RingDiagram, type RingBandData } from "@/components/ring-diagram";
+import { EmailOptInToggle } from "./email-opt-in-toggle";
 
 /**
  * The Profile screen: the signed-in user's own identity, drawn to
@@ -49,6 +51,17 @@ import { RingCentre, RingDiagram, type RingBandData } from "@/components/ring-di
  * nav's active-slot matching is prefix-based, so Profile stays lit while you
  * edit.
  *
+ * "EVENTS ATTENDED" IS COUNTED IN SQL, AND USED TO BE COUNTED IN TYPESCRIPT
+ *
+ * This page derived the number from `listAttendingEvents`, filtering its rows
+ * in a helper here. That list is capped at the 50 most recent RSVPs — correct
+ * for a browse list, wrong as the input to a count — so a person with 51
+ * qualifying RSVPs was shown 50 on their own profile while `/card/<code>`, which
+ * counted in SQL, showed the true figure to strangers. The count now comes from
+ * `countEventsAttended`, the one function both surfaces call; see its header for
+ * the rule and for why the fix is a shared function rather than a second correct
+ * implementation.
+ *
  * THE RING DIAGRAM HAS TWO BANDS, NOT §3's THREE — SEE DESIGN.md §3
  *
  * §3's outermost band is "cities met people in", and nothing in this schema
@@ -72,15 +85,14 @@ export default async function ProfilePage() {
 
   const { supabase, userId } = context;
 
-  const [profile, socialLinks, connections, attending] = await Promise.all([
+  const [profile, socialLinks, connections, eventsAttended] = await Promise.all([
     getOwnProfile(supabase, userId),
     listOwnSocialLinks(supabase, userId),
     listOwnConnections(supabase, userId),
-    listAttendingEvents(supabase, userId),
+    eventsAttendedOrNull(supabase, userId),
   ]);
   const photoUrl = await signedProfilePhotoUrl(supabase, profile.photo_path);
 
-  const eventsAttended = countEventsAttended(attending);
   const bands: RingBandData[] = [
     {
       key: "connections",
@@ -88,12 +100,19 @@ export default async function ProfilePage() {
       color: "var(--sc-accent)",
       noun: { one: "connection", many: "connections" },
     },
-    {
-      key: "events",
-      count: eventsAttended,
-      color: "var(--sc-text)",
-      noun: { one: "event attended", many: "events attended" },
-    },
+    // Omitted entirely when the count could not be read — see
+    // `eventsAttendedOrNull`. A band drawn from a fabricated zero would say
+    // "you have attended no events", which is a claim rather than an absence.
+    ...(eventsAttended === null
+      ? []
+      : [
+          {
+            key: "events",
+            count: eventsAttended,
+            color: "var(--sc-text)",
+            noun: { one: "event attended", many: "events attended" },
+          },
+        ]),
   ];
 
   const name = fullName(profile);
@@ -172,15 +191,28 @@ export default async function ProfilePage() {
  * §6's contact sheet: phone and email in mono, because §2 puts "any value a user
  * would copy (phone, email)" in Geist Mono, then the email-preference row.
  *
- * WHY THE TOGGLE HERE IS NOT A CONTROL
+ * THE TOGGLE IS NOW A CONTROL, AND THE REASON IT WAS NOT IS WORTH KEEPING
  *
- * The prototype draws `email_opt_in` as a live toggle in this sheet. On a
- * viewing screen it is a *reading* of stored state, and it renders as one: no
- * button, no form, and an explicit "On"/"Off" word beside it so the state is
- * legible without relying on the accent colour (§8: "status colour is never the
- * only signal"). Changing it is an edit, and edits happen on `/profile/edit`,
- * where the checkbox that actually writes the column lives. A toggle that looked
- * interactive and was not would be worse than either option.
+ * The prototype draws `email_opt_in` as a live toggle in this sheet. It shipped
+ * as a *reading* — a word and a painted pill, no form — because the only action
+ * that wrote the column was `updateProfileAction`, which submits the whole
+ * profile form: a lone toggle posting to it would have sent seven absent fields
+ * and blanked a person's name, bio and phone number to turn off an email
+ * preference. A control that destroys data is worse than no control, so it was
+ * left as a reading and the constraint was written down rather than worked
+ * around.
+ *
+ * `updateEmailOptInAction` removes the constraint instead of dodging it: one
+ * action, one column, over the same service function and the same column-level
+ * UPDATE grant (20260809211100) that already permitted this write. Nothing
+ * widened.
+ *
+ * WHAT SURVIVES FROM THE READING-ONLY VERSION. The state is still *worded*
+ * "On"/"Off" beside the pill, not signalled by the accent colour alone — §8:
+ * "status colour is never the only signal". The word is the switch's own label
+ * now rather than a caption next to a decoration, and the control announces
+ * itself as a switch with its state, so the colour is the third signal rather
+ * than the only one.
  *
  * A missing phone number simply omits its row. §7: absence is normal, and there
  * is no nudge to fill it in.
@@ -201,24 +233,16 @@ function ContactSheet({ profile }: { profile: OwnProfile }) {
     >
       {phone ? <ContactRow label="Phone" value={phone} /> : null}
       <ContactRow label="Email" value={profile.email} />
-      <div className="flex items-center gap-2.5 px-[15px] py-2.5">
-        <dt className="flex-1 text-[12px] leading-[17px]" style={{ color: "var(--sc-text-subtle)" }}>
+      <div className="flex items-center gap-2.5 px-[15px] py-0.5">
+        <dt
+          id="email-opt-in-label"
+          className="flex-1 text-[12px] leading-[17px]"
+          style={{ color: "var(--sc-text-subtle)" }}
+        >
           Occasional emails
         </dt>
-        <dd className="flex items-center gap-2">
-          <span className="text-[12px] leading-[17px] font-medium">
-            {profile.email_opt_in ? "On" : "Off"}
-          </span>
-          <span
-            aria-hidden
-            className="relative block h-6 w-10 shrink-0 rounded-full"
-            style={{ background: profile.email_opt_in ? "var(--sc-accent)" : "rgba(13,18,32,.14)" }}
-          >
-            <span
-              className="absolute top-[3px] block size-[18px] rounded-full bg-white"
-              style={{ left: profile.email_opt_in ? 19 : 3 }}
-            />
-          </span>
+        <dd>
+          <EmailOptInToggle optIn={profile.email_opt_in} labelledBy="email-opt-in-label" />
         </dd>
       </div>
     </dl>
@@ -320,34 +344,58 @@ function EditPill() {
 /* --------------------------------------------------------------- derivation */
 
 /**
- * "Events attended" for the middle ring band.
+ * The middle ring band's number, or `null` if it could not be read.
  *
- * Attendance is `status === "going"` on an event that has already started, and
- * both halves matter. `going` is the only status the database itself treats as
- * attendance (`private.shares_event_with()` branches on it, so it carries
- * access-control weight and not merely display weight), and an event that has
- * not happened yet has not been attended however firmly it was answered.
- * Everything else — `interested`, `pending`, `waitlist`, `denied`, `not_going` —
- * is not attendance and is not counted.
+ * `countEventsAttended` throws rather than defaulting, deliberately — see its
+ * header: zero is a claim, not an absence. This page is the caller that has to
+ * decide what a failure means, and the answer is "draw one fewer band", not
+ * "draw a zero" and not "500 the whole profile". A person's name, bio, contact
+ * sheet and link tiles have nothing to do with an aggregate over their RSVPs,
+ * and taking the page down over one would be a worse outcome than a diagram
+ * with one ring.
  *
- * This counts RSVPs, which is what the app can actually observe: nothing records
- * whether a person physically turned up. The caption noun says "events attended"
- * because that is the closest honest description of the number, and the number
- * is never inflated past what the rows support.
+ * This is the same shape the card preview uses for the same numbers
+ * (`degradeOnFailure` in `card-preview-service.ts`): the decision of *whether*
+ * to show somebody their profile is already made by the time this runs, so a
+ * failure here can only show less, never refuse. Logged loudly, because a
+ * systematically failing count should be visible in the server log rather than
+ * silently costing every profile its second band.
  *
- * Reads the clock, so it lives outside every component — `react-hooks/purity`
- * rightly refuses `Date.now()` inside a render.
+ * Reads the clock, so — like the helper it replaces — it lives outside every
+ * component: `react-hooks/purity` rightly refuses `new Date()` inside a render.
+ * The page is `force-dynamic`, so that is one clock reading per request, and
+ * "events attended" is the only time-dependent fact on this screen. (The shared
+ * counter takes `now` as an argument rather than reading it, because the card
+ * preview computes several time-dependent facts per request and needs them all
+ * answered against one instant.)
  */
-function countEventsAttended(attending: AttendingEventItem[]): number {
-  const nowMs = Date.now();
-  return attending.filter(
-    (item) => item.rsvp.status === "going" && new Date(item.event.starts_at).getTime() < nowMs,
-  ).length;
+async function eventsAttendedOrNull(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<number | null> {
+  try {
+    return await countEventsAttended(supabase, userId, new Date());
+  } catch (error) {
+    console.error("[profile] omitting the events band after a failed count", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
-/** The diagram's accessible description — §8, since the rings themselves are decoration. */
-function ringSummary(name: string, connections: number, events: number): string {
+/**
+ * The diagram's accessible description — §8, since the rings themselves are
+ * decoration.
+ *
+ * A `null` events count drops the clause rather than reading "0 events
+ * attended". The sentence has to say the same thing the chips do, and the chips
+ * omit a band they could not compute.
+ */
+function ringSummary(name: string, connections: number, events: number | null): string {
   const c = `${connections} ${connections === 1 ? "connection" : "connections"}`;
+  if (events === null) {
+    return `${name}: ${c}.`;
+  }
   const e = `${events} ${events === 1 ? "event attended" : "events attended"}`;
   return `${name}: ${c}, ${e}.`;
 }
