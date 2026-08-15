@@ -12,7 +12,9 @@ import {
 } from "@/server/activity/activity-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 
-import { displayName, formatOccurredAt, initialsFor } from "../connections/lib/format";
+import { LocalTimestamp } from "@/components/local-timestamp";
+
+import { displayName, initialsFor } from "../connections/lib/format";
 import { AvatarDisc } from "../connections/lib/avatar-disc";
 import { RemoveConnectionInline } from "./remove-connection-inline";
 import { RevokeCard } from "./revoke-card";
@@ -224,7 +226,7 @@ function PreviewRow({ item }: { item: CardPreviewActivityItem }) {
         className="font-mono text-[11px] leading-[15px]"
         style={{ color: "var(--sc-text-muted)" }}
       >
-        {formatOccurredAt(item.viewedAt)}
+        <LocalTimestamp iso={item.viewedAt} />
       </div>
     </li>
   );
@@ -319,7 +321,7 @@ async function ActivityRow({
           className="block truncate font-mono text-[11px] leading-[15px]"
           style={{ color: "var(--sc-text-muted)" }}
         >
-          {formatOccurredAt(item.consumedAt)}
+          <LocalTimestamp iso={item.consumedAt} />
         </span>
       </span>
       {/*

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { UserRound } from "lucide-react";
 
+import { LocalTimestamp } from "@/components/local-timestamp";
+
 import { AvatarDisc } from "../connections/lib/avatar-disc";
 import {
   ConnectButton,
@@ -165,13 +167,27 @@ export function ConnectedPayoff({
           {details !== null && (
             <div className="mt-[5px] font-mono text-[12px] leading-[17px] font-medium uppercase">
               {/*
+               * Three states, not two.
+               *
                * The place clause disappears entirely when no location was
                * captured, rather than becoming "somewhere" or "nearby" — §7's
                * "absence is often normal", and a placeholder here would be a
                * claim about where two people were.
+               *
+               * But a QR scan always captures a fix — it is what unlocked the
+               * connection — and only the *name* for it can be missing, since
+               * reverse geocoding is allowed to fail. Printing nothing in that
+               * case is what made a connection verified BY LOCATION look, to
+               * the person who had just made it, like the location had not
+               * been confirmed. So it now says the one thing that is true and
+               * invents no place: a location was captured.
                */}
-              {details.placeLabel ? `${details.placeLabel} · ` : ""}
-              {details.whenLabel}
+              {details.placeLabel
+                ? `${details.placeLabel} · `
+                : details.hasLocation
+                  ? "Location captured · "
+                  : ""}
+              <LocalTimestamp iso={details.occurredAt} format="time" />
             </div>
           )}
         </div>

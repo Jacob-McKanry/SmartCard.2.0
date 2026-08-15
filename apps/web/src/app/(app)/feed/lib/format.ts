@@ -43,15 +43,15 @@ export function verificationMethodLabel(method: VerificationMethod): string {
 }
 
 /**
- * Formats `meetings.occurred_at` (a `timestamptz`) for display. Locale is
- * pinned to `en-US` for the same reason as the connections feature's
- * equivalent: this renders server-side, and an unpinned locale would make the
- * same meeting render differently depending on the runtime's environment
- * rather than the viewer's.
+ * `formatOccurredAt` USED TO LIVE HERE TOO, AND CARRIED THE SAME BUG.
+ *
+ * This is the case the header above got wrong: the duplication was fine while
+ * these were wording helpers, but the timestamp helper was a *rule* — print an
+ * instant on the reader's clock — and four copies of a rule meant four copies
+ * of the same defect. Each copy called `toLocaleString("en-US", …)` with no
+ * `timeZone` inside a Server Component, so every meeting in the feed was
+ * stamped in the Vercel runtime's UTC rather than the reader's zone.
+ *
+ * Use `<LocalTimestamp>` from `@/components/local-timestamp`, which is shared
+ * across all of them for that reason; its header explains the mechanism.
  */
-export function formatOccurredAt(occurredAt: string): string {
-  return new Date(occurredAt).toLocaleString("en-US", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}

@@ -12,6 +12,7 @@ import {
 import { listAttendingEvents, type AttendingEventItem } from "@/server/events/events-service";
 import { BlurUpPhoto } from "@/components/blur-up-photo";
 import { LocalDateLine } from "@/components/local-date-line";
+import { LocalTimestamp } from "@/components/local-timestamp";
 
 import { dayLabel, monthLabel, timeLabel } from "./events/lib/format";
 import { RsvpPill } from "./events/lib/rsvp-pill";
@@ -319,7 +320,7 @@ function LatestMeeting({
           className="block truncate text-[12px] leading-[17px]"
           style={{ color: "var(--sc-text-subtle)" }}
         >
-          {formatOccurredAt(connection.occurredAt)} &middot;{" "}
+          <LocalTimestamp iso={connection.occurredAt} /> &middot;{" "}
           {verificationMethodLabel(connection.verificationMethod)}
         </span>
       </span>
@@ -473,9 +474,16 @@ function initialsFor(person: { first_name: string | null; last_name: string | nu
   return combined !== "" ? combined : "•";
 }
 
-function formatOccurredAt(occurredAt: string): string {
-  return new Date(occurredAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
-}
+/*
+ * A local `formatOccurredAt` used to sit here, and it was wrong for the same
+ * reason the other three copies were: `toLocaleString` with no `timeZone`,
+ * evaluated in a Server Component, prints the Vercel runtime's UTC rather than
+ * the reader's clock. That is a rule rather than a wording choice, so unlike
+ * `displayName` above it does not get a per-screen copy — `<LocalTimestamp>`
+ * is imported instead. Note that this screen already made exactly that
+ * distinction for `LocalDateLine` and for the event-zone helpers; the meeting
+ * timestamp is the one that got missed.
+ */
 
 function verificationMethodLabel(method: ConnectionListItem["verificationMethod"]): string {
   switch (method) {

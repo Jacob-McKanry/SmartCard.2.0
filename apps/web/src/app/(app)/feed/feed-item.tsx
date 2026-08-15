@@ -6,7 +6,9 @@ import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 import type { FeedItem, MutualFeedItem, ParticipantFeedItem } from "@/server/feed/feed-service";
 import { BlurUpPhoto } from "@/components/blur-up-photo";
 
-import { displayName, formatOccurredAt, initialsFor, verificationMethodLabel } from "./lib/format";
+import { LocalTimestamp } from "@/components/local-timestamp";
+
+import { displayName, initialsFor, verificationMethodLabel } from "./lib/format";
 
 /**
  * One feed card, ported from `docs/design/prototypes/SmartCard 2.0.dc.html`
@@ -92,7 +94,7 @@ async function ParticipantCard({
               style={{ color: "var(--sc-text-muted)" }}
             >
               {verificationMethodLabel(item.verificationMethod)} &middot;{" "}
-              {formatOccurredAt(item.occurredAt)}
+              <LocalTimestamp iso={item.occurredAt} />
             </p>
             <EventLine event={item.event} />
             <PlaceLine
@@ -148,7 +150,7 @@ async function MutualCard({ item, supabase }: { item: MutualFeedItem; supabase: 
             {nameA} met {nameB}
           </p>
           <p className="mt-0.5 text-[13px] leading-[18px]" style={{ color: "var(--sc-text-muted)" }}>
-            {formatOccurredAt(item.occurredAt)}
+            <LocalTimestamp iso={item.occurredAt} />
           </p>
           <EventLine event={item.event} />
           <PlaceLine
