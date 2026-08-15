@@ -29,6 +29,7 @@ import {
 import { displayName, hasEnded, initialsFor, whenLine, whereLine } from "../lib/format";
 import { COVER_PLACEHOLDER, GLASS, GLASS_LIQUID } from "../lib/surfaces";
 import { RsvpBlock } from "./rsvp-block";
+import { CoverUploader } from "./cover-uploader";
 import { HostTools } from "./host-tools";
 import { InviteLauncher, type InviteCandidate } from "./invite-launcher";
 
@@ -225,6 +226,15 @@ export default async function EventDetailPage({
             canInvite ? (
               <InviteLauncher eventId={event.id} candidates={inviteCandidates} tone="dark" />
             ) : null
+          }
+          /*
+           * The cover control, host-only — see `cover-uploader.tsx` for why it
+           * lives after creation rather than on the create form. `hasCover` is
+           * the stored column, so the button reads "Add"/"Replace" from what the
+           * database holds rather than from anything this render assumed.
+           */
+          coverSlot={
+            <CoverUploader eventId={event.id} hasCover={event.cover_image_path !== null} />
           }
         />
       ) : null}

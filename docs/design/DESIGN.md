@@ -323,7 +323,27 @@ forbids showing one anyway.
 - **Profile's `email_opt_in` toggle is a reading, not a control.** On a viewing
   screen it reports stored state, so it renders with an explicit "On"/"Off" word
   beside it and no interactivity. Changing it happens on the edit screen.
+  *(Superseded 2026-08-15 — it is a real switch now, and the unstated half of the
+  reason above is why it was not one. The only action that wrote the column,
+  `updateProfileAction`, submits the whole profile form: a lone toggle posting to
+  it would have carried seven absent fields and blanked the person's name, bio and
+  phone number in order to turn off a mailing preference. The narrow
+  `updateEmailOptInAction` writes that one column — same service function, same
+  column-level UPDATE grant, no migration, no new grant — which is what makes the
+  control safe to draw. §8's rule is unchanged and still met: "On"/"Off" is the
+  switch's own visible label, with `role="switch"` / `aria-checked` carrying the
+  same fact to assistive tech, so the accent fill is the third signal rather than
+  the only one. It renders stored state only — no optimistic flip — because a
+  switch that moves on a failed write tells somebody they have opted out when
+  they have not.)*
 - **Profile's ring diagram has two bands.** See §3's implementation notes.
+- **Profile's "events attended" is counted in SQL** *(2026-08-15)*. It was
+  derived in TypeScript from `listAttendingEvents`, which caps at the 50 most
+  recent RSVPs — correct for a browse list, wrong as the input to a count — so a
+  person with 51 qualifying RSVPs saw 50 here while `/card/<code>` showed
+  strangers the true figure. Both surfaces now call one
+  `countEventsAttended`; a failed count omits the band rather than drawing a
+  zero, since §7 makes "0 events attended" a claim and not an absence.
 
 ### Implementation notes — Events (2026-08-15)
 
@@ -362,12 +382,23 @@ read first.**
   `going` with; hosting creates no RSVP row, so for most viewers of most public
   events the host is unreadable. The row then reads "Host not shown" with the
   rule beneath it, rather than guessing or vanishing.
-- **Create has no cover-photo control.** `uploadEventCover` keys the object as
-  `{event_id}/cover.{ext}`, so a cover cannot exist before the event does, and
-  no Server Action uploads one afterwards; `createEventAction` sends
-  `cover_image_path: null`. The prototype's dropzone would be a control that
-  cannot work, which §7 rules out. Cards and the detail hero therefore render
-  §5's striped placeholder with a mono label, never a stand-in image.
+- **Create has no cover-photo control — the cover is set one step later, on the
+  event's own page** *(amended 2026-08-15; the cover control now exists)*.
+  `uploadEventCover` keys the object as `{event_id}/cover.{ext}` and the Storage
+  policies parse that id back out to ask `private.is_event_host` about it
+  (20260814051400), so a cover genuinely cannot exist before the event does:
+  there is no id to key it under on the create form and no host for a policy to
+  check. The prototype's dropzone at that point in the flow would be a control
+  that cannot work, which §7 rules out, so it stays absent. Instead the control
+  lives on the dark host panel of `/events/[eventId]` — the surface that already
+  means "only you can do this" — and the create form navigates there on success,
+  so adding a cover is the next thing a host sees. Staging the bytes under a
+  temporary prefix was considered and rejected: it needs a Storage policy for a
+  path with no event behind it, which gives away the "malformed key denies"
+  property the whole bucket rests on. `createEventAction` still sends
+  `cover_image_path: null`. An event with no cover still renders §5's striped
+  placeholder with a mono label on cards and the detail hero, never a stand-in
+  image — that is a finished state, not a missing one.
 - **Create has no map pin.** `latitude`/`longitude` exist and the action accepts
   them, but nothing geocodes an event address, so the control would store
   nothing.
@@ -536,9 +567,15 @@ it is the same flag, read in a second place.
   destructive actions. Being told an account is on hold is bad news, but nothing
   on the page destroys anything.
 - **Settings' `email_opt_in` is a reading with a route to the control**, matching
-  Profile's call for the same field. A second reason applies here: the only
-  action that writes the column submits the whole profile form, so a lone toggle
-  posting to it would blank every other field it did not carry.
+  Profile's call for the same field. A second reason applied here: the only
+  action that wrote the column submitted the whole profile form, so a lone toggle
+  posting to it would blank every other field it did not carry. *(Amended
+  2026-08-15: that second reason is gone — `updateEmailOptInAction` writes the one
+  column, and Profile's row is now a real switch. This row stays a reading by
+  choice rather than by constraint: Settings is a directory of where things live,
+  and one live control among a column of navigation rows would be the odd one
+  out. Making it switchable in place is now a small change, not a new write
+  path.)*
 - **The cards group points at `/activity` instead of repeating it.** `/activity`
   already lists assigned cards with a working two-step revoke *and* the tap log
   that gives a revoke its context. A second revoke button is a second place to

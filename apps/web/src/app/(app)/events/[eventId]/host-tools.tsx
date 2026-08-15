@@ -39,12 +39,22 @@ import { HOST_PANEL } from "../lib/surfaces";
  *  - **No waitlist-promotion toggle.** Promotion is automatic and unconditional,
  *    inside the transaction that frees the seat. There is no per-event setting,
  *    so there is no switch to draw.
+ *
+ * WHAT IS HERE THAT A READER MIGHT EXPECT ON THE CREATE FORM
+ *
+ * The cover-image control (`coverSlot`). A cover's Storage key is
+ * `{event_id}/cover.{ext}` and the policies parse the event id out of it to
+ * decide whether the writer is the host, so a cover cannot exist before its
+ * event does — the create form has no id to key one under and no host for a
+ * policy to check. Setting a cover is also host-only, which is what makes this
+ * panel its right home rather than a general edit screen.
  */
 export function HostTools({
   eventId,
   pendingCount,
   isPrivate,
   inviteSlot,
+  coverSlot,
 }: {
   eventId: string;
   /** Host-only queue depth. `null` when the counts could not be read. */
@@ -52,6 +62,8 @@ export function HostTools({
   isPrivate: boolean;
   /** The invite launcher, when this event can take invites. */
   inviteSlot?: React.ReactNode;
+  /** The cover-image control. Host-only, hence its place on this panel. */
+  coverSlot?: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-[11px] rounded-[26px] p-[17px]" style={HOST_PANEL}>
@@ -87,6 +99,16 @@ export function HostTools({
         </Link>
         {inviteSlot}
       </div>
+
+      {coverSlot === undefined ? null : (
+        <div
+          className="flex flex-col gap-2 border-t pt-[11px]"
+          style={{ borderTopColor: "rgba(255,255,255,.12)" }}
+        >
+          <h3 className="text-[13px] leading-[17px] font-semibold">Cover image</h3>
+          {coverSlot}
+        </div>
+      )}
 
       {isPrivate ? null : (
         <p className="text-[12px] leading-[17px]" style={{ color: "rgba(255,255,255,.5)" }}>

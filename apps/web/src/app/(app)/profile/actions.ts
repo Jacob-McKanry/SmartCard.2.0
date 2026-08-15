@@ -132,6 +132,60 @@ export async function updateProfileAction(
   return { success: true };
 }
 
+/**
+ * Turns the "occasional emails" preference on or off, and touches nothing else.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM `updateProfileAction`, WHICH ALREADY WRITES
+ * THIS COLUMN
+ *
+ * `updateProfileAction` reads eight fields out of one `FormData` and writes all
+ * eight. That is right for the edit form, which renders all eight — and it is
+ * exactly why the toggle on `/profile` could not previously post to it: a form
+ * carrying only `email_opt_in` would have sent `null` for `first_name`,
+ * `last_name`, `username`, `phone_number`, `bio`, `company_name` and
+ * `company_role`, and `updateOwnProfile` would have written every one of them.
+ * Turning off a mailing preference would have erased the person's profile. The
+ * previous pass saw that and correctly shipped a reading instead of a control;
+ * this is the narrow write that makes a control safe, rather than a workaround.
+ *
+ * NOTHING NEW WAS NEEDED BELOW THIS FUNCTION, WHICH IS THE POINT.
+ * `userProfileUpdateSchema` is `.partial()` (see `packages/types/src/db/users.ts`),
+ * so a single-key update is already a valid one, and `email_opt_in` is already in
+ * the column-level UPDATE grant in `20260809211100`. No migration, no new grant,
+ * no second service function, no service-role client — the same
+ * `updateOwnProfile` every other profile edit goes through, handed one field.
+ * A future column must not be added to this action: "narrow" is the whole of its
+ * safety, and a second field here reintroduces the blanking problem in miniature.
+ *
+ * `optIn` IS A BOUND ARGUMENT, NOT A FORM FIELD
+ * (`updateEmailOptInAction.bind(null, !current)`), the pattern the forms guide
+ * recommends for values that are not the user's typed input, and the same one
+ * `decideRsvpAction` uses for its `override` flag. It is still untrusted: the
+ * value goes through `updateOwnProfile`'s `userProfileUpdateSchema.parse()`,
+ * which rejects anything that is not a boolean before a query is built, and the
+ * row it can affect is the caller's own either way — `.eq("id", userId)` from
+ * this request's session, backstopped by RLS.
+ *
+ * FAILS CLOSED, VISIBLY. A refusal returns `{ error }` and writes nothing; the
+ * screen keeps rendering the stored value, so the switch never shows a state the
+ * database did not confirm.
+ */
+export async function updateEmailOptInAction(
+  optIn: boolean,
+  _prevState: ActionState,
+): Promise<ActionState> {
+  const context = await requireContext();
+
+  try {
+    await updateOwnProfile(context.supabase, context.userId, { email_opt_in: optIn });
+  } catch (error) {
+    return { error: messageOf(error) };
+  }
+
+  revalidateProfileScreens();
+  return { success: true };
+}
+
 // -----------------------------------------------------------------------
 // Social links
 // -----------------------------------------------------------------------
