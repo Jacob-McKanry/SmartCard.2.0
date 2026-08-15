@@ -60,17 +60,58 @@ import { serviceRoleClient } from "@/server/supabase/service-role-client";
  *      There is no argument a caller could supply that changes which row is
  *      read or which columns come back, because the row is resolved from the
  *      credential and the columns are a literal in this file.
- *   2. That the disclosed field list is FIXED (`PREVIEW_COLUMNS` below), and
- *      that no raw database row ever leaves this module. Every read is mapped
- *      field by field into `CardPreview`. A column added to `users` tomorrow —
- *      a home address, an admin note, an internal flag — does not appear here,
- *      because appearing would require somebody editing this constant.
- *   3. That `social_links` is NEVER read. Not filtered, not truncated —
- *      untouched. 20260809211100 gives the reason and it is not a style
- *      preference: anything looser than the profile's own gate "would be a
- *      searchable directory of people's off-platform handles bolted onto a
- *      product whose premise is that strangers cannot find you."
+ *   2. That the disclosed field list is FIXED (`PREVIEW_COLUMNS` and
+ *      `PREVIEW_SOCIAL_LINK_COLUMNS` below), and that no raw database row ever
+ *      leaves this module. Every read is mapped field by field into
+ *      `CardPreview`. A column added to `users` tomorrow — a home address, an
+ *      admin note, an internal flag — does not appear here, because appearing
+ *      would require somebody editing one of those constants.
+ *   3. That the ring-diagram numbers are COUNTS AND ONLY COUNTS. The two
+ *      aggregate reads below select no column a person could be identified
+ *      from; they ask PostgREST for `count` with `head: true`, so no row is
+ *      transferred at all. See `loadPreviewCounts`.
  *   4. That every refusal is the SAME refusal. See the next section.
+ *
+ * ============================================================================
+ * AMENDMENT (2026-08-15, later the same day) — `social_links` IS NOW READ HERE,
+ * WHICH REVERSES POINT 3 AS THIS FILE ORIGINALLY WROTE IT
+ * ============================================================================
+ *
+ * This header used to say, as its third numbered guarantee, that `social_links`
+ * "is NEVER read. Not filtered, not truncated — untouched", quoting
+ * 20260809211100's reason: anything looser than the profile's own gate "would be
+ * a searchable directory of people's off-platform handles bolted onto a product
+ * whose premise is that strangers cannot find you."
+ *
+ * The project owner decided otherwise, deliberately and with the consequence
+ * stated. The reasoning, recorded in full as an amendment at the bottom of
+ * 20260809211100 itself (per CLAUDE.md: a deviation goes where the original
+ * decision lives) and summarised here:
+ *
+ *   * The directory objection is an objection to DISCOVERY, and this path has
+ *     none. There is no query here that takes a name, a handle, a platform or a
+ *     user id. The only inputs are a card code and a signed QR token, exactly as
+ *     before; a caller who cannot already produce one of those reaches nothing.
+ *     A handle disclosed to somebody holding your card is not a handle in a
+ *     directory — it is a handle on the card you handed them.
+ *   * It follows the disclosure already made on the very same URL. This route
+ *     has, since earlier today, answered a permanent forwardable link with a
+ *     person's phone number and email. A public Instagram handle alongside those
+ *     is a smaller disclosure than either, and withholding it while disclosing
+ *     the phone number was not a coherent line.
+ *   * The residual is real and is written down rather than argued away: the set
+ *     of a member's off-platform accounts is now reachable by anyone holding
+ *     their card's URL, permanently, until the card is revoked. That is a
+ *     correlation aid — it links a name and a phone number to a set of accounts
+ *     in one place, which is more than any one of those alone. §4.7 threat 1's
+ *     amendment carries it.
+ *
+ * What did NOT change, and is what keeps the reversal narrow: the read is still
+ * `.eq("user_id", <a uuid this module resolved from a credential>)`, with a
+ * hardcoded three-column list, bounded at `MAX_PREVIEW_SOCIAL_LINKS`, mapped
+ * field by field, and it degrades to "no links" on any failure rather than to
+ * an error. There is still no query anywhere in this module that could find a
+ * person rather than confirm one.
  *
  * ============================================================================
  * ONE REFUSAL, INDISTINGUISHABLE FROM EVERY OTHER
@@ -140,7 +181,37 @@ const PREVIEW_COLUMNS =
   "id, first_name, last_name, company_name, company_role, bio, phone_number, email, photo_path, status";
 
 /**
- * Exactly what a non-user sees. Seven disclosed fields plus a photo URL.
+ * The second hardcoded field list, added 2026-08-15 with the social-link tiles.
+ * Same rule as `PREVIEW_COLUMNS`: a literal, never a spread, never anything a
+ * caller supplied.
+ *
+ * `user_id` is absent because it is already known — this module only ever asks
+ * for one person's links, using an id it resolved itself from a credential — and
+ * because it is an internal identifier with no business leaving the server.
+ * `display_order` is absent from the SELECT but is used by `.order()`, which
+ * does not require the column to be selected: it decides the sequence without
+ * being disclosed. `created_at`/`updated_at` are absent because "when did they
+ * add this link" is a behavioural detail about a person, not a link tile.
+ */
+const PREVIEW_SOCIAL_LINK_COLUMNS = "id, platform, url";
+
+/**
+ * A ceiling on how many links a preview will render, applied in SQL.
+ *
+ * Not a paging control — there is no second page and there must not be one.
+ * It is a bound on a list whose length is chosen by the person being previewed
+ * (the legacy import brought in 465 links across 337 users, so a handful each,
+ * but nothing in the schema stops someone adding two hundred). Twelve is three
+ * full scroll-snap screens of §5's 184px tiles, which is past the point where a
+ * visitor is reading rather than scrolling, and it keeps the page a bounded size
+ * for an unauthenticated caller who pays nothing to request it.
+ */
+const MAX_PREVIEW_SOCIAL_LINKS = 12;
+
+/**
+ * Exactly what a non-user sees: seven fields off `users`, a signed photo URL,
+ * the person's social links, two counts, and — on the vCard surface only — the
+ * photo's bytes.
  *
  * Deliberately NOT `Pick<UserRow, …>`: a `Pick` follows `users` as it grows,
  * and this type must not. It is spelled out so that widening it is a visible
@@ -157,6 +228,59 @@ export interface CardPreview {
   email: string;
   /** A signed, short-lived URL, or null. Never a storage path. */
   photoUrl: string | null;
+  /**
+   * The person's own off-platform links, in their chosen order, bounded by
+   * `MAX_PREVIEW_SOCIAL_LINKS`. Empty means either "they have none" or "the read
+   * failed" — deliberately the same value, because those two must not be
+   * distinguishable and because both mean the same thing to a visitor.
+   */
+  socialLinks: readonly PreviewSocialLink[];
+  /**
+   * The ring diagram's numbers, or `null` when they could not be computed.
+   * `null` renders no diagram at all rather than a diagram of zeroes: DESIGN.md
+   * §7 forbids a screen implying more than the app knows, and "0 connections" is
+   * a claim, not an absence.
+   */
+  counts: PreviewCounts | null;
+  /**
+   * The photo, ready to embed in a vCard's `PHOTO` property. Populated ONLY on
+   * the `vcard` surface — see `discloseSubject` for why the page does not pay to
+   * download bytes the browser is about to fetch for itself from `photoUrl`.
+   */
+  photo: PreviewPhoto | null;
+}
+
+/** One link tile's worth of a `social_links` row, and nothing else. */
+export interface PreviewSocialLink {
+  id: string;
+  platform: string;
+  url: string;
+}
+
+/**
+ * The two bands DESIGN.md §3 says Profile draws — and it is two, not §3's three,
+ * because Profile ships two: its "cities met people in" band has no data behind
+ * it (`meeting_locations.place_label` is a venue or neighbourhood name, not a
+ * city), and §3's implementation notes record the omission. The preview mirrors
+ * what Profile actually renders; inventing a third band here would put a number
+ * on an anonymous page that the owner's own screen refuses to show them.
+ *
+ * These are counts and nothing but counts. Neither is derived from a query that
+ * returns a row, a name or an id — see `loadPreviewCounts`.
+ */
+export interface PreviewCounts {
+  /** `connections` rows with `status = 'active'` the subject is an endpoint of. */
+  connections: number;
+  /** `going` RSVPs to events that have already started — Profile's exact rule. */
+  eventsAttended: number;
+}
+
+/** Image bytes plus the vCard `TYPE` token that names their format. */
+export interface PreviewPhoto {
+  /** A vCard 3.0 `TYPE=` token, e.g. `WEBP`. Uppercase, from a fixed allowlist. */
+  vCardType: string;
+  /** Standard base64, unfolded. The vCard builder folds it. */
+  base64: string;
 }
 
 /** The row shape this module reads. Internal — never returned to a caller. */
@@ -219,7 +343,23 @@ export interface CardPreviewStore {
   loadSession(sessionId: string): Promise<SessionRecord | null>;
   /** The `users` read, restricted to `PREVIEW_COLUMNS`. Returns the row as stored; status is judged by the caller. */
   loadPreviewSubject(userId: string): Promise<PreviewSubjectRow | null>;
+  /**
+   * The subject's own links, restricted to `PREVIEW_SOCIAL_LINK_COLUMNS` and
+   * bounded by `MAX_PREVIEW_SOCIAL_LINKS`. May throw; the caller degrades.
+   */
+  listPreviewSocialLinks(userId: string): Promise<PreviewSocialLink[]>;
+  /**
+   * The two ring-diagram numbers. Must answer with counts only — no row, no
+   * name, no id of anybody counted. May throw; the caller degrades.
+   */
+  loadPreviewCounts(userId: string, now: Date): Promise<PreviewCounts>;
   signedPhotoUrl(photoPath: string | null): Promise<string | null>;
+  /**
+   * The photo's actual bytes, for embedding in a vCard. Returns `null` for no
+   * photo, an unembeddable media type, or anything over the size cap. May throw;
+   * the caller degrades.
+   */
+  loadPhotoBytes(photoPath: string | null): Promise<PreviewPhoto | null>;
   recordView(view: CardPreviewViewRecord): Promise<void>;
 }
 
@@ -283,6 +423,11 @@ export async function resolveCardCodePreview(
     const deps = injectedDeps ?? defaultCardPreviewDeps();
     const { store } = deps;
     const audit = auditFieldsFrom(request.headers);
+    // One instant for the whole request, for the reason `CardPreviewRequest`
+    // gives. The card path had no time-dependent check until the events count
+    // arrived; it has one now ("events that have already started"), and it
+    // answers against the same clock reading as everything else.
+    const now = request.now ?? new Date();
     const limits = await store.loadLimits();
 
     if (!(await withinIpBudget(store, limits, audit.ipHash))) return null;
@@ -315,6 +460,7 @@ export async function resolveCardCodePreview(
       cardId: card.id,
       sessionId: null,
       audit,
+      now,
     });
   });
 }
@@ -405,6 +551,7 @@ export async function resolveQrTokenPreview(
       cardId: null,
       sessionId: session.id,
       audit,
+      now,
     });
   });
 }
@@ -475,6 +622,39 @@ async function withinIpBudget(
  * a DISCLOSURE, and §4.7 threat 7's defence on this path is detection. An
  * unlogged disclosure is the one outcome this feature must not produce, so it
  * fails closed like everything else.
+ *
+ * ---------------------------------------------------------------------------
+ * TWO DIFFERENT KINDS OF FAILURE, AND WHY THE ENRICHMENT READS TAKE THE OTHER
+ * ONE (2026-08-15, with the links, counts and vCard photo)
+ * ---------------------------------------------------------------------------
+ *
+ * Everything above this point fails CLOSED BY REFUSING: a throw becomes `null`
+ * and the visitor sees "Nothing here". The three reads below fail closed by
+ * DISCLOSING LESS: a throw becomes no links, no counts, or no embedded photo,
+ * and the preview still renders. Those are not in tension, and the distinction
+ * is worth being precise about because getting it backwards either way is a
+ * bug:
+ *
+ *   * The checks above decide WHETHER to disclose. A check that cannot be
+ *     completed has not passed, so it must reject — CLAUDE.md's rule.
+ *   * These three decide HOW MUCH to disclose, after that decision is already
+ *     made. Failing them shut discloses strictly less, which is the safe
+ *     direction; failing them into a refusal would be *worse than useless*,
+ *     because it would make the refusal depend on facts about the subject.
+ *     "Nothing here" for a person with a broken avatar and a preview for
+ *     everybody else is precisely the distinguishable refusal the top of this
+ *     file spends four hundred words forbidding.
+ *
+ * So each is wrapped individually: one failing does not take the others with
+ * it, and none of them can turn a successful disclosure into a refusal. They
+ * run AFTER the audit row is written, so a read that is never going to be
+ * disclosed is never performed at all.
+ *
+ * The counts are all-or-nothing on purpose. Two numbers computed by two queries
+ * could half-fail, and a ring diagram showing a real connection count beside a
+ * fabricated zero for events is a wrong fact rather than a missing one — the
+ * "partial-but-wrong" outcome §7 rules out. `loadPreviewCounts` therefore
+ * throws if either half fails, and the whole diagram is omitted.
  */
 async function discloseSubject(
   deps: CardPreviewDeps,
@@ -485,6 +665,7 @@ async function discloseSubject(
     cardId: string | null;
     sessionId: string | null;
     audit: AuditFields;
+    now: Date;
   },
 ): Promise<CardPreview | null> {
   const subject = await deps.store.loadPreviewSubject(input.subjectUserId);
@@ -501,6 +682,29 @@ async function discloseSubject(
     userAgent: input.audit.userAgent,
   });
 
+  const [photoUrl, socialLinks, counts, photo] = await Promise.all([
+    // Minted on BOTH surfaces even though the vCard never reads it, so that the
+    // two surfaces cannot disagree about the person. It costs one signing call
+    // and no bytes.
+    degradeOnFailure("photo url", null, () => deps.store.signedPhotoUrl(subject.photo_path)),
+    degradeOnFailure<readonly PreviewSocialLink[]>("social links", [], () =>
+      deps.store.listPreviewSocialLinks(subject.id),
+    ),
+    degradeOnFailure<PreviewCounts | null>("ring counts", null, () =>
+      deps.store.loadPreviewCounts(subject.id, input.now),
+    ),
+    // Only the download surface pays for the bytes. On the page, the browser
+    // fetches the same image itself from `photoUrl`, so downloading it here as
+    // well would double the egress of every render for nothing. This is the one
+    // field whose value legitimately differs by surface, and the test suite
+    // asserts it is the only one.
+    input.surface === "vcard"
+      ? degradeOnFailure<PreviewPhoto | null>("photo bytes", null, () =>
+          deps.store.loadPhotoBytes(subject.photo_path),
+        )
+      : Promise.resolve(null),
+  ]);
+
   // Field by field, from a literal. No spread, no rest, no `...row`: a spread
   // here is how a column added to `users` next year ends up on an anonymous
   // page without anybody deciding that it should.
@@ -512,8 +716,37 @@ async function discloseSubject(
     bio: subject.bio,
     phoneNumber: subject.phone_number,
     email: subject.email,
-    photoUrl: await deps.store.signedPhotoUrl(subject.photo_path),
+    photoUrl,
+    socialLinks,
+    counts,
+    photo,
   };
+}
+
+/**
+ * Runs one enrichment read and turns any failure into the "we know less"
+ * fallback. See `discloseSubject`'s second section for why this is the correct
+ * direction for these three reads and the wrong direction for everything above
+ * them.
+ *
+ * The failure is logged with the same shape `refuseOnThrow` uses, so a
+ * systematically failing aggregate is visible in the server log rather than
+ * silently showing every visitor a preview with no rings.
+ */
+async function degradeOnFailure<T>(
+  what: string,
+  fallback: T,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (error) {
+    console.error("[card-preview] disclosing less after a failed enrichment read", {
+      what,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return fallback;
+  }
 }
 
 /**
@@ -557,6 +790,68 @@ async function refuseOnThrow(
  * outlive the render by as little as possible.
  */
 const PREVIEW_PHOTO_URL_TTL_SECONDS = 5 * 60;
+
+/**
+ * The largest image, in bytes before base64, this will embed in a `.vcf`.
+ *
+ * WHY THERE IS A CAP AT ALL. Base64 inflates by a third, so the bucket's own
+ * ceiling (5 MiB, 20260813180355) would permit a 6.8 MB contact file — sent to a
+ * phone, over mobile data, from a page whose whole purpose is a courtesy to
+ * somebody who just tapped a card. A contacts database is also somewhere these
+ * bytes live forever once imported.
+ *
+ * WHY THIS NUMBER. Every photo in the bucket today came from the legacy backfill
+ * — 148 files, 7,370,556 bytes, largest 170,214 — so 256 KiB sits above every
+ * real photo with room to spare while still being an order of magnitude under
+ * what the bucket would allow. It is a guard against the pathological case, not
+ * a limit anybody's actual avatar will meet.
+ *
+ * WHY NOT DOWNSCALE INSTEAD, which would let the cap be much tighter. Node has
+ * no image codec in its standard library, so downscaling means adding `sharp` (a
+ * native binary, on a serverless build) or a WASM decoder, for one optional
+ * property of one courtesy file. That is a disproportionate dependency, and the
+ * failure it would prevent — a photo between 256 KiB and 5 MiB — cannot occur
+ * with the data that exists. If user-uploaded photos ever get large, downscaling
+ * is the right answer and this constant is where the decision to add it lives.
+ */
+const MAX_EMBEDDED_PHOTO_BYTES = 256 * 1024;
+
+/**
+ * Media types this will embed, and the vCard 3.0 `TYPE=` token for each.
+ *
+ * An allowlist rather than "pass through whatever Storage reports", because the
+ * value ends up inside a property parameter in a file handed to a contacts app:
+ * an unrecognised or attacker-influenced type token has no business being
+ * echoed there. Anything not on this list omits `PHOTO` entirely.
+ *
+ * IN PRACTICE THIS IS ALWAYS WEBP, AND THAT IS A JUDGMENT CALL WORTH READING.
+ * `profile-photos` pins `allowed_mime_types` to `image/webp` (20260813180355)
+ * and the uploader only accepts `image/webp`, so every photo in the product is
+ * one. WebP is not one of the formats vCard 3.0's RFC had in mind in 1998, and
+ * a contacts app old enough to matter will not decode it. Three options were
+ * weighed:
+ *
+ *   * Convert to JPEG. Correct in the abstract, and rejected for the dependency
+ *     reason on `MAX_EMBEDDED_PHOTO_BYTES` above.
+ *   * Omit `PHOTO` for WebP. Since every photo is WebP, this is "do not build
+ *     the feature", dressed up as caution.
+ *   * Embed it. iOS has decoded WebP since 14 and Android since 4.0, and every
+ *     mainstream importer sniffs the bytes rather than trusting `TYPE`. The
+ *     failure mode when it does not work is a contact with no picture — the same
+ *     outcome as omitting it — not a file that fails to import, because `PHOTO`
+ *     is an optional property that a parser which cannot use it skips.
+ *
+ * The third is what ships: it is the only one that does anything, and its
+ * downside is bounded by the upside of the option that does nothing. The other
+ * three entries are here so that a future upload path accepting JPEG or PNG
+ * works without anybody having to remember this file exists.
+ */
+const EMBEDDABLE_PHOTO_TYPES: Record<string, string> = {
+  "image/webp": "WEBP",
+  "image/jpeg": "JPEG",
+  "image/png": "PNG",
+  "image/gif": "GIF",
+};
 
 /**
  * Typed as `AppConfigKey` so a typo here is a compile error rather than a
@@ -646,6 +941,123 @@ export function supabaseCardPreviewStore(
       return data;
     },
 
+    async listPreviewSocialLinks(userId: string): Promise<PreviewSocialLink[]> {
+      // The same shape as `loadPreviewSubject`: one `.eq()` on a uuid this
+      // module resolved from a credential, a literal column list, and a hard
+      // limit. No `.or()`, no `.ilike()`, no `.textSearch()`, and — the point of
+      // 20260809211100's objection — nothing that takes a handle or a platform
+      // as INPUT. This query can confirm a person's links; it cannot find a
+      // person from a link, which is the difference between this and a
+      // directory.
+      const { data, error } = await client
+        .from("social_links")
+        .select(PREVIEW_SOCIAL_LINK_COLUMNS)
+        .eq("user_id", userId)
+        .order("display_order", { ascending: true })
+        .order("created_at", { ascending: true })
+        .limit(MAX_PREVIEW_SOCIAL_LINKS)
+        .returns<PreviewSocialLink[]>();
+
+      if (error) {
+        throw new Error(`Failed to read preview social links: ${error.message}`, { cause: error });
+      }
+
+      // Mapped field by field for the same reason `discloseSubject` maps the
+      // user row: `data` is whatever PostgREST sent back, and returning it
+      // directly would make the disclosed shape a property of the query string
+      // rather than of this file.
+      return (data ?? []).map((row) => ({ id: row.id, platform: row.platform, url: row.url }));
+    },
+
+    /**
+     * The ring diagram's two numbers.
+     *
+     * WHY THIS IS SERVICE-ROLE AGGREGATION AND NOT A QUERY THE PREVIEW COULD
+     * HAVE MADE ANYWAY. Neither number is readable through RLS by anyone but the
+     * subject: the `connections` select policy returns only edges the caller is
+     * an endpoint of, and `event_rsvps` is narrower still ("self + your
+     * connections", 20260809211300). There is no reader here at all, so there is
+     * nothing for either policy to be evaluated against — the same argument the
+     * file header makes for `users`.
+     *
+     * WHAT KEEPS THAT NARROW: `head: true` with `count: "exact"`. PostgREST
+     * answers with a `Content-Range` header and an EMPTY BODY — not one row, not
+     * an id, not a name. The `select()` argument only shapes the join; no column
+     * value crosses the wire. So the widest thing a bug here could disclose is a
+     * different NUMBER, never a person. That property is why this is safe to run
+     * without a policy behind it, and it is the reason not to "improve" this into
+     * a query that returns rows and counts them in TypeScript.
+     *
+     * WHY THE CONNECTION COUNT IS TWO QUERIES AND NOT ONE `.or()`. `connections`
+     * stores each edge once with `user_a_id < user_b_id` (20260809210600), so
+     * the subject is on exactly one side of any given edge and the two counts
+     * cannot overlap — their sum is exact, with no de-duplication needed. Doing
+     * it with `.or("user_a_id.eq.…,user_b_id.eq.…")` would be one round trip
+     * instead of two, and would introduce the first caller-shaped filter
+     * expression in a module whose entire claim is that it has none. Two plain
+     * `.eq()`s cost a round trip and keep the claim true.
+     *
+     * WHY "EVENTS ATTENDED" IS `going` PLUS `starts_at` IN THE PAST. Profile's
+     * `countEventsAttended` uses exactly this rule and explains it: `going` is
+     * the only status the database itself treats as attendance, and an event
+     * that has not happened yet has not been attended however firmly it was
+     * answered. Mirroring it matters more than it looks — a preview that counted
+     * differently from the owner's own screen would have the owner arguing with
+     * a page about strangers they cannot see.
+     *
+     * ONE KNOWN, DELIBERATE DIFFERENCE FROM PROFILE. Profile derives its number
+     * from `listAttendingEvents`, which caps at the 50 most recent RSVPs, so at
+     * 50+ RSVPs Profile itself would undercount. This counts in SQL and is
+     * exact. Nobody in a 337-user pilot is near that, and the honest number is
+     * the right one to show; it is recorded here so that a future "the preview
+     * says 51 and my profile says 50" is a known thing rather than a mystery.
+     *
+     * Throws if EITHER half fails, so the caller omits the whole diagram rather
+     * than pairing a real count with a fabricated zero.
+     */
+    async loadPreviewCounts(userId: string, now: Date): Promise<PreviewCounts> {
+      const [aSide, bSide, attended] = await Promise.all([
+        client
+          .from("connections")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active")
+          .eq("user_a_id", userId),
+        client
+          .from("connections")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "active")
+          .eq("user_b_id", userId),
+        // `events!inner` makes the join a filter rather than a left join, so
+        // `starts_at` can be compared without any `events` column being
+        // returned — `head: true` returns no body either way.
+        client
+          .from("event_rsvps")
+          .select("id, events!inner(starts_at)", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("status", "going")
+          .lt("events.starts_at", now.toISOString()),
+      ]);
+
+      for (const result of [aSide, bSide, attended]) {
+        if (result.error) {
+          throw new Error(`Failed to count for the card preview: ${result.error.message}`, {
+            cause: result.error,
+          });
+        }
+        // A null count with no error means the header was missing or unparsed.
+        // Treated as a failure rather than as zero, for `config.ts`'s reason:
+        // a number that quietly defaults is a claim nobody made.
+        if (typeof result.count !== "number") {
+          throw new Error("Card preview count came back without a count.");
+        }
+      }
+
+      return {
+        connections: (aSide.count ?? 0) + (bSide.count ?? 0),
+        eventsAttended: attended.count ?? 0,
+      };
+    },
+
     async signedPhotoUrl(photoPath: string | null): Promise<string | null> {
       if (!photoPath) return null;
 
@@ -675,6 +1087,53 @@ export function supabaseCardPreviewStore(
 
       if (error || !data) return null;
       return data.signedUrl;
+    },
+
+    /**
+     * The bytes behind `photo_path`, for the vCard's `PHOTO` property.
+     *
+     * WHY BASE64 IN THE FILE AND NOT A `PHOTO;VALUE=URI:` POINTING AT THE SIGNED
+     * URL. The URI form is smaller, costs no download here, and is wrong. A
+     * signed URL is a five-minute bearer credential (see
+     * `PREVIEW_PHOTO_URL_TTL_SECONDS`), and a `.vcf` is a file somebody saves —
+     * the whole point of the download is that it outlives the page. A URI
+     * reference would produce a contact whose photo is a broken link within
+     * minutes of being saved, silently, with nothing for the person to fix.
+     * Lengthening the TTL to compensate is worse: it would hand every downloader
+     * a long-lived credential for a private-bucket object, which is precisely
+     * what the short TTL exists to prevent. Embedding is the only form that is
+     * still correct tomorrow, and it discloses nothing new — these are the same
+     * bytes the preview page already renders to the same visitor.
+     *
+     * WHY THIS DOWNLOADS THROUGH THE SERVICE-ROLE CLIENT RATHER THAN FETCHING
+     * ITS OWN SIGNED URL. Same bytes either way; this route needs no bearer
+     * credential to exist even momentarily, and it does not depend on the app
+     * being able to reach its own public URL. The storage policy is untouched —
+     * `anon` gains nothing here.
+     *
+     * FAILS TO `null`, NEVER THROWS PAST THE CALLER'S GUARD. No photo, a deleted
+     * object, an unembeddable media type and an oversized file all produce the
+     * same "no PHOTO property", and the vCard is still valid without one.
+     */
+    async loadPhotoBytes(photoPath: string | null): Promise<PreviewPhoto | null> {
+      if (!photoPath) return null;
+
+      const { data, error } = await client.storage.from("profile-photos").download(photoPath);
+      if (error || !data) return null;
+
+      const vCardType = EMBEDDABLE_PHOTO_TYPES[data.type.toLowerCase()];
+      if (vCardType === undefined) return null;
+
+      // Checked on the Blob's own size before the bytes are materialised, and
+      // again on the materialised length. The second check is not redundant
+      // paranoia: `size` comes from a `content-length` this process did not
+      // compute, and the thing being bounded is how much memory a request from
+      // an unauthenticated caller can cause this server to allocate.
+      if (data.size > MAX_EMBEDDED_PHOTO_BYTES) return null;
+      const bytes = Buffer.from(await data.arrayBuffer());
+      if (bytes.byteLength > MAX_EMBEDDED_PHOTO_BYTES) return null;
+
+      return { vCardType, base64: bytes.toString("base64") };
     },
 
     async recordView(view: CardPreviewViewRecord): Promise<void> {

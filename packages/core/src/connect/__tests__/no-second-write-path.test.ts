@@ -290,14 +290,43 @@ describe("there is exactly one path that writes the social graph", () => {
 describe("the non-negotiable product rule, checked against the source", () => {
   const files = sourceFiles().filter((file) => !isTestFile(file.relative));
 
-  it("no code path lists or searches users without a graph constraint", () => {
-    // CLAUDE.md: "Never add a global user search, a stranger directory, or any
-    // 'connect' action reachable from a shareable profile URL." The database
-    // already refuses to answer the question (§3.4), but a service-role query
-    // would bypass that — and the connect flow is the first feature in the
-    // product that holds the service role.
-    const pattern = /\.from\(\s*["'`]users["'`]\s*\)[\s\S]{0,160}?\.(ilike|like|textSearch|or)\(/;
-    const offenders = files.filter((file) => pattern.test(file.text)).map((f) => f.relative);
-    expect(offenders).toEqual([]);
+  it.each(["users", "social_links"])(
+    "no code path lists or searches `%s` without a graph constraint",
+    (table) => {
+      // CLAUDE.md: "Never add a global user search, a stranger directory, or any
+      // 'connect' action reachable from a shareable profile URL." The database
+      // already refuses to answer the question (§3.4), but a service-role query
+      // would bypass that — and the connect flow is the first feature in the
+      // product that holds the service role.
+      //
+      // `social_links` was added to this scan 2026-08-15, when the card preview
+      // started reading it with the service role. 20260809211100's objection to
+      // exposing that table was to a "searchable directory of people's
+      // off-platform handles", and its amendment permits the preview precisely
+      // because the preview cannot search: it resolves a person from a
+      // credential and asks for that one person's links by uuid. This is what
+      // makes that argument checkable rather than merely asserted — the moment
+      // any code can take a handle, a platform or a fragment and find rows, the
+      // amendment's reasoning stops holding and this test says so.
+      const pattern = new RegExp(
+        String.raw`\.from\(\s*["'\`]${table}["'\`]\s*\)[\s\S]{0,160}?\.(ilike|like|textSearch|or)\(`,
+      );
+      const offenders = files.filter((file) => pattern.test(file.text)).map((f) => f.relative);
+      expect(offenders).toEqual([]);
+    },
+  );
+
+  it("the card preview never selects a wildcard column list", () => {
+    // The module's whole claim is that its disclosed field lists are literals a
+    // reviewer reads (`PREVIEW_COLUMNS`, `PREVIEW_SOCIAL_LINK_COLUMNS`), so that
+    // a column added to `users` or `social_links` next year cannot appear on an
+    // anonymous page without somebody deciding it should. A `select("*")`
+    // anywhere in it silently reverses that, and it is one character away from
+    // a legitimate edit.
+    const preview = files.find((file) =>
+      file.relative.endsWith(join("server", "cards", "card-preview-service.ts")),
+    );
+    expect(preview, "card-preview-service.ts was not found by the scan").toBeDefined();
+    expect(preview!.text).not.toMatch(/\.select\(\s*["'`][^"'`]*\*/);
   });
 });

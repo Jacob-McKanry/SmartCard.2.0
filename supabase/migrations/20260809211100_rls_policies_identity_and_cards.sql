@@ -163,3 +163,91 @@ with check (
   owner_user_id = (select private.current_user_id())
   and status in ('assigned', 'revoked')
 );
+
+-- =============================================================================
+-- AMENDMENT (2026-08-15) — SOCIAL LINKS ARE NOW DISCLOSED TO UNAUTHENTICATED
+-- CALLERS ON ONE PATH, WHICH REVERSES WHAT THE `social_links` SECTION ABOVE
+-- SAYS. NO SQL IN THIS FILE CHANGED.
+--
+-- Recorded here, next to the rule it departs from, per CLAUDE.md: "If
+-- implementation reveals a reason to deviate from a signed-off architecture
+-- decision, record the deviation and its reasoning where the original decision
+-- lives."
+--
+-- WHAT THE RULE ABOVE SAYS
+--   The `social_links` section states that links are "gated by exactly the rule
+--   that gates the profile", and that anything looser — "say, 'readable by
+--   anyone who has the user's id' — would be a searchable directory of people's
+--   off-platform handles bolted onto a product whose premise is that strangers
+--   cannot find you."
+--
+-- WHAT NOW HAPPENS THAT IT DID NOT
+--   `apps/web/src/server/cards/card-preview-service.ts` — the non-user card
+--   preview, built earlier the same day — reads `social_links` with the SERVICE
+--   ROLE and renders the result as link tiles to a visitor with no account, on
+--   `/card/<code>` and `/c/<token>`. The project owner asked for this
+--   deliberately, having been shown what it costs.
+--
+-- WHAT DID *NOT* CHANGE, AND WHY THAT IS THE LOAD-BEARING PART
+--   Every policy and every grant in this file is untouched. `anon` still has no
+--   grant on `social_links`, no policy naming it, and no RPC that reads it. A
+--   client presenting the publishable key still gets nothing, exactly as before.
+--   The disclosure happens in one server module holding the service role, whose
+--   header explains at length why a policy could not have served this reader
+--   (there is no `auth.uid()` for one to be written against) and what the
+--   TypeScript is therefore solely responsible for.
+--
+-- WHY THE PARAGRAPH ABOVE IS STILL RIGHT AND THIS IS STILL PERMITTED
+--   Read the objection precisely: it is an objection to a DIRECTORY, and it
+--   names the mechanism — "readable by anyone who has the user's id". That is
+--   the case this path is not. There is no query in that module that takes a
+--   user id, a name, a handle, a platform or a fragment of one. Its only inputs
+--   are a physical card's code or an HMAC-signed, 45-second, rotating QR token,
+--   and the person's id is derived from one of those by the server. A caller who
+--   cannot already produce a credential reaches nothing at all.
+--
+--   So the thing that would make it a directory — being able to go from a handle
+--   or a name to a person — remains impossible, and is now asserted rather than
+--   argued: `no-second-write-path.test.ts` scans the whole source tree and fails
+--   if any code pairs `.from("social_links")` with `.or`, `.ilike`, `.like` or
+--   `.textSearch`, the same scan that has guarded `users` since the Connect
+--   Flow. What is disclosed is a person's links to somebody who is holding their
+--   card, which is what handing somebody a card has always meant.
+--
+--   It also follows a decision already made, on the same URL, hours earlier. That
+--   route discloses a phone number and an email address to the same
+--   unauthenticated caller. A public Instagram handle beside those is a strictly
+--   smaller disclosure than either, and a line that withheld it while handing
+--   over a mobile number would not have been a coherent one.
+--
+-- THE RESIDUAL, IN PLAIN LANGUAGE, BECAUSE THERE IS ONE
+--   The set of a member's off-platform accounts is now reachable by anyone
+--   holding their card's URL, permanently, until they revoke the card, with no
+--   notification at the moment it happens. That is worse than the sum of its
+--   parts in one specific way and it should be named: a name, a phone number, an
+--   email and a set of social handles gathered in one place is a correlation aid.
+--   Each is individually public-ish; together they are a starting point for
+--   linking somebody's professional identity to their personal accounts. A
+--   member who deliberately keeps a pseudonymous account off their SmartCard
+--   profile is unaffected — this only ever shows links they themselves added to a
+--   profile they knew was shown "identically to everyone" — but a member who
+--   added a link expecting it to be seen only by people they had met in person
+--   would be surprised, and nothing in the app has told them otherwise.
+--
+--   Bounded by the same four things bounding the rest of the preview, and by no
+--   new ones: 48 bits of card-code entropy, a per-IP and a per-card hourly budget
+--   (20260815120000), the owner's `revoked` kill switch, and one
+--   `card_preview_views` audit row per disclosure surfaced on `/activity`. The
+--   full accounting lives in the architecture doc's §4.7 threat 1 amendment,
+--   which was updated in the same pass rather than left describing the narrower
+--   disclosure.
+--
+-- WHAT WOULD MAKE THIS THE WRONG CALL, SO IT CAN BE NOTICED
+--   A per-user "hide my links from card previews" column is the obvious next
+--   control and was deliberately not added: the preview has no opt-out for phone
+--   or email either, and adding one for links alone would imply the other two are
+--   less sensitive, which is backwards. If the owner wants an opt-out it should
+--   cover the whole preview, and §4.7 threat 1's amendment already records why
+--   that needs a decision about what a tapped card then does rather than a
+--   column.
+-- =============================================================================

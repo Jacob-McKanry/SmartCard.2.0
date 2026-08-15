@@ -1,11 +1,10 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import type { SocialLinkRow } from "@smartcard/types";
 
-import { handleFromUrl, markFor } from "./lib/social-marks";
+import { handleFromUrl, markFor } from "./social-marks";
 
 /**
- * The link tiles on Profile — `docs/design/DESIGN.md` §5, "Link tiles":
+ * The link tiles — `docs/design/DESIGN.md` §5, "Link tiles":
  * "Brand mark in a `32px` tinted plate + platform name + handle, two-up grid.
  * **Past four links the row scrolls horizontally** with
  * `scroll-snap-type: x mandatory` and `184px` tiles — never wrap to a third
@@ -18,8 +17,55 @@ import { handleFromUrl, markFor } from "./lib/social-marks";
  * outranking the person. Past four they become a strip you scan sideways rather
  * than a list you read down. Both layouts are rendered from the same tile
  * markup so they cannot drift.
+ *
+ * WHY THIS MOVED OUT OF `app/(app)/profile/` INTO `components/` (2026-08-15)
+ *
+ * It has two callers now: Profile, and the signed-out card preview
+ * (`non-user-preview.tsx`). §5 describes one tile, and DESIGN.md §6's "Profile
+ * as a visitor sees it" is explicit that a visitor sees "identical fields" — so
+ * a second, visually-similar tile written for the visitor would be exactly the
+ * drift a shared component prevents. The only thing that differs between the
+ * two callers is `emptyState`, below.
  */
-export function LinkTiles({ links }: { links: SocialLinkRow[] }) {
+
+/**
+ * What a tile needs, and deliberately less than a `social_links` row.
+ *
+ * A structural type rather than `SocialLinkRow`, because the preview's caller is
+ * not handed rows at all: `card-preview-service.ts` maps its service-role read
+ * field by field into a three-field object and never lets a database row leave
+ * that module. Typing this as `SocialLinkRow` would push it into carrying
+ * `user_id`, `created_at` and `updated_at` around for a component that has never
+ * rendered any of them. A real `SocialLinkRow[]` still satisfies this, so
+ * Profile passes its rows through unchanged.
+ */
+export interface LinkTileData {
+  id: string;
+  platform: string;
+  url: string;
+}
+
+/**
+ * What the block does when the person has no links.
+ *
+ * `"invite"` is Profile's: a quiet dashed "Add a link" into the edit screen.
+ * `"omit"` renders nothing at all, and is what the signed-out preview passes —
+ * a visitor has no edit screen to be sent to, and a "Links" heading over empty
+ * space would be the app remarking on an absence §7 calls normal.
+ */
+export type LinkTilesEmptyState = "invite" | "omit";
+
+export function LinkTiles({
+  links,
+  emptyState = "invite",
+}: {
+  links: readonly LinkTileData[];
+  emptyState?: LinkTilesEmptyState;
+}) {
+  if (links.length === 0 && emptyState === "omit") {
+    return null;
+  }
+
   const scrolls = links.length > 4;
 
   return (
@@ -68,7 +114,7 @@ export function LinkTiles({ links }: { links: SocialLinkRow[] }) {
   );
 }
 
-function Tile({ link }: { link: SocialLinkRow }) {
+function Tile({ link }: { link: LinkTileData }) {
   const mark = markFor(link.platform);
   const handle = handleFromUrl(link.url, mark.atPrefixed);
 
