@@ -42,6 +42,37 @@ import { serviceRoleClient } from "@/server/supabase/service-role-client";
  * round trip — the label decision below just picks between features already
  * in hand, rather than making a second network call to decide it needs one.
  *
+ * That is only true when `limit` is left off. This request used to send
+ * `limit=1`, which caps the response at one feature *in total* and so
+ * contradicted the paragraph above: `chooseLabel`'s "POI beats the generalized
+ * label" rule can only choose between candidates it was actually sent, and its
+ * `"neighborhood, city"` fallback needs two features to build a comma. Removed
+ * 2026-08-15. Mapbox's own default for reverse geocoding is the one-per-type
+ * behaviour this wants, so the correct request is the one that says nothing.
+ *
+ * TWO THINGS ABOUT THIS REQUEST THAT NEED A LIVE CHECK, NOT A CODE CHANGE.
+ * Flagged here rather than fixed blind, because both turn on facts about the
+ * project's Mapbox account that are not in this repository. Whoever has the
+ * dashboard should settle them; see the report attached to this commit.
+ *
+ *  1. `permanent=true` is a **Geocoding v6** parameter. On v5 — the version
+ *     this URL targets — permanent storage is a *different endpoint*
+ *     (`mapbox.places-permanent`), and the parameter below is not part of v5's
+ *     vocabulary. So this code is very likely obtaining results under Mapbox's
+ *     *temporary* terms and then storing them in `place_label`, which is the
+ *     one thing Q25's provider comparison set out to avoid: storage rights are
+ *     why Mapbox was chosen over Google. It may also be why no label ever
+ *     arrives, if Mapbox rejects the unknown parameter outright rather than
+ *     ignoring it — a 4xx here logs and degrades silently by design.
+ *  2. `types=poi` no longer returns anything. Mapbox removed POI data from
+ *     Geocoding v5 (and v6), directing POI lookups to the Search Box API. The
+ *     venue-name half of §2.4's generalization rule is therefore unreachable
+ *     through this API today; every label that does arrive is the
+ *     neighborhood/city fallback. `chooseLabel` needs no change for that — it
+ *     already degrades in exactly that direction — but §2.4's promise of a
+ *     venue name is currently unmet, and closing that gap means a different
+ *     Mapbox product, not a different parameter.
+ *
  * WHY POI BEATS THE GENERALIZED LABEL WHEN BOTH EXIST. §2.4's judgment call:
  * "store a POI/venue name when the provider returns one; when it only returns
  * a street address, store a coarser label instead." A `poi` match near the
@@ -90,7 +121,10 @@ async function reverseGeocode(
 ): Promise<string | null> {
   const url = new URL(`${MAPBOX_REVERSE_ENDPOINT}/${longitude},${latitude}.json`);
   url.searchParams.set("types", "poi,neighborhood,place");
-  url.searchParams.set("limit", "1");
+  // No `limit`. See the header: Mapbox's default for reverse geocoding is one
+  // feature per requested type, which is the whole reason all three types go
+  // in one call. `limit=1` would collapse that to a single feature and leave
+  // `chooseLabel` nothing to choose between.
   url.searchParams.set("permanent", "true");
   url.searchParams.set("access_token", accessToken);
 
@@ -104,14 +138,41 @@ async function reverseGeocode(
   });
 
   if (!response.ok) {
+    // The status alone is not diagnosable. Mapbox answers a rejected request
+    // with a JSON body naming what it objected to ("Not Authorized - Invalid
+    // Token", an unrecognised parameter, a plan that does not include this
+    // endpoint), and without it the operator sees a bare 401/403/422 and has
+    // to guess. This path is deliberately silent to the user — a failed
+    // geocode must never touch a connection that already committed — so the
+    // log is the *only* place the reason can surface. §4.5's warning about
+    // silent breakage applies here too.
+    //
+    // The URL is never logged: it carries the access token in a query
+    // parameter. Only the status and the vendor's own message.
     console.error("[geocode] Mapbox reverse geocoding returned an error status", {
       status: response.status,
+      detail: (await readErrorDetail(response)) ?? "no body",
     });
     return null;
   }
 
   const payload = (await response.json()) as MapboxResponse;
   return chooseLabel(payload.features ?? []);
+}
+
+/**
+ * The vendor's stated reason for a rejection, truncated and never allowed to
+ * throw — reading a body is best-effort diagnostics, and a failure to read one
+ * must not become a second, louder failure inside a path whose contract is to
+ * degrade quietly.
+ */
+async function readErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const body = (await response.text()).trim();
+    return body === "" ? null : body.slice(0, 300);
+  } catch {
+    return null;
+  }
 }
 
 /**
