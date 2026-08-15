@@ -51,3 +51,59 @@ export function revokeCardConsequences(cardCode: string): readonly string[] {
     `It disappears from this list, and there is no restore button in the app.`,
   ];
 }
+
+/**
+ * The third destructive action, added 2026-08-15 with self-serve account
+ * deletion in Settings.
+ *
+ * IT LIVES IN THIS MODULE, WHICH IS UNDER `connections/lib/`, FOR THE SAME
+ * REASON `confirm-panel.tsx` DOES: both are the app's shared destructive-action
+ * furniture rather than anything to do with connections, and Settings imports
+ * the panel from here already. Splitting the copy off would mean the one file a
+ * reviewer opens to check "does every destructive confirmation name its
+ * consequences individually" no longer holds all of them.
+ *
+ * EVERY LINE BELOW IS CHECKED AGAINST WHAT `public.soft_delete_own_account()`
+ * ACTUALLY DOES (20260815130300) — same discipline as the two above, and it
+ * matters more here because this is the action a person is most likely to be
+ * frightened of:
+ *
+ *  - `users.status -> 'deleted'`, and the amended `users` select policy
+ *    (20260815130200) drops the connection and co-attendee branches for a
+ *    deleted row, so the profile genuinely stops resolving for everyone else.
+ *  - every `assigned` card of theirs flips to `revoked` in the SAME
+ *    transaction, and `card-preview-service.ts` refuses a revoked card and a
+ *    non-active owner independently, so `/card/<code>` shows nothing either way.
+ *  - every `scheduled` event they host flips to `cancelled`, and
+ *    `private.can_see_event` keeps it visible to everyone holding an RSVP or an
+ *    invite while dropping it from public browse.
+ *  - every `active` presentation session of theirs flips to `revoked`, which is
+ *    what makes a QR code on screen stop resolving.
+ *  - `connections`, `meetings` and `event_rsvps` are not touched at all.
+ *
+ * WHY IT DOES NOT SAY "PERMANENT" OR "THIS CANNOT BE UNDONE"
+ *
+ * Because that would be false, and §7's rule against inventing a capability
+ * applies equally to inventing a limitation — the same argument
+ * `revokeCardConsequences` records one function up. This is a SOFT delete:
+ * `public.restore_deleted_user` exists, it is a single service-role call, and
+ * it puts the account and the events this cancelled back. Frightening somebody
+ * with a permanence the database does not implement would also, in the one case
+ * that matters, be actively harmful: a person who believed it was irreversible
+ * would never ask to have it reversed.
+ *
+ * What the last two lines do instead is say exactly where the line is — nothing
+ * is erased, a person with database access can put it back, and the one thing
+ * that will not come back on its own is the cards, because the database cannot
+ * tell a card this revoked from one the owner revoked after losing it.
+ */
+export function deleteAccountConsequences(): readonly string[] {
+  return [
+    "Your profile stops being visible to everyone you have met. You disappear from their People list.",
+    "Every card you own is revoked straight away, and a live QR code stops working. Tapping one of your cards will show nothing about you.",
+    "Events you are hosting are cancelled. Everyone who already answered keeps seeing them, marked cancelled, so nobody turns up to something that is not happening.",
+    "You are signed out, and you cannot sign in again while the account is deleted.",
+    "Nothing is erased. Your profile, your connections and your meeting history are all kept, and an administrator can restore the account — including the events this cancels.",
+    "Your cards are the one thing that stays off. If your account is restored, you switch them back on yourself from Activity.",
+  ];
+}

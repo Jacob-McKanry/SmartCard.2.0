@@ -121,6 +121,19 @@ function sourceFiles(): { path: string; relative: string; text: string }[] {
   return files;
 }
 
+/**
+ * Strips block and line comments. Used only by the `has_completed_signup`
+ * assertion below — see the note there for why that one scan is about code
+ * rather than about text.
+ *
+ * `//` is only treated as a comment when it does not follow a colon or a word
+ * character, so a `https://` inside a string does not swallow its line. Same
+ * helper, same reasoning, as `settings-honesty.test.tsx`.
+ */
+function withoutComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:\w])\/\/[^\n]*/g, "$1");
+}
+
 const isTestFile = (relative: string) =>
   relative.includes("__tests__") || relative.endsWith(".test.ts");
 
@@ -243,8 +256,114 @@ describe("there is exactly one path that writes the social graph", () => {
         // or a signed QR token), a hardcoded column list, no caller-supplied
         // filter of any kind, and `social_links` never read.
         join("apps", "web", "src", "server", "cards", "card-preview-service.ts"),
+        // Added 2026-08-15 with onboarding, by hand and with the reasoning
+        // written down, exactly as the entry above it was.
+        //
+        // This importer writes ONE BOOLEAN on the caller's own row:
+        // `users.has_completed_signup`. It holds the service role for a reason
+        // that is the inverse of the card preview's — there, no policy could
+        // serve the READER because there is no reader identity; here, no policy
+        // may serve the WRITER because the writer is deliberately forbidden.
+        // 20260809211100 keeps that column out of the column-level UPDATE grant
+        // on `users` precisely so that "the server asserts onboarding finished,
+        // not the client claiming it did", and a `security definer` RPC granted
+        // to `authenticated` would have been the client claiming it, spelled as
+        // a function call: it would take no evidence and weigh nothing.
+        //
+        // What keeps it honest: one statement, one column, one boolean, filtered
+        // by an id its caller took from `getAuthenticatedContext()` rather than
+        // from any request field. It reads nothing with this client. The profile
+        // fields collected in the same flow are written by the ordinary
+        // RLS-bound path (`updateOwnProfile`), not by this one.
+        join("apps", "web", "src", "server", "onboarding", "onboarding-service.ts"),
       ].sort(),
     );
+  });
+
+  /**
+   * The same rule as the assertion above, checked from the column's side instead
+   * of the client's.
+   *
+   * `has_completed_signup` gates a wizard, so getting it wrong is not a
+   * disclosure — but the reason it has no client write path is a decision
+   * recorded in two migrations and an architecture amendment, and a decision
+   * recorded three times and enforced nowhere is how a column quietly becomes
+   * writable. The mistake this catches is the tempting one: a future onboarding
+   * tweak adding the field to `userProfileUpdateSchema`, or writing it through
+   * `context.supabase` because that is what every other profile write does.
+   * Either would fail at the database with a permission error, and the natural
+   * next move when it failed would be to widen the grant.
+   */
+  it("only the onboarding service names `has_completed_signup` in code", () => {
+    // Comments are stripped for this one assertion, unlike everywhere else in
+    // this file, and that is the point rather than a loophole: `ensure-user.ts`
+    // names the column in the paragraph explaining why a fresh row deliberately
+    // does NOT claim it, and a rule that forbade explaining the decision would
+    // be a rule against writing the decision down.
+    const writers = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => /has_completed_signup/.test(withoutComments(file.text)))
+      .map((file) => file.relative)
+      .sort();
+
+    expect(
+      writers,
+      `${writers.join(", ")} names has_completed_signup. That column is deliberately outside the ` +
+        `column-level UPDATE grant on users (20260809211100), so the only code allowed to touch ` +
+        `it is the service-role writer, and the only other code allowed to name it is the type ` +
+        `describing the row.`,
+    ).toEqual(
+      [
+        join("apps", "web", "src", "server", "onboarding", "onboarding-service.ts"),
+        // The row shape. Naming a column in a Zod schema is not writing it, and
+        // `userProfileUpdateSchema` in the same file deliberately omits it.
+        join("packages", "types", "src", "db", "users.ts"),
+      ].sort(),
+    );
+  });
+
+  /**
+   * Account deletion writes four tables. This asserts it does so from exactly
+   * one place, and that the place is not TypeScript.
+   *
+   * The failure mode is specific and it is the one 20260815130300's header
+   * spends its first page on: four sequential PostgREST calls are four
+   * transactions, and the partial state "account marked deleted, cards not
+   * revoked" leaves a printed URL on a physical object still answering with the
+   * person's phone number. Someone refactoring the service layer for clarity —
+   * inlining the RPC into the action, say, or "simplifying" it into two
+   * `.update()` calls — would produce exactly that, and nothing else in the
+   * codebase would complain.
+   */
+  it("only the account service calls the atomic account-deletion RPC", () => {
+    const callers = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => /rpc\(\s*["'`]soft_delete_own_account["'`]/.test(file.text))
+      .map((file) => file.relative)
+      .sort();
+
+    expect(callers).toEqual([join("apps", "web", "src", "server", "account", "account-service.ts")]);
+  });
+
+  it("nothing in the app writes users.status or events.status directly", () => {
+    // Both columns are outside their tables' column-level UPDATE grants, so a
+    // direct write would fail — but it would fail at runtime, in the middle of a
+    // destructive action, on a path where a partial result is the thing being
+    // guarded against. The single writer of both is
+    // `public.soft_delete_own_account()`, inside one transaction.
+    const pattern =
+      /\.from\(\s*["'`](users|events)["'`]\s*\)[\s\S]{0,200}?\.update\([\s\S]{0,200}?status:/;
+    const offenders = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => pattern.test(file.text))
+      .map((file) => file.relative);
+
+    expect(
+      offenders,
+      `${offenders.join(", ")} sets a status column on users or events through supabase-js. ` +
+        `Both are written only by public.soft_delete_own_account(), which does it in one ` +
+        `transaction alongside the card revocation — see 20260815130300.`,
+    ).toEqual([]);
   });
 
   it("`sealVerified` is called from exactly the two verifiers and nowhere else", () => {

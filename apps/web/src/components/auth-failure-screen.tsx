@@ -39,7 +39,25 @@ import {
  * and is enforced there, by there being no email field at all.
  */
 
-export type AuthFailureKind = "suspended" | "emailBound" | "noEmail";
+/**
+ * AMENDMENT (2026-08-15) — THERE ARE FOUR KINDS NOW, BECAUSE `UserNotActiveError`
+ * COVERS TWO VERY DIFFERENT SITUATIONS AND ONE SCREEN CANNOT BE TRUE FOR BOTH.
+ *
+ * `ensureUser()` throws `UserNotActiveError` for any status that is not
+ * `active`, which until self-serve deletion shipped meant `suspended` in
+ * practice. It no longer does. The `suspended` copy below says, in as many
+ * words, "Nothing has been deleted" and "an administrator has to take the hold
+ * off the account" — the first is flatly false for somebody who deleted their
+ * own account thirty seconds ago, and the second describes a different
+ * operation.
+ *
+ * That is precisely the failure `classifyAuthFailure`'s own header warns
+ * about — "a real bug being displayed to a user as a tidy, reassuring,
+ * completely incorrect explanation of their account status" — arriving from the
+ * direction of a new feature rather than of a rename. So the error's `status`
+ * now selects between two screens.
+ */
+export type AuthFailureKind = "suspended" | "deleted" | "emailBound" | "noEmail";
 
 interface FailureCopy {
   icon: LucideIcon;
@@ -59,6 +77,28 @@ const COPY: Record<AuthFailureKind, FailureCopy> = {
     nextTitle: "What unblocks it",
     nextBody:
       "An administrator has to take the hold off the account. Trying again won't change it.",
+    actionLabel: "Sign out",
+  },
+  /*
+   * Reached two ways: the tab that was open when the person tapped delete and
+   * did not follow the sign-out redirect, and a fresh sign-in on a deleted
+   * account. Both want the same page.
+   *
+   * The copy is held to the same standard as the confirmation that got them
+   * here (`deleteAccountConsequences`), which is why it repeats the reversible
+   * part rather than assuming they remember it. A person who reaches this screen
+   * by accident — a bookmarked tab, a second device — needs to be told their
+   * data is still there and how to get it back, and a person who meant it needs
+   * confirmation that it worked. One page can say both, honestly, because both
+   * are true.
+   */
+  deleted: {
+    icon: Lock,
+    title: "This account is deleted",
+    body: "You deleted this SmartCard account, so it can't sign in. Your profile is hidden from everyone you've met and your cards are switched off.",
+    nextTitle: "It isn't gone",
+    nextBody:
+      "Nothing was erased — your connections and meeting history are all still there, and an administrator can switch the account back on, along with any events this cancelled. Your cards stay off until you turn them back on yourself.",
     actionLabel: "Sign out",
   },
   emailBound: {
@@ -90,7 +130,18 @@ const COPY: Record<AuthFailureKind, FailureCopy> = {
  * reassuring, completely incorrect explanation of their account status.
  */
 export function classifyAuthFailure(error: unknown): AuthFailureKind | null {
-  if (error instanceof UserNotActiveError) return "suspended";
+  if (error instanceof UserNotActiveError) {
+    /*
+     * The status is read off the error rather than inferred, and anything that
+     * is not literally `deleted` falls through to the suspended screen. That
+     * direction is deliberate: `suspended`'s copy is the conservative one ("this
+     * account is on hold", "an administrator has to take the hold off"), which
+     * stays roughly true for any future non-active status, whereas the deleted
+     * copy makes specific promises about restoration and cards that would be
+     * wrong for a status nobody has designed yet.
+     */
+    return error.status === "deleted" ? "deleted" : "suspended";
+  }
   if (error instanceof EmailAlreadyBoundToAnotherIdentityError) return "emailBound";
   if (error instanceof MissingEmailClaimError) return "noEmail";
   return null;

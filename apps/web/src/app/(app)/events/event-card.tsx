@@ -46,6 +46,15 @@ export interface EventCardProps {
   knowLine: string | null;
   /** The viewer's own STORED status (§7), or `null` if they have not answered. */
   ownStatus: RsvpStatus | null;
+  /**
+   * `events.status === 'cancelled'`. A card only ever renders this true for
+   * somebody with a relationship to the event — the amended
+   * `private.can_see_event` (20260815130200) drops cancelled events from the
+   * public branch, so they are gone from browse for everybody else. The badge
+   * exists so the people who kept it are told rather than left to work it out
+   * from a date that has quietly stopped meaning anything.
+   */
+  isCancelled: boolean;
 }
 
 export function EventCard(props: EventCardProps) {
@@ -98,6 +107,21 @@ export function EventCard(props: EventCardProps) {
         </span>
 
         <span className="absolute top-3.5 right-3 flex gap-1.5">
+          {/*
+           * First in the row, and the only badge on this card painted with
+           * `--danger`. §2 reserves that colour for destructive actions, and
+           * this is the one place it is spent on a state instead: the state is
+           * that the thing on the card is not happening, which is exactly what a
+           * glance at a card should not be able to miss.
+           */}
+          {props.isCancelled ? (
+            <span
+              className="flex items-center rounded-full px-2.5 py-[5px] text-[10px] leading-[13px] font-semibold text-white"
+              style={{ background: "var(--sc-danger)", backdropFilter: "blur(10px)" }}
+            >
+              Cancelled
+            </span>
+          ) : null}
           {props.isHosting ? (
             <span
               className="flex items-center rounded-full px-2.5 py-[5px] text-[10px] leading-[13px] font-semibold text-white"
@@ -138,8 +162,16 @@ export function EventCard(props: EventCardProps) {
               {whereLine(props.venueName, props.cityName)}
             </span>
           </span>
-          {/* §7: the STORED status, never the button that was tapped. */}
-          {props.ownStatus === null ? null : <RsvpPill status={props.ownStatus} />}
+          {/*
+           * §7: the STORED status, never the button that was tapped. Withheld
+           * entirely on a cancelled event — a "Waiting on the host" pill beside a
+           * "Cancelled" badge is two contradictory claims on one card, and the
+           * pill's is the false one: nobody can answer that request, because the
+           * decision path refuses a cancelled event.
+           */}
+          {props.ownStatus === null || props.isCancelled ? null : (
+            <RsvpPill status={props.ownStatus} />
+          )}
         </span>
 
         <CardMeta counts={props.counts} knowLine={props.knowLine} />

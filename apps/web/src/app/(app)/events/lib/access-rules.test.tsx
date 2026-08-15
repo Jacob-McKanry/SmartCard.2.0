@@ -150,6 +150,7 @@ function card(over: Partial<EventCardProps> = {}): EventCardProps {
     cityName: "San Francisco",
     isPrivate: false,
     isHosting: false,
+    isCancelled: false,
     coverUrl: null,
     counts: counts(),
     knowLine: null,

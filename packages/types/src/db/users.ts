@@ -40,8 +40,27 @@ export const userRowSchema = z.object({
 
   status: userStatusSchema,
 
+  /**
+   * When this account was soft-deleted, or null (20260815130100). Set with
+   * `status = 'deleted'` by `public.soft_delete_own_account()` and cleared by
+   * `public.restore_deleted_user()`, so a restored account is indistinguishable
+   * from one that was never deleted. Stays null for `suspended`.
+   */
+  deleted_at: timestamptzSchema.nullable(),
+
   is_admin: z.boolean(),
   email_verified: z.boolean(),
+
+  /**
+   * Whether this account has been through onboarding. Backfilled to true for
+   * every row that existed at 20260815130000, so only accounts created after
+   * that point ever see the flow.
+   *
+   * Excluded from `userProfileUpdateSchema` below AND from the column-level
+   * UPDATE grant, so no client can claim its own onboarding finished. The one
+   * writer is a service-role UPDATE in
+   * `apps/web/src/server/onboarding/onboarding-service.ts`.
+   */
   has_completed_signup: z.boolean(),
   email_opt_in: z.boolean(),
 

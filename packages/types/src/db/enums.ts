@@ -92,6 +92,34 @@ export const eventVisibilitySchema = z.enum(["public", "private"]);
 export type EventVisibility = z.infer<typeof eventVisibilitySchema>;
 
 /**
+ * `events.status` — added 20260815130100.
+ *
+ * Two values, and the second is never written by a client: `status` is
+ * deliberately absent from the column-level UPDATE grant on `events`, so its
+ * only writer is `public.soft_delete_own_account()` cancelling the events of a
+ * host who has deleted their account. A cancelled event is never deleted — it
+ * stays readable to its host and to everyone holding an RSVP or an invite, and
+ * leaves only the "any authenticated user may see a public event" branch of
+ * `private.can_see_event` — so an event somebody was counting on does not
+ * silently vanish from under them.
+ */
+export const eventStatusSchema = z.enum(["scheduled", "cancelled"]);
+export type EventStatus = z.infer<typeof eventStatusSchema>;
+
+/**
+ * `events.cancelled_reason` — why a cancelled event was cancelled.
+ *
+ * One value today because there is one writer today: this product has no
+ * host-facing "cancel my event" control. The column exists because it is what
+ * makes a soft delete reversible with precision — `public.restore_deleted_user`
+ * un-cancels only the events THAT deletion cancelled, so restoring an account
+ * cannot resurrect an event its host had deliberately called off. A host-facing
+ * cancel control adds its own value here and to the CHECK in 20260815130100.
+ */
+export const eventCancelReasonSchema = z.enum(["host_account_deleted"]);
+export type EventCancelReason = z.infer<typeof eventCancelReasonSchema>;
+
+/**
  * `event_rsvps.status` — the six values the column may hold, widened from four
  * by 20260814051000.
  *
