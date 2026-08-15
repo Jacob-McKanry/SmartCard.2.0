@@ -1,7 +1,19 @@
-# Environment variables — never commit secrets
-.env
-.env.local
-.env.*.local
+# Environment variables — never commit secrets.
+#
+# Ignore EVERY `.env*` file rather than listing the three names we happen to
+# use today. The previous list (`.env`, `.env.local`, `.env.*.local`) left a
+# real gap: `.env.production`, `.env.development` and `.env.test` match none of
+# those patterns, so creating one — which is ordinary Next.js practice and
+# something a tool or a future contributor may do without thinking — would have
+# silently staged real secrets for commit. A deny-all-then-allow-back list is
+# the right shape here, because the cost of the two errors is wildly asymmetric:
+# an ignored file that should have been tracked is noticed in seconds, while a
+# committed secret is in the history forever and has to be rotated.
+.env*
+
+# ...except a committed template of VARIABLE NAMES ONLY, never values. Nothing
+# matching this name may ever contain a real credential.
+!.env.example
 
 # Dependencies
 node_modules/

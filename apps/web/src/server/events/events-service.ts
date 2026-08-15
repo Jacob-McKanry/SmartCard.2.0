@@ -1,5 +1,7 @@
 import "server-only";
 
+import { UserFacingError } from "@/server/errors";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   eventInsertSchema,
@@ -724,7 +726,7 @@ export async function updateOwnEvent(
     throw new Error(`Failed to update the event: ${error.message}`, { cause: error });
   }
   if (!data || data.length === 0) {
-    throw new Error("That event couldn't be updated — you may not be its host.");
+    throw new UserFacingError("That event couldn't be updated — you may not be its host.");
   }
 }
 

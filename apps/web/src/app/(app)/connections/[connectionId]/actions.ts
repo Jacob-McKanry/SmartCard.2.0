@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
+import { safeActionErrorMessage, UserFacingError } from "@/server/errors";
 import {
   removeConnection,
   setMeetingLocationVisibility,
@@ -35,13 +36,19 @@ import type { ActionState } from "./action-state";
 async function requireContext(): Promise<AuthenticatedContext> {
   const context = await getAuthenticatedContext();
   if (context === null) {
-    throw new Error("You need to be signed in to do that.");
+    throw new UserFacingError("You need to be signed in to do that.");
   }
   return context;
 }
 
+/**
+ * Only a message deliberately written for a person crosses to the browser;
+ * anything else becomes one generic sentence with the real error logged
+ * server-side. See `@/server/errors` for why this is opt-in rather than a
+ * filter over raw database text.
+ */
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+  return safeActionErrorMessage(error, "connections");
 }
 
 /**
