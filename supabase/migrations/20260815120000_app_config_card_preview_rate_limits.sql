@@ -1,0 +1,83 @@
+-- =============================================================================
+-- 20260815120000_app_config_card_preview_rate_limits.sql
+--
+-- WHAT THIS CHANGES
+--   Adds two `app_config` rows holding the rate limits for the non-user card
+--   preview (`/card/<code>` signed out, and the new `/c/<token>` QR landing
+--   page):
+--
+--     rate_limit_card_preview_per_ip_hour
+--     rate_limit_card_preview_per_card_hour
+--
+--   Nothing else. No table is created or altered here; the audit table this
+--   feature needs is 20260815120100 and its access rules are 20260815120200.
+--
+-- WHY THIS FEATURE NEEDS LIMITS OF ITS OWN, AND WHY THE EXISTING ONES DO NOT
+-- COVER IT
+--   Every §4.6 limit that actually resists brute-forcing a card code is keyed
+--   to a USER. `nfc-verifier.ts` says so in as many words: "60 attempts an hour
+--   against a 48-bit unique suffix is not a search that finishes" — and it
+--   works because "a guesser has to be a signed-in user". The card preview is
+--   the first thing in this product that an unauthenticated caller can reach,
+--   so that budget does not exist for it. There is no account to charge.
+--
+--   What remains is the per-IP budget and a new per-card budget, and both are
+--   seeded here rather than hardcoded in TypeScript for the reason
+--   `packages/core/src/connect/config.ts` gives at length: a threshold chosen
+--   by whoever last edited a TypeScript file silently overrides the row an
+--   operator thought they were tuning, and a threshold that needs a deploy to
+--   change is a threshold nobody changes at 8pm on the night of a pilot event.
+--
+-- WHY THESE TWO NUMBERS, IN PLAIN LANGUAGE
+--   Neither of these is what stops somebody guessing a card code. The 48 bits
+--   of randomness in the code's suffix does that, and no per-hour limit
+--   meaningfully changes a search of that size. These limits exist for two
+--   different, smaller jobs:
+--
+--     * Per IP — stop ONE host scraping the product. The realistic attack is
+--       not guessing: it is somebody who has ALREADY obtained a list of codes
+--       (a photograph of a stack of unassigned stock, a leaked print run) and
+--       wants to turn that list into a contact database. A per-IP ceiling is
+--       the only thing standing in the way of doing it in one pass.
+--
+--     * Per card — cap how much ONE card discloses before anybody notices. A
+--       card left on a table at a conference can be tapped all evening, and
+--       until now that only produced connections, each of which pushes its
+--       owner a notification within seconds (§4.5 amendment). A PREVIEW pushes
+--       nothing: the owner finds out by opening the Activity screen later. Less
+--       detection means the preventive cap has to do more work, which is why
+--       this budget is set below the equivalent redeem budget in real terms.
+--
+--   ONE PREVIEW COSTS UP TO TWO UNITS. The preview page and the vCard download
+--   are two separate HTTP requests, both of which disclose the same details, so
+--   both consume budget. Read the numbers below as "about half this many
+--   previews per hour". That is stated here because a reader comparing 40
+--   against `rate_limit_connect_per_ip_hour`'s 600 will otherwise mis-read the
+--   ratio.
+--
+--   Both are deliberately on the tight side of the range, which is the OPPOSITE
+--   of the sizing call §4.6's amendment made for the connect limits. That is not
+--   an inconsistency; the two features fail in opposite directions. A connect
+--   limit that bites breaks the product in front of the pilot audience — people
+--   standing together who cannot connect. A preview limit that bites shows a
+--   stranger "nothing here" on a page that is a courtesy, not the product, and
+--   they can still sign in. Erring tight makes the mistake a visible refusal an
+--   operator fixes with one UPDATE; erring loose makes it a silent scrape that
+--   nobody ever notices happened.
+--
+-- ACCESS GRANTED / FORBIDDEN
+--   None granted, to anyone. `app_config` has no RLS policy and no grant to
+--   `anon` or `authenticated` (20260809211000 revoked everything and nothing
+--   granted it back), so these rows are readable only by the service role. That
+--   matters for the same reason it matters for the GPS thresholds: a client
+--   that could read this table would know exactly how many requests it has left
+--   before the ceiling, which is most of what an attacker needs to stay under
+--   one.
+-- =============================================================================
+
+insert into public.app_config (key, value, description) values
+  ('rate_limit_card_preview_per_ip_hour', '40'::jsonb,
+   'Max non-user card-preview requests from one IP per hour. Counts BOTH the preview page and the vCard download, so it is roughly 20 previews. Deliberately about 15x tighter than rate_limit_connect_per_ip_hour (600): that limit must never bite a real attendee at an event, whereas this one guards the product''s first unauthenticated read path, where the failure to avoid is a silent bulk scrape of contact details by somebody holding a leaked list of card codes. Raise it with one UPDATE if a shared venue NAT starts hitting it.'),
+
+  ('rate_limit_card_preview_per_card_hour', '20'::jsonb,
+   'Max non-user preview requests against ONE card per hour, counted after the code resolves. Roughly 10 previews. Caps what a lost, stolen or table-left card discloses before its owner reacts. Nominally equal to rate_limit_nfc_redeem_per_card_hour (20), but tighter in effect and on purpose: a redeem pushes the owner a notification within seconds (§4.5 amendment) while a preview pushes nothing, so this path has weaker detection and has to lean harder on prevention. Consumed even by previews that are then refused, so repeatedly probing a revoked card is not free.');

@@ -4,8 +4,10 @@ import { Bell } from "lucide-react";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import {
+  listCardPreviewActivity,
   listCardTapActivity,
   listOwnAssignedCards,
+  type CardPreviewActivityItem,
   type CardTapActivityItem,
 } from "@/server/activity/activity-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
@@ -91,9 +93,10 @@ export default async function ActivityPage() {
   }
 
   const { supabase, userId } = context;
-  const [activity, cards] = await Promise.all([
+  const [activity, cards, previews] = await Promise.all([
     listCardTapActivity(supabase, userId),
     listOwnAssignedCards(supabase, userId),
+    listCardPreviewActivity(supabase, userId),
   ]);
 
   return (
@@ -103,12 +106,21 @@ export default async function ActivityPage() {
     >
       <header className="flex flex-col gap-[5px] pt-1.5">
         <h1 className="text-[30px] leading-[34px] font-semibold tracking-[-0.03em]">Activity</h1>
+        {/*
+         * Copy merged rather than chosen: the restyle wrote this line when taps
+         * were the only thing logged, and the preview feature added a second
+         * section beneath it. Describing only taps would leave the "Preview
+         * views" section unexplained on the one screen whose whole job is to
+         * make disclosures legible — and a preview, unlike a tap, sends no push,
+         * so this page is the only place it ever surfaces.
+         */}
         <p
           className="max-w-[54ch] text-[14px] leading-5"
           style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
         >
-          A log of every tap of your cards, in case you missed the push. Deliberately plainer than
-          the rest of the app.
+          A log of every tap of your cards, and every time somebody without a SmartCard account
+          opened your card link — in case you missed the push, or never got one. Deliberately
+          plainer than the rest of the app.
         </p>
       </header>
 
@@ -147,6 +159,34 @@ export default async function ActivityPage() {
           </ul>
         )}
       </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="text-sm font-semibold text-muted-foreground">Preview views</h2>
+        {/*
+         * WHY THIS SECTION EXISTS AT ALL, IN ONE SENTENCE A USER COULD READ:
+         * somebody without a SmartCard account can now open your card link and
+         * see your contact details without connecting to you, which produces
+         * no tap and therefore no notification — so this is the only place it
+         * shows up.
+         *
+         * There is no name on any of these rows and there never will be: the
+         * viewer has no account, so the app genuinely does not know who they
+         * are. Saying "someone" is the honest answer rather than a placeholder.
+         */}
+        {previews.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nobody without a SmartCard account has opened your card link yet. When somebody does,
+            it shows up here — there&rsquo;s no name to show, because they don&rsquo;t have an
+            account.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {previews.map((item) => (
+              <PreviewRow key={item.id} item={item} />
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }
@@ -161,6 +201,53 @@ function SectionLabel({ id, children }: { id: string; children: React.ReactNode 
       {children}
     </h2>
   );
+}
+
+/**
+ * Restyled to match the tap rows rather than kept in its original shadcn form.
+ * Both sections of this page list the same kind of fact — somebody reached your
+ * details — so rendering them in two different visual languages would imply a
+ * distinction that isn't there. Flat and opaque like its sibling, per §6:
+ * Activity reads as a security log, not a celebration.
+ */
+function PreviewRow({ item }: { item: CardPreviewActivityItem }) {
+  return (
+    <li
+      className="flex flex-col gap-0.5 rounded-[14px] border p-3"
+      style={{
+        background: "rgba(255,255,255,.82)",
+        borderColor: "rgba(13,18,32,.08)",
+      }}
+    >
+      <div className="text-[14px] leading-5 font-medium">{previewHeadline(item)}</div>
+      <div
+        className="font-mono text-[11px] leading-[15px]"
+        style={{ color: "var(--sc-text-muted)" }}
+      >
+        {formatOccurredAt(item.viewedAt)}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * A total switch over both columns, not a lookup with a fallback. Both are
+ * CHECK-constrained closed sets in the database (20260815120100), so adding a
+ * third value to either becomes a type error here rather than a row that
+ * silently renders as something generic.
+ *
+ * The `vcard` wording is deliberately the stronger of the two. Opening the page
+ * is ambient; saving the contact file is the moment the details left in a form
+ * the person keeps, and it is the one an owner might actually act on.
+ */
+function previewHeadline(item: CardPreviewActivityItem): string {
+  const what = item.source === "card_code" ? "your card link" : "your QR code";
+  switch (item.surface) {
+    case "preview":
+      return `Someone without an account opened ${what}`;
+    case "vcard":
+      return `Someone without an account saved your contact details from ${what}`;
+  }
 }
 
 /**
