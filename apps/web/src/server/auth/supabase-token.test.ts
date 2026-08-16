@@ -30,7 +30,11 @@ import { mintSupabaseAccessToken, resetSupabaseTokenSignerForTests } from "./sup
  */
 
 const USER_ID = "0f687466-3f44-4b0d-807e-0e2bfbcad9f8";
-const SUPABASE_URL = "https://crpsbnbegeoqtlgshltt.supabase.co";
+// A syntactically real but fictional project ref. Deliberately NOT the live
+// project's: every assertion below is relative to this constant, so the tests
+// prove the issuer is derived from `SUPABASE_URL` without the repo having to
+// name the production project in a fixture (2026-08 security audit, step 1).
+const SUPABASE_URL = "https://abcdefghijklmnopqrst.supabase.co";
 
 const originalEnv = { ...process.env };
 

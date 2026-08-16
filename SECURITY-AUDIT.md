@@ -119,3 +119,62 @@ not under `apps/web/public/`).
 - Step 8 (client): Next client components; one `NEXT_PUBLIC_` var; error redaction via `server/errors.ts`.
 - Step 9 (transport/headers): `next.config.ts` `headers()`; Vercel/Cloudflare TLS; Supabase Storage buckets (both private).
 - Step 10 (logging): `console.*` to Vercel runtime logs; `connection_attempts` / `card_preview_views` / `rate_limit_events` audit tables.
+
+---
+
+## Step 1 — Secrets and configuration
+
+### What was searched, and how
+
+- **Working tree:** every tracked file scanned for credential shapes — private-key PEM blocks,
+  `sb_secret_`/`sk_live_`/`AKIA…`/`ghp_…`/`xox…`/`AIza…` prefixes, JWT-shaped `eyJ…` strings,
+  high-entropy `"d"` JWK members, `password=`/`secret=` assignments. **Zero secret values found.**
+  The only matches are variable *names* in docs, and one test fixture asserting that a
+  PEM header is rejected as invalid JSON (`supabase-token.test.ts`). [verified in code]
+- **Git history (mandatory):** all 120 commits, full patch text (`git log --all -p --full-history`,
+  lockfile excluded, binary-safe re-run with `grep -a`), same patterns. **Zero secret values in
+  history.** All matches are README/architecture prose describing key *migrations* (Q27/Q31),
+  never the keys. Additionally `git log --all --diff-filter=A --name-only` confirms **no `.env*`
+  file, keyfile, or PEM was ever committed at any point in history.** [verified]
+- **Seed data:** `supabase/seed/` scripts confirmed to contain transformation logic only — the
+  9,757 rows of production personal data were deliberately never committed, and legacy bcrypt
+  password hashes were never imported (the generator actively scans for and excludes credential
+  material; its output stayed local). [verified in code — `2026-08-13_legacy_import.sql` header,
+  generator source]
+
+### Client-bundle exposure
+
+- Exactly **one** client-convention variable exists in the whole repo:
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`apps/web/src/server/env.ts:118`) — the Supabase
+  publishable key, public by design (grants nothing; every table is default-deny for `anon`).
+  It is in fact only ever read server-side. No `EXPO_PUBLIC_` variable exists anywhere. [verified]
+- A production build was made with **sentinel values** in every secret variable and the emitted
+  client bundle (`apps/web/.next/static`) grepped for them: none appear. The service-role key,
+  QR signing secret, JWT signing key (including its private `d` member), and salts do not reach
+  the browser. [verified by build + grep]
+- All secret access is centralized in `server/env.ts`, which is `import "server-only"` — importing
+  it from a client component is a build error, not a runtime leak. [verified in code]
+
+### Environment separation and config precedence
+
+- Separate prod/non-prod credentials **cannot be verified from the repository** — the values live
+  in Vercel and `.env.local` (absent here by design). The README states production values are
+  distinct and generated separately (`QR_SIGNING_SECRET`, `CONNECT_IP_HASH_SALT` "both need
+  distinct production values in Vercel"). [inferred from docs; listed in Step 11 as unverifiable]
+- Config precedence: no security-relevant setting can be overridden by an attacker-controlled
+  env var, header, or query parameter. All verification thresholds come from the `app_config`
+  table (service-role-only, no client read/write), parsed fail-closed — a missing/malformed row
+  refuses the whole flow rather than defaulting (`packages/core/src/connect/config.ts`,
+  `card-preview-service.ts:requirePositiveIntegerConfig`). [verified in code]
+  Two header-derived values do influence behavior — the client IP (rate-limit subject) and
+  `x-forwarded-host` (same-origin comparison) — assessed in Step 6, where the one real gap lives.
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S1-1 | Low | The live Supabase project ref (`crpsbnbegeoqtlgshltt`) was hardcoded as a test fixture in `apps/web/src/server/auth/supabase-token.test.ts:33` — the only place in `apps/`/`packages/` naming the production project, in a repo where every other fixture uses example values. Not a credential (project refs are discoverable), pure hygiene. | **Fixed**: fixture swapped for a fictional ref; all 12 tests still pass (assertions are relative to the constant). The ref also appears in `README.md`/`docs/` prose and `supabase/seed/` headers as operational history — left as-is, documentation is not an attack surface and rewriting history records was out of scope. |
+| S1-2 | Low | `.gitignore` allow-backs `!.env.example` with a comment saying it must exist as a names-only template, but no `.env.example` was ever created — so a new environment gets assembled from prose in README/env.ts instead of a template, which is how a var ends up missing (`turbo.json` documents exactly this failure). | **Fixed**: added `.env.example` with variable names only (verified against `env.ts` and `turbo.json`'s build env list), no values. |
+| S1-3 | — | No hardcoded credentials in tree; none in history; `.env*` never committed; no secret in the client bundle; no non-prod config pointing at prod visible in-repo. | No action needed. Rotation list: **empty** — nothing to rotate. |
+
+**Build/test after step:** `pnpm turbo build` and `pnpm turbo test` pass (12/12 in the edited file).
