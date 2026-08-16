@@ -667,3 +667,42 @@ succeeds. Neither is safe to do blind in this pass, and neither affects the depl
 | S9-1 | Low | The CSP carries `script-src 'unsafe-inline'`, and `next.config.ts` justified it with the claim of "**zero** uses of `dangerouslySetInnerHTML` … anywhere" — which is **false**: `local-timestamp.tsx` has one (added after that comment was written). The sink itself is safe (its interpolated values are `<`-escaped and are a `useId()`/DB timestamp), so there is no live XSS. But the CSP's stated safety argument was void, and a mirror-image comment in `local-timestamp.tsx` claimed "the app has no CSP today" — the two files each assumed the other's state. | **Fixed (comments)**: corrected both comments to state reality — one safe inline sink exists, the CSP is therefore not an XSS *defence*, and removing `'unsafe-inline'` must hand this script a nonce in the same change. The **structural fix** (nonce-based CSP via `middleware.ts`, dropping `'unsafe-inline'`) is a deliberate design change the code defers; **recommended in Step 11**, not applied here (it touches every request incl. auth callbacks). |
 | S9-2 | Low | The CSP `img-src` **fails open** to `https://*.supabase.co` (a wildcard across all Supabase projects) if `SUPABASE_URL` is absent at build time (`next.config.ts:12-20`). A documented, deliberate tradeoff (a CSP that fails the build is judged worse), but it fails *open* silently. | No code change — behavior is intentional and low-impact (widens only which image origins load, not script/connect). Noted; the mitigation is ensuring `SUPABASE_URL` stays in the build env (it is declared in `turbo.json`). |
 | S9-3 | — | HTTPS enforced (HSTS + upgrade-insecure-requests); full modern security-header set correctly scoped; no webhooks to verify; storage private; no management endpoint exposed by the app. | No action needed. |
+
+---
+
+## Step 10 — Logging and monitoring
+
+### Secrets / PII in logs — clean
+
+I read all 25 server-side `console.*` sites. **None logs a secret, token, session identifier, full
+request body, or unnecessary PII.** The protections are deliberate and layered:
+
+- **IPs are hashed at the edge** (`request-context.ts`) before anything can log them — the raw
+  address exists only inside that one function.
+- **Expo push tokens are redacted** from vendor error strings (`redactPushTokens`) before logging;
+  logs carry our own `tokenId` (a DB row key), never the device's push token.
+- **Geocode never logs the request URL** (which carries the Mapbox access token) — only the status
+  and the vendor's message body.
+- Structured logs carry ids (`userId`, `meetingId`, `connectionId`), reasons, statuses and counts;
+  the CSRF-refusal log records the *attacker's own* origin (safe). `server/errors.ts` logs the full
+  error + cause + stack **server-side only**, which is the correct half of the redaction design.
+  [verified in code]
+
+### Security-event capture — good, via durable audit tables
+
+- **Permission denials / rejections** are recorded durably: `connection_attempts` (every connect
+  rejection with its real reason and evidence — no client read policy), `card_preview_views` (every
+  unauthenticated disclosure), `rate_limit_events` (every throttled action). Cross-site refusals
+  and card-preview refusals are logged with their reason. [verified in code]
+- **Privilege/account changes:** account soft-delete logs a structured record (`[account] soft
+  delete committed` with counts) useful for a restore request. Client-driven privilege escalation
+  is impossible (no path writes `is_admin`), so there is nothing there to log.
+- **Failed logins** are Kinde-hosted (outside this codebase); auth-bridge verification failures
+  surface as logged errors / the fail-closed `AuthFailureScreen`. [verified]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S10-1 | Low | **No error-monitoring/alerting is wired into the web runtime** (no Sentry/Datadog/etc.). Exceptions go to Vercel's runtime logs, which are ephemeral and unalerted — so a spike in permission-denials, or a *silently dead* card-tap notification pipeline (which the code's own §4.5 comments call a security regression precisely because "no single connection was affected"), would only be caught by someone actively reading logs. | **Not fixed — adding a monitoring service is a paid-service / design decision** the audit rules say to log, not attempt. **Recommended in Step 11:** wire an error-monitoring service (the mobile scoping doc already anticipates a `SENTRY_DSN`) and add an alert on the `[push]`/`[geocode]` "not delivered/failed" log lines and on `connection_attempts` rejection-rate. |
+| S10-2 | — | Logs contain no secrets/tokens/session-ids/PII (IPs hashed, push tokens redacted, geocode URL never logged); security-relevant events are durably audited in dedicated tables. | No action needed. |
