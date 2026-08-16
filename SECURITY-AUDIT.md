@@ -446,3 +446,76 @@ searched:
 
 **Build/test after step:** the `.strict()` change was reverted; tree is back to the last green
 state; `pnpm turbo test` passes (3/3).
+
+---
+
+## Step 6 — Endpoint hardening and abuse
+
+### Rate limiting
+
+- Enforced **server-side** in Postgres (`rate_limit_consume`): records-then-counts (so concurrent
+  requests err toward rejection and a rejected attempt still spends budget), fail-closed (a limiter
+  error throws → refusal). Keyed per user / IP / card / session. The connect endpoints
+  (per-IP 600/hr generous for shared venue NAT, plus per-user/per-session), the NFC path
+  (per-user 60/hr + per-card 20/hr), and the anonymous card preview (per-IP 40/hr + per-card
+  20→10/hr) are all covered. Auth endpoints (login/register/reset) are Kinde-hosted — rate
+  limiting is Kinde's responsibility; there is no in-app password endpoint to limit. There is no
+  search feature. [verified in code]
+- Non-connect authenticated mutations (profile, events, social links) are not individually
+  rate-limited, but they only touch the caller's own RLS-scoped data and trigger no paid
+  operation, so the abuse ceiling is self-directed. Acceptable. [verified in code]
+
+### CORS
+
+- **No CORS headers are set anywhere**, and the CSP is `connect-src 'self'` — the app makes no
+  cross-origin browser requests. No wildcard `Access-Control-Allow-Origin`, no origin reflection.
+  Cookie-authenticated routes are additionally protected by the `checkSameOrigin` CSRF gate
+  (`Sec-Fetch-Site`/`Origin`, forbidden headers a page cannot forge) which runs *before* auth.
+  [verified in code]
+
+### Debug / test / admin surfaces
+
+- **None reachable.** No `internal`/`debug`/`admin`/`test` route directories; the temporary
+  `/auth-check` and `/internal/photo-backfill` pages are retired and absent. Errors are redacted
+  in production (Step 8). No verbose-error/debug flag is on. [verified by directory scan]
+
+### File uploads
+
+- Type + size validated at the app *and* enforced by the bucket (`allowed_mime_types`,
+  `file_size_limit` 5 MiB); filenames are server-derived (no traversal); objects live in **private**
+  buckets served only via short-lived signed URLs, with `X-Content-Type-Options: nosniff`. One
+  informational note: bucket MIME enforcement is by the **declared** `Content-Type`, not magic-byte
+  sniffing — but with private non-executable buckets, `nosniff`, and signed-URL serving under the
+  stored content-type, there is no execution/XSS path from a mislabeled upload. [verified in code]
+
+### Business-logic abuse
+
+- No negative/zero quantities (`capacity` is `.positive()`); no client-supplied price/amount
+  (no payments in the product); RSVP status is computed server-side under a `FOR UPDATE` row lock
+  so races for the last seat serialize; waitlist promotion runs in the same transaction that frees
+  a seat (never observably unclaimed); re-request after denial lands in `pending` (grants nothing);
+  the verification session is **single-use, enforced atomically** in `create_verified_connection`
+  (`status='active'`→`consumed` in one transaction, `session_not_consumable` on race) which closes
+  screenshot-replay; five failures burn a session. No coupon/credit/balance to reuse. [verified in code]
+
+### Cost abuse
+
+- The two paid/outbound operations (Mapbox geocode, Expo push) fire **only after a committed,
+  physically-verified connection** — an unauthenticated caller cannot trigger either. The anonymous
+  card-preview path performs no paid operation (DB read + URL signing; it does not call Mapbox).
+  Both optional credentials fail safe. No LLM/SMS/email is reachable by an anonymous caller. [verified in code]
+
+### Prompt injection
+
+- **N/A** — no LLM anywhere in the runtime (confirmed: no `openai`/`anthropic`/`ai-sdk`/`langchain`
+  dependency or call site). [verified by grep]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S6-1 | **Medium** | The per-IP rate-limit **subject key is spoofable on any ingress not fronted by Cloudflare.** `clientIpFrom` (`request-context.ts`) prefers `cf-connecting-ip` (unforgeable behind Cloudflare) but falls back to the **left-most** `x-forwarded-for` entry, which is caller-supplied. On the production domain (`smartcard.tech`, behind Cloudflare) `cf-connecting-ip` is present and authoritative — safe. But the raw `*.vercel.app` deployment URL is not behind Cloudflare, so there `cf-connecting-ip` is absent and an attacker sending `X-Forwarded-For: <random>` gets a **fresh per-IP budget on every request**. **Exploit path:** an attacker holding a leaked list of valid card codes reaches the app via its `*.vercel.app` URL and rotates `X-Forwarded-For` to defeat the 40/hr per-IP cap, bulk-scraping cardholders' contact details (name, phone, email, social handles) from the anonymous `/card/<code>` + vCard endpoints — the product's only unauthenticated read path, whose per-IP budget the code itself documents as "the only thing bounding how much contact data one host can pull." The non-spoofable **per-card** limit (20→10/hr, keyed on the resolved card id) still bounds abuse of any *single* card, which caps the severity. | **Not fixed in code — the correct fix is infrastructure, and changing the header-trust logic blind would risk mis-attributing every real caller.** Deriving a trustworthy client IP depends on the exact proxy chain (how many hops, which platform header is authoritative), which is not knowable from the repo, and a wrong change (e.g. charging everyone to `"unknown"`) would break rate limiting for legitimate users — a design decision the audit rules say to log, not guess. **Manual actions (Step 11):** (a) make the `*.vercel.app` deployment URL unreachable by the public — enable Vercel **Deployment Protection** (or restrict origin access to Cloudflare only) so every request to the app transits Cloudflare and `cf-connecting-ip` is always present; and/or (b) if the app must serve non-Cloudflare ingress, replace the `x-forwarded-for` left-most fallback with the platform's own trusted client-IP header for that ingress (a deliberate, topology-specific change). |
+| S6-2 | Low | Upload MIME is enforced by declared `Content-Type`, not magic bytes. | No action — private buckets + `nosniff` + signed-URL serving under the stored type leave no execution/XSS path; noted for awareness. |
+| S6-3 | — | Server-side rate limiting (fail-closed), no CORS exposure + CSRF gate, no debug/admin endpoints, safe uploads, race-safe business logic with atomic single-use sessions, no anonymous cost-abuse path, no LLM. | No action needed. |
+
+**Build/test after step:** no code change this step; tree remains green.
