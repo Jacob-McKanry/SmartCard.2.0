@@ -178,3 +178,65 @@ not under `apps/web/public/`).
 | S1-3 | — | No hardcoded credentials in tree; none in history; `.env*` never committed; no secret in the client bundle; no non-prod config pointing at prod visible in-repo. | No action needed. Rotation list: **empty** — nothing to rotate. |
 
 **Build/test after step:** `pnpm turbo build` and `pnpm turbo test` pass (12/12 in the edited file).
+
+---
+
+## Step 2 — Authentication
+
+Every entry point from Step 0 accounted for below. The core mechanism is strong: the app never
+trusts a decoded token — `verifyKindeAccessToken` (`server/auth/kinde-identity.ts`) does full
+JWKS signature verification with **algorithm pinning** (`algorithms: ["RS256"]`, closing
+`alg:none`/HS-confusion), issuer check, `azp` (authorized-party) check against an allow-list of
+Kinde client ids, and `exp`/`nbf` with 5s clock tolerance. An unreachable JWKS endpoint rejects
+(fails closed), never allows. [verified in code]
+
+### Entry-point-by-entry-point
+
+- **E1 `/api/auth/[kindeAuth]`** — Kinde SDK `handleAuth()`. OAuth `state` and PKCE handled by the
+  SDK (`callback.cjs.js` validates `state`; "State not found" → 500, not a silent pass). Open-redirect
+  guard present: post-login redirect is regex-gated (`postLoginAllowedURLRegex`). Public by design. [verified in installed SDK]
+- **E2–E5 `/api/connect/*`** — `readAuthenticatedRequest` runs the same-origin/CSRF check, then
+  `getAuthenticatedContext()`; `null` → 401. Identity is taken only from the verified token, never
+  from the body (no request schema has a caller-id field). [verified in code]
+- **E6/E7 vCard routes** — unauthenticated by design; gated on a signed rotating QR token / a card
+  code, resolved server-side. Assessed fully in Steps 4/6.
+- **A1–A25 Server Actions** — every one re-derives identity via `getAuthenticatedContext()` and
+  fails closed (throws, or returns null for the read-only `loadConnectPayoff`). None accepts a
+  caller identity from input. Confirmed by direct read of all 7 `"use server"` files. [verified in code]
+- **`(app)/*` route group** — a single auth gate in `app/(app)/layout.tsx` redirects to `/sign-in`
+  on null context and renders a fail-closed error screen (re-throwing unrecognized errors) on the
+  three `ensureUser` throw cases. This is UX convenience; the real per-request boundary is each
+  page/action calling `getAuthenticatedContext()` itself. [verified in code]
+
+### Token / session handling
+
+- Minted Supabase token: 5-minute lifetime, `sub` = `public.users.id`, `role: authenticated`,
+  ES256, per-request, **never stored, never sent to the browser** (verified: no client component
+  references `supabase`/`accessToken`/`Bearer`; not in the built bundle, Step 1). No sensitive data
+  in its payload. [verified in code + bundle grep]
+- Kinde session cookies: `HttpOnly`, `SameSite=Lax`, `Secure` in production, `path=/`
+  (`GLOBAL_COOKIE_OPTIONS` in the installed SDK). Logout (`/api/auth/logout`) destroys them.
+  Revocation on password change is delegated to Kinde (passwordless — no in-app password). [verified in installed SDK]
+- Nothing sensitive is stored in client-side storage: the only `localStorage` key is a random
+  non-identity `deviceId` that plays no role in any verification check (Step 8). [verified]
+
+### Auth-adjacent flows (the commonly-missed ones)
+
+**Not applicable, with evidence.** Sign-in is Kinde **passwordless** (one-time emailed code);
+there is no in-app password, password reset, email change, account recovery, magic-link
+generation, MFA enrollment, or impersonation feature. Searched `apps/web/src` for
+`reset|recover|magic|forgot|mfa|otp|impersonat|password` — the only matches are (a) Settings copy
+that deliberately tells the user "there is no password to change" and its test
+(`settings/page.tsx`, `settings-honesty.test.tsx`), and (b) unrelated words. All of these flows
+live in Kinde's hosted pages, outside this codebase's trust boundary. The one auth-token-shaped
+flow the app *does* implement — the per-request Kinde→Supabase mint — binds the minted token's
+`sub` to the JWKS-verified identity and to nothing the caller supplied. [verified in code]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S2-1 | Low | Four security-critical docstrings (`current-user.ts:20,83`, `kinde-identity.ts:14,23`, `same-origin.ts:8`, `api/auth/[kindeAuth]/route.ts:10`) assert the Kinde session cookies are **"encrypted with our client secret"** and treat that encryption as the reason cookie contents "cannot be authored by the browser." The installed `@kinde-oss/kinde-auth-nextjs` does **not** encrypt: it stores plaintext JWTs in `HttpOnly`+`SameSite=Lax` cookies (verified in `node_modules`). No vulnerability today — the real protections (`HttpOnly` blocks XSS reads; the SDK re-validates every token against Kinde's JWKS on read, and the app independently re-verifies the access token) are intact and stronger than encryption would be. But a maintainer trusting the false premise (e.g. reading a cookie claim without the JWKS/`sub` guard) could introduce one. | **Fixed**: all six comment sites corrected to describe the actual mechanism (HttpOnly + mandatory on-read JWKS validation), including the nuance that `HttpOnly` does not stop the account holder editing their own cookie, which is why the signature check is what matters. Comments only — no behavior change. |
+| S2-2 | — | Token validation is signature-verified with alg pinning + issuer + azp + expiry; no decode-and-trust anywhere; fail-closed on JWKS outage; auth-adjacent flows delegated to Kinde. | No action needed. |
+
+**Build/test after step:** comment-only changes; `pnpm turbo build` + `pnpm turbo test` re-run green (below).

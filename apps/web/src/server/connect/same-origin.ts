@@ -5,8 +5,9 @@
  * WHY THIS EXISTS, AND WHY "SameSite=Lax ALREADY COVERS IT" IS NOT THE ANSWER
  *
  * These routes are authenticated by a COOKIE. `getAuthenticatedContext()` reads
- * the Kinde session out of `@kinde-oss/kinde-auth-nextjs`'s encrypted HttpOnly
- * cookie, which the browser attaches to a request because of where it is going,
+ * the Kinde session out of `@kinde-oss/kinde-auth-nextjs`'s HttpOnly cookie
+ * (plaintext, not encrypted — the token is JWKS-verified on read instead),
+ * which the browser attaches to a request because of where it is going,
  * not because of who caused it to be sent. That is the definition of a CSRF
  * surface: a page on `evil.example` can cause the victim's browser to POST here
  * with the victim's session, and every check downstream — the JWKS

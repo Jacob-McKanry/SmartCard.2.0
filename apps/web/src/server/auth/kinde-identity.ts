@@ -11,15 +11,17 @@ import { kindeAllowedClientIds, kindeIssuerUrl } from "@/server/env";
  * WHY THIS EXISTS AT ALL, GIVEN THE KINDE SDK ALREADY HAS A SESSION
  *
  * On the web, `@kinde-oss/kinde-auth-nextjs` performs the authorization-code
- * exchange server-side and keeps the tokens in encrypted HttpOnly cookies
- * (§5.1), so a token read back out of that session did come from Kinde. But
+ * exchange server-side and keeps the tokens in `HttpOnly` cookies (§5.1) — not
+ * encrypted, contrary to what several comments in this app used to say; the SDK
+ * stores plaintext JWTs and re-validates them against Kinde's JWKS on read, so
+ * a token read back out of that session did come from Kinde. But
  * §5.3 specifies one `ensureUser` for *both* platforms, and the mobile path
  * (§5.2) is a bearer token arriving on an HTTP request from a device we do not
  * control — there, "the client says this token is fine" is not a statement
  * about anything. Verifying in one place means the web and mobile paths cannot
  * drift into having different amounts of trust in the same value, and it means
- * the web path is not silently relying on a property (cookie encryption) that
- * the mobile path does not have.
+ * the web path is not silently relying on a cookie property (HttpOnly, and the
+ * SDK's own on-read JWKS validation) that the mobile path does not have.
  *
  * WHAT AN ATTACK WOULD LOOK LIKE, AND WHICH CHECK STOPS IT
  *

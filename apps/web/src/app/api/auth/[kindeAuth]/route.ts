@@ -7,9 +7,10 @@ import { handleAuth } from "@kinde-oss/kinde-auth-nextjs/server";
  * This is the whole of §5.1's "web (Next.js) — confidential client" flow. The
  * SDK redirects to Kinde, receives the authorization code on the callback, and
  * exchanges it for tokens **on the server** using `KINDE_CLIENT_SECRET`, then
- * writes the result into encrypted HttpOnly cookies. Nothing in that sequence
- * is reachable from browser JavaScript, which is why an XSS bug in this app
- * cannot steal a session.
+ * writes the result into `HttpOnly` cookies (plaintext JWTs, not encrypted —
+ * the SDK re-validates each against Kinde's JWKS on read). Nothing in that
+ * sequence is reachable from browser JavaScript, which is why an XSS bug in
+ * this app cannot steal a session.
  *
  * There is deliberately no custom logic here. Everything SmartCard-specific
  * about a login — resolving the Kinde identity to a `public.users` row, minting

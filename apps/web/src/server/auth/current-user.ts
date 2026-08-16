@@ -17,8 +17,11 @@ import { rlsClient } from "@/server/supabase/rls-client";
  * The whole chain, in order, with the reason each link exists:
  *
  *   1. Read the Kinde session. Confidential client, code exchanged server-side,
- *      tokens in encrypted HttpOnly cookies (§5.1) — so browser JavaScript,
- *      including anything injected by an XSS bug, cannot read the token.
+ *      tokens in `HttpOnly` cookies (§5.1) — so browser JavaScript, including
+ *      anything injected by an XSS bug, cannot read the token. (The cookies are
+ *      `HttpOnly` but NOT encrypted — see `withProfileClaimsFromSession` below
+ *      for what actually makes the contents trustworthy, corrected in the
+ *      2026-08 audit.)
  *   2. Verify that token against Kinde's JWKS (`verifyKindeAccessToken`).
  *   3. Resolve it to a `public.users` row (`ensureUser`), with the service role,
  *      because the client must not be able to pick its own `kinde_user_id`.
@@ -79,9 +82,20 @@ export const getAuthenticatedContext = cache(async (): Promise<AuthenticatedCont
  *
  * These are only ever used to seed a *new* `users` row, and only when the
  * access token did not carry them. They are read from the SDK's session, which
- * on the web is safe for a specific reason: that session lives in a cookie the
- * SDK encrypts with our client secret and was populated by a server-side code
- * exchange, so its contents cannot be authored by the browser.
+ * on the web is safe for a specific reason — but NOT the reason this comment
+ * used to give. It claimed the session cookie is "encrypted with our client
+ * secret"; that is not true of the installed `@kinde-oss/kinde-auth-nextjs`
+ * (verified in `node_modules`, 2026-08 security audit step 2): the tokens are
+ * stored as plaintext JSON in cookies that are `HttpOnly` + `SameSite=Lax` but
+ * not encrypted. The real reason `session.getUser()`'s claims are trustworthy
+ * is that the SDK validates every token it reads back out of those cookies
+ * against Kinde's JWKS before returning it (`getIdToken`/`getAccessToken` both
+ * call `@kinde/jwt-validator`), so a cookie an attacker edited by hand — the
+ * one thing `HttpOnly` does not stop, since the account holder can still reach
+ * their own cookies through devtools or a proxy — fails signature validation
+ * and yields no claims. `HttpOnly` is what keeps injected page script from
+ * reading the token; the JWKS check is what keeps a forged one from being
+ * believed.
  *
  * **That reasoning does not transfer to mobile.** §5.2's flow sends a bearer
  * token to our API with no such cookie, so when the mobile path is built it
