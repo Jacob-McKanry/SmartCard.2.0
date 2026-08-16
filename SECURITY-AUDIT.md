@@ -706,3 +706,142 @@ request body, or unnecessary PII.** The protections are deliberate and layered:
 |---|---|---|---|
 | S10-1 | Low | **No error-monitoring/alerting is wired into the web runtime** (no Sentry/Datadog/etc.). Exceptions go to Vercel's runtime logs, which are ephemeral and unalerted — so a spike in permission-denials, or a *silently dead* card-tap notification pipeline (which the code's own §4.5 comments call a security regression precisely because "no single connection was affected"), would only be caught by someone actively reading logs. | **Not fixed — adding a monitoring service is a paid-service / design decision** the audit rules say to log, not attempt. **Recommended in Step 11:** wire an error-monitoring service (the mobile scoping doc already anticipates a `SENTRY_DSN`) and add an alert on the `[push]`/`[geocode]` "not delivered/failed" log lines and on `connection_attempts` rejection-rate. |
 | S10-2 | — | Logs contain no secrets/tokens/session-ids/PII (IPs hashed, push tokens redacted, geocode URL never logged); security-relevant events are durably audited in dedicated tables. | No action needed. |
+
+---
+
+## Step 11 — Final report
+
+### Headline
+
+This is an exceptionally well-secured codebase. Authorization is enforced in Postgres (default-deny
+RLS, forced, column-scoped grants, `security definer`/`invoker` RPCs that derive the actor from the
+JWT), authentication is genuine JWKS verification with algorithm pinning, the social-graph write
+path is structurally single-sourced, secrets are clean in tree and history, and injection surfaces
+are essentially absent. **No Critical or High finding was discovered.** The audit surfaced **one
+Medium** (a rate-limit spoofing gap that is safe on the production domain but not on the raw Vercel
+URL) and a set of **Low** findings, most of which were fixed on the branch; the rest are logged
+with concrete recommendations.
+
+### 1. All findings by severity
+
+**Critical:** none.
+
+**High:** none.
+
+**Medium**
+- **S6-1 — Per-IP rate-limit subject spoofable on non-Cloudflare ingress.** `clientIpFrom` falls
+  back to the client-suppliable left-most `X-Forwarded-For` when `cf-connecting-ip` is absent.
+  *Exploit:* an attacker with a leaked list of valid card codes, reaching the app via its
+  `*.vercel.app` URL (not behind Cloudflare), rotates `X-Forwarded-For` to defeat the 40/hr per-IP
+  cap and bulk-scrapes cardholders' name/phone/email/socials from the anonymous `/card/<code>` +
+  vCard endpoints. Bounded by the non-spoofable per-card limit (20→10/hr). *Fix: manual/infra —
+  see §3.* Safe today on `smartcard.tech` (Cloudflare present).
+
+**Low** (fixed on branch unless noted)
+- **S1-1** — live Supabase project ref hardcoded in a test fixture → **fixed** (fictional ref).
+- **S1-2** — missing `.env.example` the gitignore carves out → **fixed** (added, names only).
+- **S2-1** — six docstrings falsely claim the Kinde cookies are "encrypted"; real protection is
+  HttpOnly + on-read JWKS validation → **fixed** (comments corrected).
+- **S3-1** — `updateEventAction` accepted `cover_image_path` from a form field (contradicting its
+  own invariant; no disclosure due to per-viewer Storage RLS) → **fixed** (field removed).
+- **S8-1** — `completeOnboardingAction` returned raw PostgREST error text to the browser → **fixed**
+  (routed through `safeActionErrorMessage`).
+- **S9-1** — CSP `'unsafe-inline'` justified by a now-false "zero inline sinks" claim → **fixed**
+  (comments corrected; the one sink is safe/escaped; nonce work recommended).
+- **S9-2** — CSP `img-src` fails open to a `*.supabase.co` wildcard if `SUPABASE_URL` is missing at
+  build → not changed (intentional, low-impact); mitigation is keeping the var in the build env.
+- **S3-3** — two service functions rely on RLS alone (no belt-and-braces `.eq`) → not a live bug
+  (policies verified); documented.
+- **S5-1** — form-fed insert/update schemas lack `.strict()` → **attempted, reverted** (broke a test
+  that deliberately asserts the strip-not-reject contract); left as a recommendation.
+- **S6-2** — upload MIME validated by declared type, not magic bytes → no path to exploit (private
+  buckets + nosniff + signed-URL serving); noted.
+- **S7-1** — `image-size` DoS (High CVE) in Expo/Metro build tooling, not in the deployed runtime →
+  patch is a forbidden major bump; recommended as a manual toolchain upgrade.
+- **S10-1** — no error-monitoring/alerting on the web runtime → recommended (paid service).
+
+**Not applicable, with evidence:** password reset / MFA / magic-link / email-change flows (all
+Kinde-hosted, no in-app implementation); inbound webhooks (none exist); prompt injection (no LLM in
+the runtime); CI/CD injection (no `.github/`, no `vercel.json`, no pipeline files).
+
+### 2. What was fixed on the branch, per step
+
+| Step | Fix committed |
+|---|---|
+| 1 | Test fixture de-identified (fictional Supabase ref); `.env.example` template added |
+| 2 | Six security-critical docstrings corrected from "encrypted cookie" to the real HttpOnly + JWKS-on-read mechanism |
+| 3 | `updateEventAction` no longer accepts `cover_image_path` from client form input |
+| 4 | (verification only — no findings) |
+| 5 | (no exploitable findings; `.strict()` hardening attempted then reverted to keep tests green) |
+| 6 | (Medium logged — infra fix; no safe in-repo code change) |
+| 7 | (advisory documented — patch is a forbidden major bump) |
+| 8 | `completeOnboardingAction` error path redacted through `safeActionErrorMessage` |
+| 9 | CSP `'unsafe-inline'` rationale corrected in `next.config.ts` and `local-timestamp.tsx` |
+| 10 | (logs verified clean; monitoring gap logged) |
+
+Every commit is scoped to one step, build + test (+ lint) were re-run green after each, and all
+behavior is preserved (no feature removed, no test disabled).
+
+### 3. What needs manual action from you (and why each needs a human)
+
+1. **[Medium, infra] Force all ingress through Cloudflare (S6-1).** Enable Vercel **Deployment
+   Protection** on the project (or otherwise make the `*.vercel.app` URL unreachable except via
+   Cloudflare), so `cf-connecting-ip` is always present and the per-IP rate limit cannot be
+   spoofed. *Human because:* it is a Vercel/Cloudflare dashboard change outside the repo, and the
+   alternative in-code fix (changing which forwarded-header is trusted) depends on the exact proxy
+   topology and would mis-attribute every legitimate caller if guessed wrong.
+2. **[Low, dependency] Upgrade the Expo/Metro toolchain (S7-1)** to a release whose dependency
+   range pulls `image-size >= 2.0.3`. *Human because:* the patch is a **major** version bump the
+   audit rules forbid applying automatically, and it rides on an Expo SDK upgrade with its own
+   breaking-change review. No production runtime exposure today (build tooling for an unbuilt
+   mobile scaffold).
+3. **[Low, paid service] Wire error monitoring + alerting (S10-1)** into the web runtime (e.g.
+   Sentry — the mobile scoping doc already anticipates a DSN), with alerts on the `[push]`/`[geocode]`
+   failure lines and on `connection_attempts` rejection rate. *Human because:* it is a paid
+   third-party service and an account/config decision.
+4. **[design, recommendation] Nonce-based CSP (S9-1).** Replace `script-src 'unsafe-inline'` with a
+   per-request nonce in `middleware.ts` and pass it to the one inline script in `local-timestamp.tsx`.
+   *Human because:* it adds code to every request including the Kinde auth callbacks — a deliberate
+   change the codebase explicitly defers, not a header tweak.
+5. **[design, optional] `.strict()` on form-fed schemas (S5-1).** If you want the defense-in-depth,
+   adopt `.strict()` on `userProfileUpdateSchema`/`socialLinkInsertSchema`/`eventInsertSchema` *and*
+   update `onboarding.test.ts` in the same change (it currently asserts the strip-not-reject
+   contract on purpose). *Human because:* it changes a documented, tested contract — a decision, not
+   a bug fix.
+6. **Rotation: nothing to rotate.** The secret scan of the working tree and full git history found
+   **zero** credential values, and no `.env*` was ever committed. No key needs rotation as a result
+   of this audit.
+
+### 4. What could not be verified, and the access it would need
+
+- **Production/non-production credential separation.** The values live in Vercel and `.env.local`
+  (absent here by design); the README asserts distinct production values but the repo cannot prove
+  it. *Needs:* Vercel project env access.
+- **Cloudflare/Vercel ingress topology (bears on S6-1).** Whether the `*.vercel.app` URL is already
+  protected, and which forwarded header is authoritative in production. *Needs:* the hosting
+  dashboards.
+- **Supabase project posture applied to the live DB.** RLS/grants were verified by reading the
+  migration files, which are the source of truth; that they are *applied* as written (and that the
+  three "written but not applied" onboarding/deletion migrations get applied) needs the live DB —
+  *this environment's egress to Supabase is blocked, and running SQL against production is out of
+  scope.* The README records the team's own live-DB verifications.
+- **Supabase dashboard state:** that the legacy JWT secret is revoked, keys rotated, and the DB
+  port/dashboard network-restricted. *Needs:* Supabase dashboard access.
+- **Dependency completeness:** a full `depcheck`/deep-tree scan beyond `pnpm audit` was limited by
+  egress; the direct-dependency review found nothing amiss.
+
+### 5. Branch and how to open the PR
+
+All work is on **`claude/security-audit-00fgc0`** (this session's designated branch — used in place
+of the prompt's `security-audit-<YYYY-MM>` naming, per the session's branch directive), 11 commits,
+left **unmerged**. To open the PR yourself:
+
+```bash
+git push -u origin claude/security-audit-00fgc0
+gh pr create --base main --head claude/security-audit-00fgc0 \
+  --title "Security audit (2026-08): findings, fixes, and manual actions" \
+  --body-file SECURITY-AUDIT.md
+```
+
+(If you prefer the GitHub UI, push the branch and open a PR from `claude/security-audit-00fgc0`
+into `main`; paste `SECURITY-AUDIT.md` as the description.)
