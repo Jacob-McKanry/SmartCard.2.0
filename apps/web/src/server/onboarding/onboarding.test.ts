@@ -52,22 +52,36 @@ const read = (relative: string) => readFileSync(join(WEB_SRC, relative), "utf8")
 // ---------------------------------------------------------------------------
 
 describe("a client cannot set has_completed_signup", () => {
-  it("is dropped by the schema every profile write goes through", () => {
-    // `userProfileUpdateSchema` is the exact column-level UPDATE grant, and Zod
-    // strips unknown keys — so a client that posts the flag has it removed
-    // before a query is even built. That is the first of three independent
-    // stops; the grant is the second and the absence of any RPC is the third.
-    const parsed = userProfileUpdateSchema.parse({
+  it("is rejected by the schema every profile write goes through", () => {
+    // `userProfileUpdateSchema` is the exact column-level UPDATE grant, and it is
+    // `.strict()` (2026-08 security audit) — so a client that posts a key not on
+    // the grant does not get it quietly stripped, it gets the whole write
+    // refused. That is a louder, fail-closed first stop; the grant is the second
+    // and the absence of any RPC is the third.
+    const rejected = userProfileUpdateSchema.safeParse({
       first_name: "Sam",
       has_completed_signup: true,
       is_admin: true,
       status: "active",
     });
 
-    expect(parsed).not.toHaveProperty("has_completed_signup");
-    expect(parsed).not.toHaveProperty("is_admin");
-    expect(parsed).not.toHaveProperty("status");
-    expect(parsed.first_name).toBe("Sam");
+    expect(rejected.success).toBe(false);
+    // The refusal is an `unrecognized_keys` issue that names the offending keys,
+    // so a mistake is diagnosable rather than silent. (Strict objects report the
+    // unknown keys on `issue.keys`, with an empty `path`.)
+    const reportedKeys = rejected.success
+      ? []
+      : rejected.error.issues.flatMap((issue) =>
+          issue.code === "unrecognized_keys" ? issue.keys : [],
+        );
+    expect(reportedKeys).toEqual(
+      expect.arrayContaining(["has_completed_signup", "is_admin", "status"]),
+    );
+
+    // A write that names only granted columns still passes untouched.
+    const accepted = userProfileUpdateSchema.parse({ first_name: "Sam" });
+    expect(accepted.first_name).toBe("Sam");
+    expect(accepted).not.toHaveProperty("has_completed_signup");
   });
 
   it("is absent from the users UPDATE grant, which is the stop that actually holds", () => {

@@ -101,6 +101,15 @@ export const userProfileUpdateSchema = userRowSchema
     photo_path: true,
     email_opt_in: true,
   })
-  .partial();
+  .partial()
+  // `.strict()` so an unexpected property is a hard failure, not a silently
+  // stripped one — the same posture every connect request schema takes
+  // (`packages/types/src/connect`). This schema mirrors the column-level UPDATE
+  // grant, so a key that is not here (`is_admin`, `status`, `email`,
+  // `kinde_user_id`, `has_completed_signup`) is a key a client must never set;
+  // rejecting the whole write is a louder, fail-closed backstop than stripping
+  // it and proceeding, and it catches a future caller that builds this object
+  // by spreading form data rather than by naming fields (2026-08 security audit).
+  .strict();
 
 export type UserProfileUpdate = z.infer<typeof userProfileUpdateSchema>;

@@ -72,11 +72,17 @@ export const socialLinkUrlSchema = z
  * data. The RLS `with check` on that same migration would refuse it anyway;
  * this is the same rule enforced one layer earlier, at validation time.
  */
-export const socialLinkInsertSchema = z.object({
-  platform: z.string().trim().min(1, "Choose a platform.").max(100),
-  url: socialLinkUrlSchema,
-  display_order: integerSchema.default(0),
-});
+export const socialLinkInsertSchema = z
+  .object({
+    platform: z.string().trim().min(1, "Choose a platform.").max(100),
+    url: socialLinkUrlSchema,
+    display_order: integerSchema.default(0),
+  })
+  // `.strict()`: `user_id` is deliberately absent (set server-side from the
+  // session, never accepted from the client — see the header), so an insert
+  // carrying one is rejected rather than silently stripped. Same posture as the
+  // connect request schemas (2026-08 security audit).
+  .strict();
 
 export type SocialLinkInsert = z.infer<typeof socialLinkInsertSchema>;
 
@@ -87,6 +93,6 @@ export type SocialLinkInsert = z.infer<typeof socialLinkInsertSchema>;
  * `socialLinkInsertSchema`: reassigning a link to another profile is not a
  * thing an edit is allowed to do.
  */
-export const socialLinkUpdateSchema = socialLinkInsertSchema.partial();
+export const socialLinkUpdateSchema = socialLinkInsertSchema.partial().strict();
 
 export type SocialLinkUpdate = z.infer<typeof socialLinkUpdateSchema>;

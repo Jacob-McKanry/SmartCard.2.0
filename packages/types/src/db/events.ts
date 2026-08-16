@@ -168,7 +168,12 @@ export const eventInsertSchema = z.object({
   // Same constrained shape as the row schema — this is the half that actually
   // takes client input (see `eventCoverPathSchema`'s own comment).
   cover_image_path: eventCoverPathSchema.nullable().default(null),
-});
+})
+  // `.strict()` so a key not listed here — `host_user_id` above all, which is
+  // set server-side and must never come from a client — is rejected rather than
+  // silently stripped. Matches the connect request schemas' posture and the
+  // reason column-level grants exist (2026-08 security audit).
+  .strict();
 
 export type EventInsert = z.infer<typeof eventInsertSchema>;
 
@@ -181,6 +186,6 @@ export type EventInsert = z.infer<typeof eventInsertSchema>;
  * `eventInsertSchema` is deliberate and is the reason column-level grants exist
  * at all — RLS cannot say "this row but not that column".
  */
-export const eventUpdateSchema = eventInsertSchema.partial();
+export const eventUpdateSchema = eventInsertSchema.partial().strict();
 
 export type EventUpdate = z.infer<typeof eventUpdateSchema>;
