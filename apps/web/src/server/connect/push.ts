@@ -133,6 +133,34 @@ interface ExpoTicket {
 }
 
 /**
+ * Strips Expo push tokens out of a vendor error string before it is logged.
+ *
+ * WHY THIS IS NEEDED AT ALL. Expo puts the device's token inside the prose of
+ * several of its rejection messages — "You are sending messages too frequently
+ * to device ExponentPushToken[xxxxxxxx]" is the common one — so logging
+ * `ticket.message` verbatim writes a live token into the runtime log. That is
+ * the one value in this module worth protecting: a push token is a device's
+ * ADDRESS, and the whole point of the §4.5 control is that the card owner
+ * receives an alert nobody else can forge, suppress, or spoof. It also sits
+ * squarely under this codebase's existing rule that logs must not accumulate
+ * things about a user that the feature did not need — the same reasoning that
+ * has IPs hashed in `request-context.ts` before anything can log them.
+ *
+ * Deliberately a redaction rather than dropping the message: the surrounding
+ * text ("sending messages too frequently") is exactly the operational signal
+ * §4.5 wants visible, and throwing it away to protect the token would trade a
+ * privacy problem for a monitoring one.
+ *
+ * `token.id` is logged alongside instead — our own primary key for the row,
+ * which identifies the device for debugging without being usable to reach it.
+ */
+export function redactPushTokens(message: string | undefined): string | undefined {
+  if (message === undefined) return undefined;
+  // Covers both spellings Expo uses (`ExponentPushToken[...]`, `ExpoPushToken[...]`).
+  return message.replace(/Exp(?:o|onent)PushToken\[[^\]]*\]/g, "[redacted-push-token]");
+}
+
+/**
  * Sends one notification to every live device a user has registered.
  *
  * Returns a small report rather than throwing, always. The caller logs it; no
@@ -219,7 +247,10 @@ export async function sendCardTapNotification(
       }
       console.error("[push] Expo rejected a message", {
         ownerUserId: notification.ownerUserId,
-        error: ticket.details?.error ?? ticket.message,
+        // The device's own id, which is OURS and is safe to log — not the
+        // Expo push token, which is the device's address.
+        tokenId: token.id,
+        error: redactPushTokens(ticket.details?.error ?? ticket.message),
       });
     }
 

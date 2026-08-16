@@ -1,5 +1,7 @@
 import "server-only";
 
+import { UserFacingError } from "@/server/errors";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -37,6 +39,6 @@ export async function revokeCard(supabase: SupabaseClient, cardId: string, owner
     throw new Error(`Failed to revoke card: ${error.message}`, { cause: error });
   }
   if (!data || data.length === 0) {
-    throw new Error("This card couldn't be revoked — it may already be revoked or isn't yours.");
+    throw new UserFacingError("This card couldn't be revoked — it may already be revoked or isn't yours.");
   }
 }

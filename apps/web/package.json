@@ -19,7 +19,6 @@
     "@smartcard/core": "workspace:*",
     "@smartcard/types": "workspace:*",
     "@supabase/supabase-js": "^2.112.2",
-    "@tanstack/react-query": "^5.101.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jose": "^6.2.8",
@@ -31,8 +30,7 @@
     "react-dom": "19.2.8",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
-    "zod": "^4.4.3",
-    "zustand": "^5.0.14"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

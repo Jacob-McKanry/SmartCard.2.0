@@ -11,6 +11,7 @@ import {
 } from "@smartcard/types";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
+import { safeActionErrorMessage, UserFacingError } from "@/server/errors";
 import {
   createEvent,
   decideRsvp,
@@ -65,13 +66,19 @@ async function requireContext(): Promise<AuthenticatedContext> {
   if (context === null) {
     // Fail closed (CLAUDE.md): an action invoked with no valid session is
     // refused outright, never treated as an anonymous request for nothing.
-    throw new Error("You need to be signed in to do that.");
+    throw new UserFacingError("You need to be signed in to do that.");
   }
   return context;
 }
 
+/**
+ * Only a message deliberately written for a person crosses to the browser;
+ * anything else becomes one generic sentence with the real error logged
+ * server-side. See `@/server/errors` for why this is opt-in rather than a
+ * filter over raw database text.
+ */
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+  return safeActionErrorMessage(error, "events");
 }
 
 function firstIssue(error: ZodError): string {

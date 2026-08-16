@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
+import { UserFacingError } from "@/server/errors";
 import { removeConnection } from "@/server/connections/connections-service";
 import { revokeCard } from "@/server/cards/cards-service";
 
@@ -29,7 +30,7 @@ import { revokeCard } from "@/server/cards/cards-service";
 async function requireContext(): Promise<AuthenticatedContext> {
   const context = await getAuthenticatedContext();
   if (context === null) {
-    throw new Error("You need to be signed in to do that.");
+    throw new UserFacingError("You need to be signed in to do that.");
   }
   return context;
 }

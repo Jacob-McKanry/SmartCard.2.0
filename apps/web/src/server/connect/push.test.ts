@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cardTapNotificationBody } from "./push";
+import { cardTapNotificationBody, redactPushTokens } from "./push";
 
 /**
  * §7.5 constrains what a push notification may contain, and the constraint is
@@ -49,5 +49,45 @@ describe("cardTapNotificationBody", () => {
     const body = cardTapNotificationBody({ tapperDisplayName: "Sam Rivera", otherTapCount: 0 });
     expect(body).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/i);
     expect(body).not.toMatch(/ExponentPushToken/);
+  });
+});
+
+describe("redactPushTokens", () => {
+  /**
+   * Expo embeds the device's push token in the prose of several rejection
+   * messages, so logging `ticket.message` verbatim would write a live token —
+   * a device's address — into the runtime log.
+   */
+  it("removes an ExponentPushToken from a vendor error string", () => {
+    expect(
+      redactPushTokens(
+        "You are sending messages too frequently to device ExponentPushToken[abc123XYZ]",
+      ),
+    ).toBe("You are sending messages too frequently to device [redacted-push-token]");
+  });
+
+  it("removes the ExpoPushToken spelling too", () => {
+    expect(redactPushTokens("bad token ExpoPushToken[zz-99]")).toBe(
+      "bad token [redacted-push-token]",
+    );
+  });
+
+  it("removes every token when a message names more than one", () => {
+    const out = redactPushTokens("ExponentPushToken[a] and ExponentPushToken[b] both failed");
+    expect(out).toBe("[redacted-push-token] and [redacted-push-token] both failed");
+    expect(out).not.toContain("ExponentPushToken[");
+  });
+
+  it("keeps the operational signal — it redacts rather than dropping the message", () => {
+    // §4.5 wants "sending too frequently" visible; throwing the whole message
+    // away to protect the token would trade a privacy problem for a monitoring one.
+    expect(redactPushTokens("MessageRateExceeded for ExponentPushToken[x]")).toContain(
+      "MessageRateExceeded",
+    );
+  });
+
+  it("passes through a message with no token, and undefined", () => {
+    expect(redactPushTokens("MessageTooBig")).toBe("MessageTooBig");
+    expect(redactPushTokens(undefined)).toBeUndefined();
   });
 });

@@ -3,6 +3,8 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { UserFacingError } from "@/server/errors";
+
 /**
  * Upload/replace/remove for a user's own profile photo.
  *
@@ -46,7 +48,15 @@ const ALLOWED_MIME_TYPE = "image/webp";
 /** Mirrors `file_size_limit` on the bucket exactly: 5 * 1024 * 1024. */
 const MAX_BYTES = 5 * 1024 * 1024;
 
-export class InvalidPhotoError extends Error {
+/**
+ * Extends `UserFacingError` because every message it carries was written for
+ * the person who picked the file ("Photos must be WEBP images...", "That file
+ * is too large..."), so it is safe — and useful — to show unchanged. That makes
+ * the explicit `instanceof InvalidPhotoError` branch in `uploadPhotoAction`
+ * redundant for the message's sake; it is kept there because the action still
+ * distinguishes this case from a genuine failure.
+ */
+export class InvalidPhotoError extends UserFacingError {
   constructor(reason: string) {
     super(reason);
     this.name = "InvalidPhotoError";

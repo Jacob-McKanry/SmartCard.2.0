@@ -1,5 +1,7 @@
 import "server-only";
 
+import { UserFacingError } from "@/server/errors";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   meetingParticipantConsentUpdateSchema,
@@ -336,6 +338,6 @@ export async function removeConnection(supabase: SupabaseClient, connectionId: s
     throw new Error(`Failed to remove connection: ${error.message}`, { cause: error });
   }
   if (!data || data.length === 0) {
-    throw new Error("This connection couldn't be removed — it may already be gone.");
+    throw new UserFacingError("This connection couldn't be removed — it may already be gone.");
   }
 }

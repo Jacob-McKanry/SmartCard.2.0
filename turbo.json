@@ -32,7 +32,26 @@
         "SUPABASE_SERVICE_ROLE_KEY",
         "SUPABASE_JWT_SIGNING_KEY",
         "QR_SIGNING_SECRET",
-        "CONNECT_IP_HASH_SALT"
+        "CONNECT_IP_HASH_SALT",
+        // The two OPTIONAL credentials (`env.ts` returns null rather than
+        // throwing when either is unset). They were missing from this list,
+        // and being optional is exactly what made that dangerous rather than
+        // harmless: a required variable stripped by Turbo fails the build
+        // loudly, the way KINDE_ISSUER_URL did above, while an optional one
+        // stripped by Turbo just makes the feature quietly stop existing.
+        //
+        // EXPO_ACCESS_TOKEN is the one that matters for security. It is the
+        // credential behind the card-tap push notification, which §4.7 threat
+        // 7 relies on as the ONLY control on a stolen card — Q17 removed the
+        // confirmation step, so detection latency is the whole defence. §4.5
+        // is explicit that a notification pipeline dead for a week is a
+        // security regression even though no single connection was affected.
+        // Stripped here, it is dead in exactly that silent way.
+        //
+        // GEOCODING_API_KEY is cosmetic by comparison (a null place_label),
+        // but it fails the same silent way, so it belongs here too.
+        "GEOCODING_API_KEY",
+        "EXPO_ACCESS_TOKEN"
       ]
     },
     "lint": {
