@@ -394,3 +394,55 @@ mode; `anon` holds no grant anywhere in the schema.** [verified in code]
 | ID | Sev | Finding | Disposition |
 |---|---|---|---|
 | S4-1 | — | RLS is enabled and forced on every table (public and legacy); no permissive/allow-all policy; `anon` granted nothing; service-role confined to enumerated server callers and absent from the client; least-privilege connection roles; no over-return (explicit column lists throughout, no row spreads); both Storage buckets private with scoped policies. | No action needed — no findings. |
+
+---
+
+## Step 5 — Input validation and injection
+
+A dedicated deep sweep (all seven sub-categories) plus my own independent verification. **Zero
+exploitable injection or validation vulnerabilities.** Category-by-category, with the patterns
+searched:
+
+- **SQL/NoSQL injection — none.** All data access is the parameterized PostgREST builder
+  (`.from().select().eq().in()`); there is **no** `.or(`, `.ilike(`, `.like(`, `.textSearch(`,
+  `.match(`, or raw-SQL string anywhere in `apps/web/src` or `packages` (a source-scan test,
+  `no-second-write-path.test.ts`, actively *forbids* those shapes on `users`/`social_links`).
+  `.rpc()` calls pass named bind parameters. The only interpolated dynamic SQL is the default-deny
+  loop, which uses `format('… %I …', t)` — **`%I` identifier quoting over a hardcoded table-name
+  array**, no user input. [verified in code]
+- **XSS — one sink, safe.** `local-timestamp.tsx:149` is the only `dangerouslySetInnerHTML`; its
+  interpolated values go through `JSON.stringify(...).replaceAll("<","\\u003c")` so they cannot
+  close the `<script>` tag, and the inputs are a React `useId()` and a DB timestamp, not free
+  text. Everything else renders through React's default escaping. (The CSP `'unsafe-inline'`
+  interaction is a Step 9 item.) [verified in code]
+- **Command injection — none.** No `child_process`/`exec`/`spawn`/`execFile`/shell-out anywhere;
+  image handling is delegated entirely to Supabase Storage, no local subprocess. [verified by grep]
+- **Path traversal — none.** Every Storage key is server-derived: `${userId}/${randomUUID()}.webp`
+  (profile) and `${eventId}/cover.{ext}` where `ext` comes from a fixed media-type map, never the
+  client filename. Reads (`createSignedUrl`/`download`) use `photo_path` read from the DB, not from
+  request input. Backstopped by bucket RLS that re-parses and validates the key. [verified in code]
+- **SSRF — none.** The only two server-side fetches target **fixed constant hosts**
+  (`api.mapbox.com`, `exp.host`); the sole user-derived parts are two `z.number().min().max()`
+  range-validated coordinates in the Mapbox URL path — they cannot alter the host or reach
+  `169.254.169.254`/internal addresses. The JWKS `new URL` is built from a trusted env value.
+  No user-controlled host reaches any fetch. [verified in code]
+- **Deserialization / templating — none.** No `eval`/`new Function` in shipped code. `JSON.parse`
+  is used on the request body (typed `unknown`, then run through a `.strict()` Zod schema; token
+  length-capped at 4096 *before* any MAC) and on a trusted env var. QR-token base64 decode is
+  length-bounded and happens only *after* signature verification. No template engine is fed user
+  input; no LLM exists in the runtime (prompt injection N/A). [verified in code]
+- **Server-side validation coverage — good.** Every connect request schema is `.strict()`;
+  every Route Handler and Server Action runs request fields through a Zod schema before use;
+  GPS coords, card codes, UUIDs, and RSVP intents are all validated. File uploads are validated
+  by MIME + size at the app *and* enforced by the bucket; bound route ids reach only ANDed
+  `.eq()`/RPCs that re-derive authorization from the JWT. [verified in code]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S5-1 | Low (not applied) | The form-fed insert/update schemas (`userProfileUpdateSchema`, `socialLinkInsertSchema`/`Update`, `eventInsertSchema`/`Update`) are plain `z.object()` — they **strip** unknown keys rather than `.strict()`-rejecting them, unlike every connect request schema. Not exploitable (real callers build these objects from explicitly-named `formData.get()` fields, so no unknown key is ever present; the column-level grant + RLS are the actual mass-assignment boundary). | **Attempted `.strict()`, then reverted.** Applying it broke `onboarding.test.ts`, which *deliberately* asserts the schema **strips** `has_completed_signup`/`is_admin`/`status` (documenting the strip-not-reject contract as "convenience; the grant is the stop that actually holds"). Changing strip→reject alters a tested, intentional contract — outside "preserve existing behavior," and the audit rule is to stop rather than work around a broken test. **Left as a recommendation** for the owner (Step 11): if adopted, it is a schema change *and* a test update to make together, deliberately. |
+| S5-2 | — | No SQL/NoSQL injection, no command injection, no path traversal, no SSRF, no unsafe deserialization; one XSS sink verified safe; comprehensive server-side validation. | No action needed. |
+
+**Build/test after step:** the `.strict()` change was reverted; tree is back to the last green
+state; `pnpm turbo test` passes (3/3).
