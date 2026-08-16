@@ -322,3 +322,75 @@ Every authenticated write was traced to the check that constrains it:
 | S3-2 | Low→Step 8 | `completeOnboardingAction` (`app/onboarding/actions.ts:96-99`) returns raw `error.message` to the browser — the only action file not routed through `safeActionErrorMessage`, so a PostgREST error naming a table/column/policy could reach the client. Cross-referenced here because it is an authz-adjacent write; **fixed in Step 8** (error-handling), where the redaction helper lives. | Deferred to Step 8. |
 | S3-3 | — | `removeConnection` and `setMeetingLocationVisibility` carry no application-layer ownership filter, unlike every sibling function. Verified the RLS policies fully close the IDOR today; noted as the one place a future switch to the service-role client (or a policy regression) would have no second layer. Not a live bug. | No code change — the belt-and-braces `.eq()` would be defensive-only and the existing tests + policies already assert the behavior. Documented for reviewers. |
 | S3-4 | — | No IDOR, no mass-assignment, no client-settable role/privilege, no internal-trust bypass found across all 25 actions, 7 route handlers and 6 client-reachable RPCs. | No action needed. |
+
+---
+
+## Step 4 — Data access rules
+
+### RLS coverage — every table
+
+The datastore is Supabase Postgres; RLS is the row/table permission system. The default-deny
+migration (20260809211000) enables **and forces** RLS and revokes all grants from `anon`/
+`authenticated` on the original 15 `public` tables. I verified that **every table created after
+it** repeats the same three lines (enable + force + revoke) before granting anything back:
+
+| Table | RLS enabled+forced | Client grants |
+|---|---|---|
+| `user_push_tokens` | yes | owner-scoped select/insert/update/delete (policies on `user_id = current_user_id()`) |
+| `cities` | yes | select-only, `using(true)` (a dropdown list; no person-data) |
+| `rate_limit_events` | yes | **none** — service-role only |
+| `card_preview_views` | yes | column-scoped insert only; no client read (audit log) |
+| `event_invites` | yes | scoped select + 3-column insert with graph-check WITH CHECK |
+
+Three tables (`connection_attempts`, `app_config`, `pending_connections`) are **deliberately
+policy-less and grant-less** (RLS forced, so every row denies) — the service-role-only audit
+log, the verification thresholds, and an unbuilt flow. This is the intended "RLS enabled, no
+policy" state the linter flags; not a defect. The `legacy` schema (archived contact-exchange
+PII) has **no schema USAGE** for client roles, RLS forced on its table, and no grants — it is
+unreachable over PostgREST regardless of any table grant. **No table is in permissive/allow-all
+mode; `anon` holds no grant anywhere in the schema.** [verified in code]
+
+### Service-role / admin credential exposure
+
+- The service-role key bypasses RLS and is used by exactly the enumerated server-only callers
+  (`ensureUser`, the connect store, geocode, push, the connect service's notify, the anonymous
+  card-preview store) — never reachable by any client. Confirmed in Step 1 it is unprefixed,
+  `server-only`, and absent from the built client bundle. A source-scan test
+  (`no-second-write-path.test.ts`) enforces the caller allow-list. [verified in code + bundle grep]
+
+### Least privilege on DB credentials
+
+- The request path connects as **`authenticated`** via the minted 5-minute JWT — narrow
+  column-scoped grants, every row filtered by RLS. The app never connects as `postgres`/owner
+  for request work. The service role (which carries BYPASSRLS, inherent to Supabase) is confined
+  to the narrow caller set above; the graph-write and rate-limit functions it calls are
+  `security invoker` specifically so a mis-granted EXECUTE lands on a privilege-less role and
+  fails rather than bypassing RLS. This is least-privilege as far as Supabase's role model allows.
+  [verified in code]
+
+### Over-return of sensitive fields
+
+- **No `select("*")` anywhere** in `apps/web/src` (the one textual match is a doc comment).
+  Every read uses an explicit column list. **No raw database row is spread into a response**
+  (`...row`/`...data` appears only in a comment asserting its own absence). [verified by grep]
+- The high-risk surfaces each use a hardcoded, field-by-field projection: the anonymous card
+  preview (`PREVIEW_COLUMNS` — 7 fields; `status`/`photo_path` used internally, never returned
+  raw), the feed service (explicit `id, first_name, last_name, username, photo_path`), the host
+  RSVP queue (name/username/photo_path only — no email/phone), and the vCard builder (6 named
+  properties). The `users` SELECT *grant itself* is column-scoped so `is_admin`/`kinde_user_id`/
+  `status`/`email_verified` cannot be read even by a direct PostgREST query. Password hashes do
+  not exist in this system (Kinde is the sole IDP; legacy hashes were never imported). [verified in code]
+
+### Storage buckets
+
+- `profile-photos` and `event-covers` are both created with `public = false` (private), with
+  MIME allow-lists and 5 MiB size caps at the bucket level, and per-object RLS policies scoped to
+  owner (`{user_id}/` prefix) / host (`is_event_host` on the event id parsed from the key) /
+  `can_see_event`. Nothing is publicly listable or readable; images are served only through
+  short-lived signed URLs. [verified in code]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S4-1 | — | RLS is enabled and forced on every table (public and legacy); no permissive/allow-all policy; `anon` granted nothing; service-role confined to enumerated server callers and absent from the client; least-privilege connection roles; no over-return (explicit column lists throughout, no row spreads); both Storage buckets private with scoped policies. | No action needed — no findings. |
