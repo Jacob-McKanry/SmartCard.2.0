@@ -222,10 +222,21 @@ export async function updateEventAction(
     "timezone",
     "venue_name",
     "venue_address",
-    "cover_image_path",
   ] as const) {
     if (formData.has(field)) raw[field] = textOrNull(formData, field);
   }
+  // `cover_image_path` is deliberately NOT read from the form here — see the
+  // invariant stated in `uploadEventCoverAction`'s header ("cover_image_path is
+  // never something a form field supplies"). The cover is owned exclusively by
+  // `uploadEventCoverAction`/`removeEventCoverAction`, which compute the storage
+  // key `{event_id}/cover.{ext}` server-side so no request can point an event's
+  // cover at an arbitrary object key. This loop used to include the field,
+  // which made that invariant false: a host could set their own event's
+  // `cover_image_path` to any `{uuid}/cover.{ext}` value. RLS re-checks cover
+  // visibility per viewer (the `event-covers` SELECT policy signs through the
+  // viewer's own `can_see_event`), so it disclosed nothing — but it was an
+  // unnecessary client-controlled write to a security-relevant column, removed
+  // in the 2026-08 security audit so the code matches the invariant it claims.
   for (const field of ["latitude", "longitude", "capacity"] as const) {
     if (formData.has(field)) raw[field] = numberOrNull(formData, field);
   }

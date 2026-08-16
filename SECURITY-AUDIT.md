@@ -240,3 +240,85 @@ flow the app *does* implement — the per-request Kinde→Supabase mint — bind
 | S2-2 | — | Token validation is signature-verified with alg pinning + issuer + azp + expiry; no decode-and-trust anywhere; fail-closed on JWKS outage; auth-adjacent flows delegated to Kinde. | No action needed. |
 
 **Build/test after step:** comment-only changes; `pnpm turbo build` + `pnpm turbo test` re-run green (below).
+
+---
+
+## Step 3 — Authorization (IDOR, mass assignment, privilege, internal trust)
+
+The authorization model is unusually strong: it is enforced in Postgres (RLS + column-scoped
+grants + `security definer` helpers/RPCs) so an application bug returns *no* row rather than the
+wrong one. I read every policy migration and every service-layer write path directly.
+
+### IDOR — per-resource authorization
+
+Every authenticated write was traced to the check that constrains it:
+
+- **Two enforcement styles, both verified sound.** Most service functions apply belt-and-braces
+  `.eq(owner_column, userId)` *and* rely on RLS (`revokeCard` → `.eq("owner_user_id", …)`;
+  `updateOwnEvent` → `.eq("host_user_id", …)`; social-link edits → `.eq("user_id", …)`;
+  participant consent → `.eq("user_id", …)`). Two functions rely on RLS **alone**
+  (`removeConnection` → `.eq("id", connectionId).eq("status","active")` with no party filter;
+  `setMeetingLocationVisibility` → `.eq("id", meetingId)`). I read the backing policies:
+  `"either party may remove their own connection"` (USING requires caller ∈ {user_a,user_b} AND
+  status active; WITH CHECK forces status→removed — a *one-way* transition, cannot re-activate)
+  and `"participants may change meeting privacy flags"` (USING/WITH CHECK both require an
+  `EXISTS` participant row for the caller). Both hold; the IDOR is closed at the database.
+  Recorded as S3-3 (defense-in-depth observation, not a live bug). [verified in code]
+- **IDs from client input** (connectionId, eventId, meetingId, cardId, rsvpId, invited_user_id)
+  all land in an ANDed `.eq()` or an RPC that re-derives the actor from the JWT. Changing an id
+  reaches only rows the RLS policy already admits for that caller. No IDOR found. [verified]
+- **`connections`/`meetings`/`meeting_participants`/`meeting_locations`/`connection_sessions`
+  have no INSERT policy or grant for any client role** — the social graph can be written *only*
+  by `create_verified_connection` under the service role (§4.7 threat 4). A farmed account
+  hitting PostgREST directly is refused by Postgres before any app code runs. [verified in code]
+
+### Mass assignment
+
+- **`users`**: UPDATE grant is column-scoped to 9 profile columns; `is_admin`, `status`,
+  `email`, `email_verified`, `kinde_user_id`, `has_completed_signup` are all **outside** the
+  grant, so a direct PostgREST write cannot set them. SELECT grant is *also* column-scoped
+  (`is_admin`/`kinde_user_id`/`status` unreadable — 20260814230000). `ensureUser` inserts only
+  5 columns; `is_admin`/`status` take DB defaults, so "new user" can never mean "admin". [verified]
+- **`event_rsvps`**: all write verbs revoked from clients (20260814051200). Status is an
+  *outcome* computed server-side from the event's own config; the client sends only an *intent*
+  (`going`/`interested`/`not_going`), and asking directly for `pending`/`waitlist`/`denied` is
+  refused `invalid_intent`. This specifically prevents a client self-approving a seat at a
+  full/approval-gated event, and prevents forging the `going` value that feeds the `users`
+  read policy via `shares_event_with`. [verified in code]
+- **`events`**: INSERT forces `host_user_id = current_user_id()` (policy WITH CHECK);
+  `host_user_id` is in the INSERT grant but *not* the UPDATE grant (cannot hand an event away).
+  [verified]
+- **`cards`**: UPDATE grant is `status` only, WITH CHECK confines it to `assigned|revoked`
+  (cannot return a held card to `unassigned` stock, cannot rewrite `owner_user_id`). [verified]
+
+### Privileged / admin actions
+
+- `is_admin` is unreadable and unwritable by clients (see above). `restore_deleted_user` is
+  `service_role`-only (no client EXECUTE). `soft_delete_own_account` takes **no arguments** —
+  subject is read from the JWT, so it cannot be aimed at another account — and is `security
+  definer` behind a two-tap confirmation. No role/permission is ever read from a client-supplied
+  value. [verified in code]
+- Host-only event operations: `decide_event_rsvp` joins the RSVP to its event on
+  `host_user_id = caller` (answering `rsvp_not_found` for both "no such row" and "not your event",
+  so it is not an existence oracle); `event_rsvp_queue` gates its entire result on
+  `private.is_event_host(caller, event)` and returns a **minimal** profile set (name, username,
+  photo_path — not email/phone) only to the host. [verified in code]
+
+### Internal-trust / caller propagation
+
+- No internal/service-to-service endpoints, no health/admin ports, no trusted-header or
+  IP-allowlist authorization. The client IP is used only as a rate-limit subject and audit
+  signal, explicitly "never a substitute gate" — its one spoofable-subject nuance is a rate-limit
+  concern handled in Step 6, not an authz bypass. User identity never crosses a hop as an elevated
+  context: the service role is used only where there is *no* user identity yet (`ensureUser`) or
+  where RLS structurally cannot express the rule (the graph write, the anonymous card preview),
+  each with the actor derived server-side. [verified in code]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S3-1 | Low | `updateEventAction` (`app/(app)/events/actions.ts:225`) read `cover_image_path` from a form field, letting an event host set their own event's cover pointer to any `{uuid}/cover.{ext}` value — while the same file's comment (`:265-268`) asserts the path is "never something a form field supplies." **No disclosure**: the `event-covers` SELECT policy signs cover URLs through the *viewer's* own `can_see_event`, so a pointer at another event's object resolves only for viewers who could already see that event (everyone else gets a broken image). But it was an unnecessary client-controlled write to a security-relevant column that contradicted the code's own stated invariant. | **Fixed**: removed `cover_image_path` from the accepted fields (no UI form submits it — the cover is owned solely by `uploadEventCoverAction`/`removeEventCoverAction`; `eventUpdateSchema` is `.partial()` so omission is valid). Comment added explaining why. Typecheck passes. |
+| S3-2 | Low→Step 8 | `completeOnboardingAction` (`app/onboarding/actions.ts:96-99`) returns raw `error.message` to the browser — the only action file not routed through `safeActionErrorMessage`, so a PostgREST error naming a table/column/policy could reach the client. Cross-referenced here because it is an authz-adjacent write; **fixed in Step 8** (error-handling), where the redaction helper lives. | Deferred to Step 8. |
+| S3-3 | — | `removeConnection` and `setMeetingLocationVisibility` carry no application-layer ownership filter, unlike every sibling function. Verified the RLS policies fully close the IDOR today; noted as the one place a future switch to the service-role client (or a policy regression) would have no second layer. Not a live bug. | No code change — the belt-and-braces `.eq()` would be defensive-only and the existing tests + policies already assert the behavior. Documented for reviewers. |
+| S3-4 | — | No IDOR, no mass-assignment, no client-settable role/privilege, no internal-trust bypass found across all 25 actions, 7 route handlers and 6 client-reachable RPCs. | No action needed. |
