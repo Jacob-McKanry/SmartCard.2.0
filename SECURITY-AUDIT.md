@@ -583,3 +583,51 @@ succeeds. Neither is safe to do blind in this pass, and neither affects the depl
 |---|---|---|---|
 | S7-1 | Low (High CVE, build-tooling context) | `image-size@1.2.1` DoS (2 advisories), transitive via Expo/Metro in the mobile scaffold; not in the deployed web runtime. | **Not fixed — patch is a forbidden major bump.** Listed as a manual action: upgrade Expo/Metro (major, own review) or add a tested override. No production runtime exposure. |
 | S7-2 | — | No critical CVEs; no runtime-dep high CVE; all versions pinned via lockfile; no install scripts; no typosquat/abandoned direct deps; no CI config to be injected. | No action needed. |
+
+---
+
+## Step 8 — Client-side exposure and error handling
+
+### What ships to the browser
+
+- **One** client-convention variable exists (`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`) — public by
+  design and, in practice, read only server-side. **No secret reaches the bundle** (verified in
+  Step 1 by building with sentinel secrets and grepping `.next/static`). No `EXPO_PUBLIC_` var
+  anywhere. [verified]
+- No client component makes a direct `fetch()` (network goes through the same-origin
+  `@smartcard/api-client`), no secret/token is passed as a prop, no internal hostname or endpoint
+  is embedded in client code (URLs are derived from `window.location.origin`), and the minted
+  Supabase token never leaves the server. [verified — client sweep]
+- **Source maps:** `productionBrowserSourceMaps` is not enabled (defaults off). No commented-out
+  credentials, no unused admin/debug code in client bundles. [verified]
+- Client-side storage holds only a random, non-identity `deviceId` that participates in no
+  verification check. No `document.cookie` usage; the session is the Kinde HttpOnly cookie handled
+  server-side. [verified]
+
+### Reliance on client-side checks
+
+- No security decision rests on a client-side check. The two candidates both have server
+  enforcement behind them: the event host-queue `role !== "host"` UI guard is backed by the
+  `event_rsvp_queue` RPC's `is_event_host` gate, and the privileged `override` flag on the RSVP
+  decision is a **bound** Server Action argument (not form data), so it cannot be flipped by a
+  crafted POST. [verified in code]
+
+### Error handling (the actionable fix)
+
+- The connect path and 6 of 7 `"use server"` files already redact errors through
+  `safeActionErrorMessage`/`userFacingMessage` (opt-in: only a `UserFacingError` message crosses
+  to the browser; everything else becomes one generic sentence, the real error logged server-side).
+- **`onboarding/actions.ts` was the exception** (S3-2): `completeOnboardingAction` *caught* service
+  errors and *returned* `error.message` verbatim in its `ActionState`, which Next.js renders to the
+  user unredacted (unlike an *uncaught* action error, which Next does redact in production). So a
+  PostgREST failure inside `updateOwnProfile`/`assertSignupCompleted` — table/column/constraint/
+  policy names, the exact schema map `server/errors.ts` was written to withhold — could reach the
+  browser. (`deleteAccountAction` in settings was checked and is safe: it returns `void` and lets
+  errors propagate *uncaught*, which Next redacts.)
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S8-1 | Low | `completeOnboardingAction` returned raw `error.message` to the browser (the only action file not using the redaction helper), leaking PostgREST schema detail on any DB failure during onboarding. Low because it requires triggering a DB error on your own onboarding write and discloses schema names, not another user's data. | **Fixed**: routed the catch through `safeActionErrorMessage(error, "onboarding")` and made the auth guard throw `UserFacingError`, matching every sibling action file. Full detail still logged server-side. Typecheck + tests green. |
+| S8-2 | — | No secrets in the client bundle; no source maps; no client-side-only security checks; all other action error paths already redacted. | No action needed. |

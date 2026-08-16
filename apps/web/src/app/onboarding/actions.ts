@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { userProfileUpdateSchema } from "@smartcard/types";
 
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
+import { safeActionErrorMessage, UserFacingError } from "@/server/errors";
 import { updateOwnProfile } from "@/server/profile/profile-service";
 import { assertSignupCompleted } from "@/server/onboarding/onboarding-service";
 
@@ -42,7 +43,10 @@ import type { ActionState } from "@/app/(app)/profile/action-state";
 async function requireContext(): Promise<AuthenticatedContext> {
   const context = await getAuthenticatedContext();
   if (context === null) {
-    throw new Error("You need to be signed in to do that.");
+    // `UserFacingError` so the message is one deliberately written for a person,
+    // matching the sibling profile/events/connections actions. See below and
+    // `@/server/errors` for why every other error must be redacted instead.
+    throw new UserFacingError("You need to be signed in to do that.");
   }
   return context;
 }
@@ -94,9 +98,12 @@ export async function completeOnboardingAction(
     await updateOwnProfile(context.supabase, context.userId, parsed.data);
     await assertSignupCompleted(context.userId);
   } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Something went wrong. Please try again.",
-    };
+    // Redacted through the shared helper, like every other action file. The old
+    // code returned `error.message` raw, which leaked PostgREST's own words
+    // (table/column/constraint/policy names) from `updateOwnProfile` and
+    // `assertSignupCompleted` straight to the browser — the exact disclosure
+    // `@/server/errors` exists to prevent (2026-08 security audit, step 8).
+    return { error: safeActionErrorMessage(error, "onboarding") };
   }
 
   finishAndGoHome();
