@@ -519,3 +519,67 @@ state; `pnpm turbo test` passes (3/3).
 | S6-3 | — | Server-side rate limiting (fail-closed), no CORS exposure + CSRF gate, no debug/admin endpoints, safe uploads, race-safe business logic with atomic single-use sessions, no anonymous cost-abuse path, no LLM. | No action needed. |
 
 **Build/test after step:** no code change this step; tree remains green.
+
+---
+
+## Step 7 — Dependencies and supply chain
+
+`pnpm audit` reports **2 high-severity advisories, both the same package** (`image-size`), and
+**nothing critical**.
+
+### The advisories
+
+| Package | Installed | Advisory | Patched | Class |
+|---|---|---|---|---|
+| `image-size` | 1.2.1 | GHSA-5p2g-fcmc-qvqq / ICNS + JXL/HEIF parser infinite-loop **DoS** | `>=2.0.3` | **Build-time / dev tooling** |
+
+- **Dependency chain:** `apps/mobile → expo → @expo/cli → @expo/metro → metro → image-size`.
+  This is **Metro, the React Native bundler** — it runs at *build/bundle time*, not in any shipped
+  runtime. (`npm audit` marks it `dev:false` only because Expo lists its CLI under `dependencies`;
+  functionally it is build tooling.)
+- **Not in the deployed runtime.** The **web app is the only deployed artifact** (Vercel
+  serverless), and its `package.json` contains none of `expo`/`metro`/`react-native`/`image-size`
+  — `next build` never bundles this package. The **mobile app is an unbuilt scaffold** ("under
+  construction"), so its bundler is not run in any production pipeline either.
+- **In-context severity: Low.** The DoS requires feeding a crafted image to Metro's bundler at
+  build time (a developer's own machine or CI) — there is no production runtime attack surface.
+  The advisory's own High rating is the generic CVSS for the DoS, not its reachability here.
+
+### Why the upgrade is NOT applied
+
+Installed `image-size@1.2.1` → patched `>=2.0.3` is a **major version bump (1.x → 2.x)**. The audit
+rules forbid applying any cross-major upgrade or `audit fix --force`. Forcing `image-size@2.x`
+via a `pnpm.overrides` entry would be exactly that cross-major change and could break Metro, which
+is written against the 1.x API. **Proposed as a manual decision (Step 11):** upgrade the Expo SDK
+/ Metro toolchain to a release whose own dependency range already pulls `image-size >=2.0.3` (a
+framework upgrade with its own breaking-change review), or — only if the mobile bundler must be
+pinned — add a tested `pnpm.overrides` for `image-size` and verify a full Metro bundle still
+succeeds. Neither is safe to do blind in this pass, and neither affects the deployed web app.
+
+### Other supply-chain checks
+
+- **Runtime vs dev separation:** the two advisories are build-tooling only; **no runtime
+  (web-app) dependency has a high/critical CVE.** [verified]
+- **Pinning:** all direct dependencies use caret ranges resolved to exact versions by
+  `pnpm-lock.yaml`; `pnpm install --frozen-lockfile` succeeds. The only `>`-range is
+  `engines.node: ">=22"` (an engine constraint, not a package). No `*`/`latest`/`x` ranges. [verified]
+- **Install/postinstall scripts:** none in any workspace `package.json`. [verified]
+- **Typosquat / abandoned:** the direct dependency set is all well-known, actively-maintained
+  packages (Kinde, Radix, Supabase, `jose`, `jsqr`, Next.js, React, Zod, Tailwind, `lucide-react`,
+  `qrcode.react`, `clsx`, `class-variance-authority`, `tailwind-merge`, `server-only`). No
+  name-confusable or abandoned direct dependency spotted. [verified by inspection]
+- **CI/CD injection:** **N/A, with evidence** — there is no `.github/`, no `vercel.json`, no GitLab
+  CI, no workflow file of any kind in the repo. Deploys use Vercel's default git integration, so
+  there is no in-repo pipeline that could be triggered by untrusted input, leak secrets to a
+  fork-originated run, or pin an unpinned third-party action. If GitHub Actions are added later,
+  that config becomes a new audit surface. [verified by directory scan]
+- **Unused dependencies:** a spot check of the web app's declared dependencies found each one
+  imported in `apps/web/src`; no clearly-unused direct dependency was found. A full `depcheck`
+  pass was not run (this environment's egress restrictions), so this is not exhaustive. [inferred]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S7-1 | Low (High CVE, build-tooling context) | `image-size@1.2.1` DoS (2 advisories), transitive via Expo/Metro in the mobile scaffold; not in the deployed web runtime. | **Not fixed — patch is a forbidden major bump.** Listed as a manual action: upgrade Expo/Metro (major, own review) or add a tested override. No production runtime exposure. |
+| S7-2 | — | No critical CVEs; no runtime-dep high CVE; all versions pinned via lockfile; no install scripts; no typosquat/abandoned direct deps; no CI config to be injected. | No action needed. |
