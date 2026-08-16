@@ -631,3 +631,39 @@ succeeds. Neither is safe to do blind in this pass, and neither affects the depl
 |---|---|---|---|
 | S8-1 | Low | `completeOnboardingAction` returned raw `error.message` to the browser (the only action file not using the redaction helper), leaking PostgREST schema detail on any DB failure during onboarding. Low because it requires triggering a DB error on your own onboarding write and discloses schema names, not another user's data. | **Fixed**: routed the catch through `safeActionErrorMessage(error, "onboarding")` and made the auth guard throw `UserFacingError`, matching every sibling action file. Full detail still logged server-side. Typecheck + tests green. |
 | S8-2 | — | No secrets in the client bundle; no source maps; no client-side-only security checks; all other action error paths already redacted. | No action needed. |
+
+---
+
+## Step 9 — Transport, headers, and infrastructure
+
+### HTTPS & headers (all set in `next.config.ts`, applied to every route incl. `/api/*` and `/card/*`)
+
+- **HTTPS enforced:** CSP `upgrade-insecure-requests`; HSTS `max-age=63072000; includeSubDomains;
+  preload`; Vercel terminates TLS. No plain-HTTP fallback, no mixed content (`connect-src 'self'`,
+  self-hosted fonts). [verified in code]
+- **Security headers present and well-scoped:** `Content-Security-Policy` (default-src 'self',
+  frame-ancestors 'none', frame-src 'none', object-src 'none', base-uri 'self', form-action 'self'),
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+  strict-origin-when-cross-origin` (so a card code / connection id in a path is not sent cross-site),
+  and a tight `Permissions-Policy` (only `camera=(self)` and `geolocation=(self)` — the two the
+  proximity flow needs — everything else denied). [verified in code]
+
+### Webhooks / storage / management surfaces
+
+- **Webhooks: N/A** — the app receives no inbound webhooks (no Stripe/GitHub/Twilio/etc.); the only
+  inbound auth path is the Kinde OAuth callback, whose `state` the SDK validates. Nothing to
+  signature-verify or replay-protect. [verified]
+- **Storage buckets:** both `public = false` (Step 4); nothing publicly listable/readable; served
+  only via short-lived signed URLs. [verified]
+- **Management surfaces:** the app talks to Postgres only through PostgREST with RLS; the direct DB
+  port is not used by app code, the `private` schema is not PostgREST-exposed, and there is no admin
+  UI or management endpoint in the app. (Whether the Supabase project's own dashboard/DB port is
+  network-restricted is infra, not in-repo — see Step 11 unverifiable list.) [verified in code / inferred for infra]
+
+### Findings
+
+| ID | Sev | Finding | Disposition |
+|---|---|---|---|
+| S9-1 | Low | The CSP carries `script-src 'unsafe-inline'`, and `next.config.ts` justified it with the claim of "**zero** uses of `dangerouslySetInnerHTML` … anywhere" — which is **false**: `local-timestamp.tsx` has one (added after that comment was written). The sink itself is safe (its interpolated values are `<`-escaped and are a `useId()`/DB timestamp), so there is no live XSS. But the CSP's stated safety argument was void, and a mirror-image comment in `local-timestamp.tsx` claimed "the app has no CSP today" — the two files each assumed the other's state. | **Fixed (comments)**: corrected both comments to state reality — one safe inline sink exists, the CSP is therefore not an XSS *defence*, and removing `'unsafe-inline'` must hand this script a nonce in the same change. The **structural fix** (nonce-based CSP via `middleware.ts`, dropping `'unsafe-inline'`) is a deliberate design change the code defers; **recommended in Step 11**, not applied here (it touches every request incl. auth callbacks). |
+| S9-2 | Low | The CSP `img-src` **fails open** to `https://*.supabase.co` (a wildcard across all Supabase projects) if `SUPABASE_URL` is absent at build time (`next.config.ts:12-20`). A documented, deliberate tradeoff (a CSP that fails the build is judged worse), but it fails *open* silently. | No code change — behavior is intentional and low-impact (widens only which image origins load, not script/connect). Noted; the mitigation is ensuring `SUPABASE_URL` stays in the build env (it is declared in `turbo.json`). |
+| S9-3 | — | HTTPS enforced (HSTS + upgrade-insecure-requests); full modern security-header set correctly scoped; no webhooks to verify; storage private; no management endpoint exposed by the app. | No action needed. |

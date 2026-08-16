@@ -62,11 +62,18 @@ import { useId } from "react";
  * both the server and the client paths here, which is also what keeps the
  * before-and-after strings the same shape.
  *
- * IF A CONTENT SECURITY POLICY IS EVER ADDED
+ * THE CONTENT SECURITY POLICY AND THIS INLINE SCRIPT
  *
- * This emits an inline script. A CSP without `'unsafe-inline'` would block it
- * and leave the labelled-UTC fallback on screen (honest, but not what anyone
- * wants). The app has no CSP today; whoever adds one has to give this a nonce.
+ * This emits an inline script. The app DOES ship a CSP (`next.config.ts`), and
+ * it currently carries `script-src 'unsafe-inline'` — which is the only reason
+ * this script runs at all. (An earlier version of this comment said "the app
+ * has no CSP today"; that was already stale and was corrected in the 2026-08
+ * security audit.) The two files depend on each other and neither knew it: this
+ * script needs `'unsafe-inline'`, and that directive is the CSP's one real
+ * weakness. Whoever removes `'unsafe-inline'` — the right long-term move, via a
+ * per-request nonce in `middleware.ts` — MUST give this `<script>` that nonce in
+ * the same change, or it silently stops running and every reader with JS on is
+ * left looking at the labelled-UTC fallback.
  */
 
 export type TimestampFormat = "datetime" | "time";

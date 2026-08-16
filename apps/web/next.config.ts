@@ -62,13 +62,21 @@ function supabaseImageOrigin(): string {
  * not an XSS defence today, and it is written down here rather than implied by
  * the presence of a CSP header.
  *
- * What makes that acceptable for now, and what would change it: this app has no
- * XSS sink to defend — zero uses of `dangerouslySetInnerHTML`, `innerHTML`,
- * `eval` or `new Function` anywhere in `apps/web` or `packages/`, and no
- * user-supplied HTML is rendered anywhere. The moment that stops being true,
- * the nonce work stops being optional. Note the session itself is already out
- * of reach of injected script regardless: the Kinde cookie is HttpOnly and the
- * Supabase token is never sent to the browser.
+ * What makes that acceptable for now, and what would change it: this app has
+ * essentially no XSS sink to defend. There is exactly ONE `dangerouslySetInnerHTML`
+ * in the app — `components/local-timestamp.tsx`, which injects an inline
+ * timestamp-correction script whose only interpolated values are a React
+ * `useId()` and a DB timestamp, both serialized through a `<`-escaping
+ * `JSON.stringify` so neither can close the tag (see that file). No
+ * `innerHTML`/`eval`/`new Function` anywhere in `apps/web` or `packages/`, and
+ * no user-supplied HTML is rendered anywhere. (An earlier version of this
+ * comment claimed *zero* `dangerouslySetInnerHTML`; that stopped being true when
+ * the timestamp component landed, and was corrected in the 2026-08 security
+ * audit. The one sink is safe, but it means this CSP is genuinely not an XSS
+ * *defence* — a future unsafe sink would not be caught. Making it one is the
+ * nonce work below.) Note the session itself is already out of reach of injected
+ * script regardless: the Kinde cookie is HttpOnly and the Supabase token is
+ * never sent to the browser.
  */
 function contentSecurityPolicy(): string {
   return [
