@@ -9,15 +9,16 @@ import { removePhotoAction, uploadPhotoAction } from "./actions";
 import { initialActionState } from "./action-state";
 
 /**
- * Mirrors the bucket's own limits (20260813180355_create_profile_photos_bucket.sql)
- * for UX only — this is not the enforcement. See the header comment in
+ * Mirrors the bucket's own limits
+ * (20260817120000_profile_photos_allow_common_image_types.sql) for UX only —
+ * this is not the enforcement. See the header comment in
  * `apps/web/src/server/profile/photo-upload.ts` for what actually enforces
  * type and size: the bucket's `allowed_mime_types`/`file_size_limit` and the
  * Storage RLS policy in `20260813191041_storage_rls_profile_photos.sql`. A
  * client that skips this check entirely and posts straight to the action
  * still hits those same two backstops.
  */
-const ALLOWED_MIME_TYPE = "image/webp";
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export function PhotoUploader({
@@ -42,8 +43,8 @@ export function PhotoUploader({
     const file = inputRef.current?.files?.[0];
     if (!file) return;
 
-    if (file.type !== ALLOWED_MIME_TYPE) {
-      setClientError("Please choose a WEBP image.");
+    if (!ALLOWED_MIME_TYPES.includes(file.type.toLowerCase())) {
+      setClientError("Please choose a JPEG, PNG, WEBP or GIF image.");
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -72,7 +73,7 @@ export function PhotoUploader({
               ref={inputRef}
               type="file"
               name="photo"
-              accept="image/webp"
+              accept={ALLOWED_MIME_TYPES.join(",")}
               className="hidden"
               onChange={handleFileChosen}
             />
@@ -97,7 +98,11 @@ export function PhotoUploader({
         </div>
 
         <p aria-live="polite" className="text-xs text-muted-foreground">
-          {error ? <span className="text-destructive">{error}</span> : "WEBP only, up to 5MB."}
+          {error ? (
+            <span className="text-destructive">{error}</span>
+          ) : (
+            "JPEG, PNG, WEBP or GIF, up to 5MB."
+          )}
         </p>
       </div>
     </div>

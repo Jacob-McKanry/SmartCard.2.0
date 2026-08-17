@@ -1,0 +1,75 @@
+-- =============================================================================
+-- 20260817120000_profile_photos_allow_common_image_types.sql
+--
+-- WHAT THIS CHANGES
+--   Widens `storage.buckets.allowed_mime_types` for the `profile-photos`
+--   bucket from the single value it was created with (`image/webp`,
+--   20260813180355) to the four common raster formats browsers and phone
+--   cameras actually produce:
+--
+--       image/webp, image/jpeg, image/png, image/gif
+--
+--   Nothing else about the bucket changes: it is still `public = false`
+--   (private, served only through the short-lived signed URLs
+--   `apps/web/src/server/profile/photo-url.ts` mints), and `file_size_limit`
+--   stays at 5 MiB (5242880), unchanged from creation.
+--
+-- WHY IT WAS WEBP-ONLY, AND WHY THAT CONSTRAINT NO LONGER APPLIES
+--   20260813180355's own header says the pin to webp was because "the legacy
+--   export produced [webp]" (§6.5, "148 files, ~7MB") — it described the
+--   *data that existed at import time*, not a security requirement. There was
+--   no upload feature at all when that migration ran; the restriction was
+--   inherited from the import, not chosen for the feature. Real members
+--   uploading their own photos now hit that constraint on ordinary JPEG/PNG
+--   files straight off a phone, which is a product gap, not a defended
+--   boundary — nothing in §6.5 or `photo-upload.ts`'s header argues that
+--   webp specifically is the safe format and the others are not.
+--
+-- WHY THIS FOUR, AND NOT `image/*` OR AN OPEN-ENDED LIST
+--   Two independent reasons cap the list rather than opening it fully:
+--
+--     1. Format allowlisting is the actual security boundary here, not a
+--        courtesy — `photo-upload.ts`'s header is explicit that the bucket's
+--        `allowed_mime_types` (this column) is what a malicious client hitting
+--        the Storage API directly still has to pass, regardless of what the
+--        application code checks first. `image/svg+xml` is deliberately
+--        excluded: an SVG is XML that can carry a `<script>` or event-handler
+--        attribute, and this bucket's objects are later fetched by a browser
+--        (via a signed URL) and by this app's own server (`loadPhotoBytes` in
+--        `card-preview-service.ts`, which embeds the bytes in a downloaded
+--        `.vcf` file) — an SVG "photo" is a stored-XSS vector in the first
+--        case and a malformed contact file in the second. Every other
+--        uncommon or vector/animated format (`image/bmp`, `image/tiff`,
+--        `image/heic`, `image/avif`) is left out for the same reason §6.5
+--        gives narrow allowlists everywhere else in this schema: a format
+--        added later is a deliberate, reviewed widening, not a default.
+--     2. This exact four-value set is what
+--        `apps/web/src/server/cards/card-preview-service.ts`'s
+--        `EMBEDDABLE_PHOTO_TYPES` already recognises for the vCard `PHOTO`
+--        property (added 2026-08-15, before this migration). Keeping the
+--        bucket's allowlist and that map in lock-step means every photo a
+--        member can successfully upload is also a photo the non-user card
+--        preview's `.vcf` download can embed — no format that uploads fine
+--        today and then silently loses its picture on export.
+--
+-- WHAT THIS DOES NOT TOUCH
+--   The `storage.objects` RLS policies for this bucket
+--   (20260813191041_storage_rls_profile_photos.sql) gate on
+--   `(storage.foldername(name))[1] = auth.uid()` alone — ownership is the
+--   object key's `{user_id}/` prefix, not its extension or content type — so
+--   none of those four policies needs to change for a wider format list to
+--   take effect. The Storage API layer (this column) is the only place format
+--   was ever enforced.
+--
+-- ACCESS GRANTED / FORBIDDEN BY THIS MIGRATION
+--   Grants: nothing new to any role. This only widens which byte *formats* an
+--     already-authorized uploader (their own `{user_id}/` prefix) may store —
+--     it does not change who may upload, read, replace or delete anything.
+--   Forbids: still every vector/scriptable format (`svg` explicitly excluded)
+--     and everything not in the four-value list above, to every role,
+--     unchanged from before this migration.
+-- =============================================================================
+
+update storage.buckets
+set allowed_mime_types = array['image/webp', 'image/jpeg', 'image/png', 'image/gif']
+where id = 'profile-photos';

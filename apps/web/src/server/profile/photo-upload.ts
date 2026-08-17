@@ -42,19 +42,38 @@ import { UserFacingError } from "@/server/errors";
 
 const BUCKET = "profile-photos";
 
-/** Mirrors `allowed_mime_types` on the bucket exactly (single value today). */
-const ALLOWED_MIME_TYPE = "image/webp";
+/**
+ * Mirrors `allowed_mime_types` on the bucket exactly
+ * (20260817120000_profile_photos_allow_common_image_types.sql), mapped to the
+ * extension each format is stored under. Also exactly the four keys
+ * `EMBEDDABLE_PHOTO_TYPES` recognises in `card-preview-service.ts` — every
+ * format a member can upload here is a format the non-user card preview's
+ * `.vcf` download can embed, deliberately kept in lock-step (see that
+ * migration's header for why).
+ *
+ * The extension comes from this map, never from the client's filename — same
+ * reasoning `cover-upload.ts`'s `EXTENSION_BY_MIME_TYPE` gives: a renamed file
+ * cannot smuggle a different-looking extension past the allowlist, because
+ * nothing here ever reads `file.name`.
+ */
+const ALLOWED_MIME_TYPES: Record<string, string> = {
+  "image/webp": "webp",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+};
 
 /** Mirrors `file_size_limit` on the bucket exactly: 5 * 1024 * 1024. */
 const MAX_BYTES = 5 * 1024 * 1024;
 
 /**
  * Extends `UserFacingError` because every message it carries was written for
- * the person who picked the file ("Photos must be WEBP images...", "That file
- * is too large..."), so it is safe — and useful — to show unchanged. That makes
- * the explicit `instanceof InvalidPhotoError` branch in `uploadPhotoAction`
- * redundant for the message's sake; it is kept there because the action still
- * distinguishes this case from a genuine failure.
+ * the person who picked the file ("Photos must be JPEG, PNG, WEBP or GIF
+ * images...", "That file is too large..."), so it is safe — and useful — to
+ * show unchanged. That makes the explicit `instanceof InvalidPhotoError`
+ * branch in `uploadPhotoAction` redundant for the message's sake; it is kept
+ * there because the action still distinguishes this case from a genuine
+ * failure.
  */
 export class InvalidPhotoError extends UserFacingError {
   constructor(reason: string) {
@@ -63,20 +82,24 @@ export class InvalidPhotoError extends UserFacingError {
   }
 }
 
-function assertUploadable(file: File): void {
+/** @returns The extension to store the upload under. */
+function assertUploadable(file: File): string {
   if (file.size === 0) {
     throw new InvalidPhotoError("The selected file is empty.");
   }
-  if (file.type !== ALLOWED_MIME_TYPE) {
+  const extension = ALLOWED_MIME_TYPES[file.type.toLowerCase()];
+  if (extension === undefined) {
     throw new InvalidPhotoError(
-      `Photos must be WEBP images (selected file is "${file.type || "an unrecognized type"}"). ` +
-        'Most photo editors and "export as" dialogs can save a WEBP copy.',
+      `Photos must be JPEG, PNG, WEBP or GIF images (selected file is "${
+        file.type || "an unrecognized type"
+      }").`,
     );
   }
   if (file.size > MAX_BYTES) {
     const maxMb = (MAX_BYTES / (1024 * 1024)).toFixed(0);
     throw new InvalidPhotoError(`That file is too large — the limit is ${maxMb}MB.`);
   }
+  return extension;
 }
 
 /**
@@ -102,7 +125,7 @@ export async function replaceOwnProfilePhoto(
   userId: string,
   file: File,
 ): Promise<string> {
-  assertUploadable(file);
+  const extension = assertUploadable(file);
 
   const { data: current, error: readError } = await supabase
     .from("users")
@@ -121,11 +144,14 @@ export async function replaceOwnProfilePhoto(
   // replace. Reusing the previous object's name would mean briefly having no
   // valid object at that path while the new bytes upload (or, with `upsert`,
   // a caching CDN/browser serving stale bytes at an unchanged URL); a new
-  // name sidesteps both.
-  const newPath = `${userId}/${randomUUID()}.webp`;
+  // name sidesteps both. The extension now varies with the upload's actual
+  // (validated) format rather than always being `.webp` — the RLS policy on
+  // this bucket gates on the `{user_id}/` prefix alone and does not care about
+  // the extension, so this is purely bookkeeping, not a security boundary.
+  const newPath = `${userId}/${randomUUID()}.${extension}`;
 
   const { error: uploadError } = await supabase.storage.from(BUCKET).upload(newPath, file, {
-    contentType: ALLOWED_MIME_TYPE,
+    contentType: file.type,
     upsert: false,
   });
   if (uploadError) {
