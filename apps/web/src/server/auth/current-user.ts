@@ -5,7 +5,11 @@ import { getKindeServerSession } from "@kinde-oss/kinde-auth-nextjs/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { ensureUser } from "@/server/auth/ensure-user";
-import { verifyKindeAccessToken, type KindeIdentity } from "@/server/auth/kinde-identity";
+import {
+  KindeTokenVerificationError,
+  verifyKindeAccessToken,
+  type KindeIdentity,
+} from "@/server/auth/kinde-identity";
 import { mintSupabaseAccessToken } from "@/server/auth/supabase-token";
 import { rlsClient } from "@/server/supabase/rls-client";
 
@@ -43,9 +47,24 @@ export interface AuthenticatedContext {
 
 /**
  * Returns null when there is no signed-in user — that is a normal state for a
- * page, not an error. Anything else that goes wrong throws, because a partial
- * or unverifiable session must never degrade into "treat them as a guest and
- * carry on": on this codepath, silence is indistinguishable from a bypass.
+ * page, not an error. "No signed-in user" includes exactly one failure of the
+ * token check: an EXPIRED token. Expiry is not a broken token, it is the
+ * designed end of every session — the cookie holds a token that was genuinely
+ * Kinde's and has simply aged out, which is the state every signed-in browser
+ * reaches after sitting idle past the token lifetime. Before this branch
+ * existed, every such visitor got a 500 (production error digest 2293090557,
+ * the most frequent error in the app) instead of the sign-in gate. Returning
+ * null here is still fail-closed: the visitor gets no context, no minted
+ * Supabase token and no data — they get `/sign-in`, where one click through
+ * Kinde (usually silent, since Kinde's own SSO session outlives our access
+ * token) issues a fresh token.
+ *
+ * Anything else that goes wrong still throws, because a partial or
+ * unverifiable session must never degrade into "treat them as a guest and
+ * carry on": on this codepath, silence is indistinguishable from a bypass. The
+ * line between the two cases: an expired token proves the session ended; a
+ * bad-signature, wrong-issuer or wrong-app token proves someone is holding a
+ * token we never accepted, and that stays loud.
  *
  * Wrapped in React's `cache()` so the (app) route group's layout (the auth
  * gate) and the page it renders can each call this and only pay for one
@@ -63,7 +82,20 @@ export const getAuthenticatedContext = cache(async (): Promise<AuthenticatedCont
     return null;
   }
 
-  const identity = await verifyKindeAccessToken(rawAccessToken);
+  let identity: KindeIdentity;
+  try {
+    identity = await verifyKindeAccessToken(rawAccessToken);
+  } catch (error) {
+    // Expired-only, checked by jose's machine-readable code rather than by
+    // message text. A server component cannot refresh the session itself —
+    // Next.js forbids cookie writes during render — so the honest answer to
+    // "who is this?" with only an expired token in hand is "nobody, sign in
+    // again". Every other verification failure re-throws; see the header.
+    if (error instanceof KindeTokenVerificationError && error.code === "ERR_JWT_EXPIRED") {
+      return null;
+    }
+    throw error;
+  }
   const enriched = await withProfileClaimsFromSession(session, identity);
 
   const userId = await ensureUser(enriched);

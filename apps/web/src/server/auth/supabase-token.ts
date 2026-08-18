@@ -98,6 +98,19 @@ import { supabaseJwtSigningKey, supabaseUrl } from "@/server/env";
 /** Seconds. See "why it is short-lived" above before changing this. */
 const TOKEN_LIFETIME_SECONDS = 5 * 60;
 
+/**
+ * Seconds the `iat` claim is backdated. Not decoration: PostgREST rejects any
+ * token whose `iat` is ahead of the database's clock — "JWT issued at future",
+ * PGRST303 — and it happened in production (2026-08-15, error digest
+ * 3581837676) because a Vercel lambda's clock ran a moment ahead of Supabase's.
+ * Two servers we don't control will never agree to the second, so the mint has
+ * to absorb the disagreement. Backdating only ever *shortens* what the token is
+ * worth: `exp` is still measured from our real "now", so a fast clock on our
+ * side costs the token up to 30 seconds of life, and no clock arrangement
+ * grants it a second more than TOKEN_LIFETIME_SECONDS.
+ */
+const CLOCK_SKEW_ALLOWANCE_SECONDS = 30;
+
 interface Signer {
   kid: string;
   key: CryptoKey | Uint8Array;
@@ -168,6 +181,7 @@ function signer(): Promise<Signer> {
  */
 export async function mintSupabaseAccessToken(userId: string): Promise<string> {
   const signing = await signer();
+  const nowSeconds = Math.floor(Date.now() / 1000);
 
   return await new SignJWT({ role: "authenticated" })
     // `kid` is not decoration here: it is how Supabase selects which trusted
@@ -184,8 +198,10 @@ export async function mintSupabaseAccessToken(userId: string): Promise<string> {
     // the issuer — but it keeps our tokens shaped like the ones Supabase Auth
     // issues, so anything inspecting a token later is not surprised by ours.
     .setIssuer(`${supabaseUrl()}/auth/v1`)
-    .setIssuedAt()
-    .setExpirationTime(`${TOKEN_LIFETIME_SECONDS}s`)
+    // Backdated — see CLOCK_SKEW_ALLOWANCE_SECONDS. `exp` stays anchored to
+    // the real "now", so the allowance never extends the token's life.
+    .setIssuedAt(nowSeconds - CLOCK_SKEW_ALLOWANCE_SECONDS)
+    .setExpirationTime(nowSeconds + TOKEN_LIFETIME_SECONDS)
     .sign(signing.key);
 }
 

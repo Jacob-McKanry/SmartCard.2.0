@@ -49,9 +49,20 @@ import { kindeAllowedClientIds, kindeIssuerUrl } from "@/server/env";
 
 /** Raised when a token cannot be trusted. Never carries the token itself. */
 export class KindeTokenVerificationError extends Error {
-  constructor(reason: string, options?: { cause?: unknown }) {
-    super(`Kinde token rejected: ${reason}`, options);
+  /**
+   * jose's machine-readable code when the JWT layer did the rejecting
+   * (`ERR_JWT_EXPIRED`, `ERR_JWS_SIGNATURE_VERIFICATION_FAILED`, ...), and
+   * undefined for this module's own claim checks (`azp`, `sub`). Exists so a
+   * caller can tell "this session ended" apart from "this token is wrong"
+   * without parsing a message string — see `getAuthenticatedContext`, which
+   * treats exactly one of these codes as a normal signed-out state.
+   */
+  readonly code?: string;
+
+  constructor(reason: string, options?: { cause?: unknown; code?: string }) {
+    super(`Kinde token rejected: ${reason}`, { cause: options?.cause });
     this.name = "KindeTokenVerificationError";
+    this.code = options?.code;
   }
 }
 
@@ -115,7 +126,7 @@ export async function verifyKindeAccessToken(token: string): Promise<KindeIdenti
     // An unreachable key server must never mean "let it through": that would
     // turn an outage at Kinde into an authentication bypass here.
     if (cause instanceof joseErrors.JOSEError) {
-      throw new KindeTokenVerificationError(cause.code, { cause });
+      throw new KindeTokenVerificationError(cause.code, { cause, code: cause.code });
     }
     throw new KindeTokenVerificationError("verification failed", { cause });
   }
