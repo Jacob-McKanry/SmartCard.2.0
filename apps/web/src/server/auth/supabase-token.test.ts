@@ -84,13 +84,25 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
     expect(payload.role).toBe("authenticated");
   });
 
-  it("still expires in exactly five minutes", async () => {
+  it("still expires five minutes from now, with `iat` backdated for clock skew", async () => {
     const { privateJwk } = await importedSigningKey();
     process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
 
+    const before = Math.floor(Date.now() / 1000);
     const { exp, iat } = claimsOf(await mintSupabaseAccessToken(USER_ID));
+    const after = Math.ceil(Date.now() / 1000);
 
-    expect(Number(exp) - Number(iat)).toBe(300);
+    // The lifetime bound is measured from the real "now": five minutes, not a
+    // second more. Regression guard for the skew fix — backdating `iat` must
+    // never have the side effect of pushing `exp` out with it.
+    expect(Number(exp)).toBeGreaterThanOrEqual(before + 300);
+    expect(Number(exp)).toBeLessThanOrEqual(after + 300);
+
+    // `iat` sits 30 seconds in the past so a database clock running slightly
+    // ahead of ours does not reject the token as "issued at future" (PGRST303,
+    // seen in production 2026-08-15).
+    expect(Number(iat)).toBeGreaterThanOrEqual(before - 30);
+    expect(Number(iat)).toBeLessThanOrEqual(after - 30);
   });
 
   it("grants `authenticated` and never a higher role, whatever it is handed", async () => {
