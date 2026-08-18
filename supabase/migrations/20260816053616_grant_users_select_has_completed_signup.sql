@@ -1,0 +1,56 @@
+-- =============================================================================
+-- 20260816053616_grant_users_select_has_completed_signup.sql
+--
+-- WHAT THIS CHANGES
+--   Adds ONE column — `has_completed_signup` — to `authenticated`'s
+--   column-scoped SELECT grant on `public.users` (20260814230000). Nothing
+--   else: no policy changes, no UPDATE grant (the column still cannot be
+--   written by any client role — see 20260815130000's "WHAT THIS DOES NOT DO"),
+--   and the other withheld columns (`kinde_user_id`, `status`, `is_admin`,
+--   `email_verified`, `legacy_user_id`, `created_at`, `updated_at`) stay
+--   withheld.
+--
+-- WHY — THE OUTAGE THIS ENDED
+--   20260814230000 derived its eleven-column allow-list from "every column the
+--   app selects from `users` through an RLS-bound client" — and the very next
+--   day, the onboarding gate (20260815130000 + `onboarding-service.ts`) became
+--   a twelfth: `hasCompletedSignup()` reads this column with the CALLER'S OWN
+--   RLS-bound client, deliberately (its header explains why the read must not
+--   use the service role). The two changes were derived independently and
+--   nobody re-ran the derivation, so from the moment the onboarding gate
+--   deployed, every signed-in page render raised SQLSTATE 42501 "permission
+--   denied for table users" — 13 occurrences across 5 users on
+--   `/`, `/connect` and `/connections/[connectionId]` between 2026-08-15 and
+--   2026-08-16 (production error digest 1589977949). The gate fails closed by
+--   design, so the app was down for signed-in users, which is the correct
+--   failure mode doing its job on a wrong grant.
+--
+-- AMENDS A DECISION — RECORDED HERE BECAUSE THIS IS WHERE IT CHANGES
+--   20260814230000's header lists `has_completed_signup` among the columns
+--   forbidden "to every client role, on every row including the caller's own".
+--   That sentence was written when the column had no reader; the onboarding
+--   gate gave it one. The amendment is narrow: a member may now see WHETHER
+--   THEIR OWN onboarding is complete (and, like the other granted columns,
+--   that of the connections and co-attendees RLS already admits) — a boolean
+--   with no identity, credential or privilege content. The reasoning that
+--   withheld `kinde_user_id` and `is_admin` (an attack inventory) does not
+--   apply to it.
+--
+-- PROVENANCE — THIS FILE RECORDS A HOTFIX THAT ALREADY RAN
+--   The grant below was applied directly to the live project on 2026-08-16
+--   (migration version 20260816053616 in the project's migration history) to
+--   end the outage; the repository did not receive the matching file at the
+--   time. This file is that record, added so the repo's `supabase/migrations`
+--   is the whole truth again. Running it against the live database is a no-op
+--   in effect (the grant is already in place, and GRANT is idempotent); a
+--   rebuild from scratch needs it for the onboarding gate to work at all.
+--
+-- ACCESS GRANTED / FORBIDDEN BY THIS MIGRATION
+--   Grants: SELECT on `public.users.has_completed_signup` to `authenticated`,
+--     still filtered per row by the unchanged RLS policy (self, active
+--     connections, co-attendees).
+--   Forbids: nothing new. Write access to the column remains service-role
+--     only; `anon` remains granted nothing.
+-- =============================================================================
+
+grant select (has_completed_signup) on public.users to authenticated;

@@ -72,6 +72,14 @@
 --     `has_completed_signup`, `legacy_user_id`, `created_at` and `updated_at`,
 --     to every client role, on every row including the caller's own.
 --   `anon` is granted nothing here, as everywhere else in this schema.
+--
+-- AMENDED 2026-08-16 (see 20260816053616): `has_completed_signup` came OFF the
+--   forbidden list. The column list above was derived from the code as it stood
+--   on 2026-08-14; the onboarding gate added a twelfth RLS-bound read of
+--   `users` the next day, and this grant took every signed-in page down with
+--   42501 until the column was granted back. Lesson recorded where the list
+--   lives: this derivation is code-dependent and must be RE-RUN whenever a new
+--   RLS-bound read of `users` is added.
 -- =============================================================================
 
 revoke select on public.users from authenticated;
