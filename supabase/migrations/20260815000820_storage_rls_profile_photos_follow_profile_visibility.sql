@@ -36,13 +36,12 @@
 --     consult connection/RSVP rows the viewer cannot read directly).
 --   Forbids: nothing that was previously allowed. `anon` still has no grant.
 --
--- NOTE RECORDED AT RE-DISCOVERY (2026-08-18): `can_see_user` does NOT test
---   `users.status`, so this storage policy still serves a DELETED user's photo
---   to their former connections even though 20260815130200 hides the profile
---   row itself. A one-line status test inside `can_see_user` would close it,
---   but that is a deliberate security-model decision (the same choice
---   20260815130200 §3 records for `are_connected`/`shares_event_with`) and is
---   flagged for review rather than smuggled into a provenance commit.
+-- NOTE RECORDED AT RE-DISCOVERY (2026-08-18): `can_see_user` as written here
+--   does NOT test `users.status`, so this storage policy served a DELETED
+--   user's photo to their former connections even though 20260815130200 hides
+--   the profile row itself. Flagged for review rather than smuggled into a
+--   provenance commit; the project owner approved the fix on the same PR, and
+--   20260818030000 closes it by restating `can_see_user` with the status test.
 -- =============================================================================
 
 create or replace function private.profile_photo_owner_id(p_name text)
