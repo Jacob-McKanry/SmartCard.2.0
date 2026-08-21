@@ -1,8 +1,9 @@
 import { headers } from "next/headers";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
-import { resolveCardCodePreview } from "@/server/cards/card-preview-service";
+import { resolveCardCodeLanding } from "@/server/cards/card-preview-service";
 import { NonUserPreview, PreviewNotFound } from "@/components/non-user-preview";
+import { BlankCardSignedOut } from "@/components/blank-card-claim";
 
 import { CardRedeemFlow } from "./card-redeem-flow";
 
@@ -92,12 +93,12 @@ export default async function CardPage({ params }: { params: Promise<{ code: str
     );
   }
 
-  const preview = await resolveCardCodePreview(code, {
+  const landing = await resolveCardCodeLanding(code, {
     headers: await headers(),
     surface: "preview",
   });
 
-  if (preview === null) {
+  if (landing.kind === "nothing") {
     return <PreviewNotFound />;
   }
 
@@ -105,6 +106,16 @@ export default async function CardPage({ params }: { params: Promise<{ code: str
   // sits outside the `(app)` route group at all: a tap that loses its code to a
   // generic post-login landing page has lost the entire point of tapping.
   const selfUrl = `/card/${encodeURIComponent(code)}`;
+
+  // Blank stock. New on 2026-08-21 and the one refusal this page now tells
+  // apart from the others — see `resolveCardCodeLanding` for why that reversal
+  // was made and what it costs. Returning here rather than falling through
+  // matters: there is no owner to preview, so every field below would be empty.
+  if (landing.kind === "blank") {
+    return <BlankCardSignedOut claimUrl={selfUrl} />;
+  }
+
+  const preview = landing.preview;
 
   return (
     <NonUserPreview

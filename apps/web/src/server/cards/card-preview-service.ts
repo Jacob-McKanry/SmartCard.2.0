@@ -123,7 +123,9 @@ import { serviceRoleClient } from "@/server/supabase/service-role-client";
  *
  *   * a card code that is the wrong shape
  *   * a card code that matches no card
- *   * a card that exists but is `unassigned` (stock nobody owns)
+ *   * a card that exists but is `unassigned` (stock nobody owns) — NO LONGER
+ *     TRUE ON THE LANDING PATH as of 2026-08-21; still true here, and still
+ *     true for the vCard route. See the amendment below.
  *   * a card that exists and is `revoked` (the owner's kill switch)
  *   * a card whose owner is `suspended` or `deleted`
  *   * a QR token with a bad signature, a malformed payload, or a passed `exp`
@@ -133,6 +135,20 @@ import { serviceRoleClient } from "@/server/supabase/service-role-client";
  *   * either budget being exhausted
  *   * a missing or malformed `app_config` row
  *   * any exception at all, from anywhere below
+ *
+ * AMENDMENT (2026-08-21) — ONE OF THOSE IS NO LONGER FUSED WITH THE REST, ON
+ * THE LANDING PATH ONLY.
+ *
+ * `resolveCardCodeLanding` (added below, and used by `/card/<code>`'s page)
+ * answers `"blank"` for an `unassigned` card instead of the shared refusal, so
+ * that somebody handed a piece of blank stock can be told how to claim it —
+ * 6,809 of the 7,142 imported cards are in that state and none of them was
+ * usable by anyone outside the legacy import. The full reasoning, the cost, and
+ * what deliberately did NOT move with it are at that function.
+ *
+ * The paragraph above still describes `resolveCardCodePreview` exactly, which
+ * is what the vCard routes call, and the list of ten is otherwise unchanged.
+ * `revoked` in particular stays fused with "no such card" on every path.
  *
  * The routes render one shared component for `null`, so the rendered bytes are
  * identical too. This is `nfc-verifier.ts`'s rule applied one layer out: it
@@ -413,7 +429,57 @@ export async function resolveCardCodePreview(
   request: CardPreviewRequest,
   injectedDeps?: CardPreviewDeps,
 ): Promise<CardPreview | null> {
-  return refuseOnThrow("card_code", async () => {
+  const landing = await resolveCardCodeLanding(code, request, injectedDeps);
+  return landing.kind === "preview" ? landing.preview : null;
+}
+
+/**
+ * What a card code resolves to for the LANDING PAGE, which — unlike the vCard
+ * route above — needs to tell one refusal apart from the others.
+ *
+ * THIS SPLITS A REFUSAL THAT USED TO BE INDIVISIBLE, AND THAT IS A DELIBERATE
+ * REVERSAL RATHER THAN AN OVERSIGHT
+ *
+ * Until 2026-08-21 every failure on this path produced one `null` and one
+ * rendered page, and this module's header still argues at length for why: "any
+ * distinction between refusals turns this route into an oracle for which of the
+ * 7,142 printed codes are real and which of those are live". That argument is
+ * unchanged and still correct. The project owner weighed it against a product
+ * fact — 6,809 cards are blank stock, and somebody handed one had no way to
+ * make it theirs — and chose to disclose exactly one bit more: whether a code
+ * names a card that is real AND unclaimed.
+ *
+ * WHAT MOVED AND WHAT DID NOT. `unassigned` now answers `"blank"`. Everything
+ * else keeps the single shared refusal, and two of those matter enough to name:
+ *
+ *   * `revoked` still answers `"nothing"`, fused with "no such card". This is
+ *     not symmetry for its own sake — §4.5's rule is that telling somebody a
+ *     card was revoked confirms they are holding lost property that is being
+ *     watched, which helps the finder and not the owner. A claimable-card
+ *     disclosure does not touch that reasoning and must not be extended to it.
+ *   * A suspended or deleted owner still answers `"nothing"`, because that is a
+ *     fact about a person rather than about stock.
+ *
+ * WHAT IT COSTS, PLAINLY. Somebody holding a list of card codes can now sort it
+ * into "claimable" and "not claimable" without an account. Both budgets are
+ * spent before this function can answer `"blank"` — the per-IP one before the
+ * lookup and the per-card one immediately after it — so the sorting is capped
+ * at the same rate as previewing, but it is genuinely cheaper to do than it was
+ * yesterday, when the answer carried no information at all. Recorded as an
+ * amendment to §4.7 threat 1, and the claim itself is separately limited and
+ * refuses reasonlessly (20260821120000).
+ */
+export type CardCodeLanding =
+  | { kind: "preview"; preview: CardPreview }
+  | { kind: "blank" }
+  | { kind: "nothing" };
+
+export async function resolveCardCodeLanding(
+  code: string,
+  request: CardPreviewRequest,
+  injectedDeps?: CardPreviewDeps,
+): Promise<CardCodeLanding> {
+  return refuseLandingOnThrow("card_code", async () => {
     // Resolved INSIDE the try, not as a default parameter. `defaultCardPreviewDeps()`
     // reads two required environment variables and constructs the service-role
     // client, any of which can throw — and a throw evaluated in a default
@@ -431,13 +497,13 @@ export async function resolveCardCodePreview(
     const now = request.now ?? new Date();
     const limits = await store.loadLimits();
 
-    if (!(await withinIpBudget(store, limits, audit.ipHash))) return null;
+    if (!(await withinIpBudget(store, limits, audit.ipHash))) return { kind: "nothing" };
 
     const parsedCode = cardCodeSchema.safeParse(code);
-    if (!parsedCode.success) return null;
+    if (!parsedCode.success) return { kind: "nothing" };
 
     const card = await store.findCardByCode(parsedCode.data);
-    if (card === null) return null;
+    if (card === null) return { kind: "nothing" };
 
     const withinCardBudget = await store.consumeRateLimit({
       action: RATE_LIMIT_ACTIONS.cardPreview,
@@ -446,15 +512,26 @@ export async function resolveCardCodePreview(
       limit: limits.perCardHour,
       windowSeconds: HOUR_SECONDS,
     });
-    if (!withinCardBudget) return null;
+    if (!withinCardBudget) return { kind: "nothing" };
 
-    // `revoked` before `assigned`, matching `nfc-verifier.ts`. The two produce
-    // the same answer to the visitor; checking in this order means the more
-    // specific fact is the one a reader of this code sees named.
-    if (card.status === "revoked") return null;
-    if (card.status !== "assigned" || card.ownerUserId === null) return null;
+    // `revoked` before `assigned`, matching `nfc-verifier.ts`. Until 2026-08-21
+    // the two produced the same answer and the order was only about which fact
+    // a reader of this code sees named. It is now load-bearing: `revoked` must
+    // be caught BEFORE the unassigned branch below, or a revoked card would
+    // fall through and be offered up as claimable stock — handing the finder of
+    // somebody's lost card the ability to take it over, which is the precise
+    // inversion of what the kill switch is for.
+    if (card.status === "revoked") return { kind: "nothing" };
 
-    return discloseSubject(deps, {
+    // Blank stock. The one refusal that is now distinguishable, and only on
+    // this landing path — the vCard route calls `resolveCardCodePreview`, which
+    // maps this straight back to `null`, because there is no contact file to
+    // download for a card nobody owns.
+    if (card.status === "unassigned") return { kind: "blank" };
+
+    if (card.status !== "assigned" || card.ownerUserId === null) return { kind: "nothing" };
+
+    const preview = await discloseSubject(deps, {
       subjectUserId: card.ownerUserId,
       source: "card_code",
       surface: request.surface,
@@ -463,6 +540,8 @@ export async function resolveCardCodePreview(
       audit,
       now,
     });
+
+    return preview === null ? { kind: "nothing" } : { kind: "preview", preview };
   });
 }
 
@@ -772,6 +851,32 @@ async function refuseOnThrow(
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
+  }
+}
+
+/**
+ * The same catch-all for the landing resolver, which answers with a three-way
+ * result rather than `CardPreview | null`.
+ *
+ * `"nothing"` is the thrown-error answer for exactly the reason `null` is
+ * above: a misconfigured server, a dropped connection or a bug must be
+ * indistinguishable from an unknown code. Note which of the three it collapses
+ * to — a failure NEVER surfaces as `"blank"`. A visitor being told a code names
+ * a claimable card because the database was briefly unreachable would invite
+ * them to claim something that may not exist and may not be theirs.
+ */
+async function refuseLandingOnThrow(
+  source: PreviewSource,
+  work: () => Promise<CardCodeLanding>,
+): Promise<CardCodeLanding> {
+  try {
+    return await work();
+  } catch (error) {
+    console.error("[card-preview] refusing after an unexpected failure", {
+      source,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { kind: "nothing" };
   }
 }
 
