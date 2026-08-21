@@ -27,6 +27,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { signQrToken, type CardRecord, type RateLimitRequest, type SessionRecord } from "@smartcard/core";
 
 import {
+  resolveCardCodeLanding,
   resolveCardCodePreview,
   resolveQrTokenPreview,
   type CardPreview,
@@ -934,5 +935,137 @@ describe("a failed enrichment read discloses less, never refuses and never lies"
     await resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps);
     expect(fake.countsAsked).toEqual([]);
     expect(fake.photoBytesAsked).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
+/**
+ * The 2026-08-21 reversal: `unassigned` is the ONE refusal the landing page now
+ * tells apart from the others, so that somebody handed a blank card has a way
+ * in. Everything in this block exists to pin down how far that split goes,
+ * because the failure worth catching is not "blank cards don't work" — it is
+ * "something else started answering `blank` too".
+ *
+ * `resolveCardCodePreview` is asserted alongside it on purpose. It feeds the
+ * vCard route, which must be completely unaffected: there is no contact file to
+ * download for a card nobody owns, and a route that started returning one would
+ * be disclosing an empty profile rather than refusing.
+ */
+describe("a blank card is distinguishable, and nothing else is", () => {
+  const blankWorld = () =>
+    healthyWorld({
+      cards: { [GOOD_CODE]: assignedCard({ status: "unassigned", ownerUserId: null }) },
+    });
+
+  it("answers `blank` for unassigned stock", async () => {
+    const fake = fakeWorld(blankWorld());
+    await expect(resolveCardCodeLanding(GOOD_CODE, request(), fake.deps)).resolves.toEqual({
+      kind: "blank",
+    });
+  });
+
+  /**
+   * The containment that matters most in this file.
+   *
+   * `revoked` is the owner's kill switch for a card they lost (§4.5). If it
+   * ever fell through to the unassigned branch, the finder of somebody's lost
+   * card would be offered the chance to take it over — the precise inversion of
+   * what the kill switch is for. The ordering in `resolveCardCodeLanding` is
+   * what prevents it, and ordering is exactly the kind of thing a later edit
+   * rearranges without noticing.
+   */
+  it("does NOT answer `blank` for a card the owner revoked", async () => {
+    const fake = fakeWorld(
+      healthyWorld({ cards: { [GOOD_CODE]: assignedCard({ status: "revoked" }) } }),
+    );
+    await expect(resolveCardCodeLanding(GOOD_CODE, request(), fake.deps)).resolves.toEqual({
+      kind: "nothing",
+    });
+  });
+
+  it("keeps every other refusal fused into `nothing`", async () => {
+    const cases: [name: string, world: FakeWorld, code: string][] = [
+      ["a malformed code", healthyWorld(), "not-a-card-code"],
+      ["a code matching no card", healthyWorld(), UNKNOWN_CODE],
+      [
+        "an assigned card with no owner",
+        healthyWorld({ cards: { [GOOD_CODE]: assignedCard({ ownerUserId: null }) } }),
+        GOOD_CODE,
+      ],
+      [
+        "a suspended owner",
+        healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ status: "suspended" }) } }),
+        GOOD_CODE,
+      ],
+      [
+        "a deleted owner",
+        healthyWorld({ subjects: { [OWNER_ID]: activeOwner({ status: "deleted" }) } }),
+        GOOD_CODE,
+      ],
+      ["a vanished owner row", healthyWorld({ subjects: {} }), GOOD_CODE],
+    ];
+
+    const results = await Promise.all(
+      cases.map(([, world, code]) => resolveCardCodeLanding(code, request(), fakeWorld(world).deps)),
+    );
+
+    expect(results.every((r) => r.kind === "nothing")).toBe(true);
+  });
+
+  /**
+   * A failure must never be reported as a claimable card. Inviting somebody to
+   * claim a card because the database was briefly unreachable would have them
+   * act on a state nobody confirmed.
+   */
+  it("answers `nothing`, never `blank`, when the store throws", async () => {
+    const fake = fakeWorld({ ...blankWorld(), limits: () => { throw new Error("boom"); } });
+    await expect(resolveCardCodeLanding(GOOD_CODE, request(), fake.deps)).resolves.toEqual({
+      kind: "nothing",
+    });
+  });
+
+  it("answers `nothing`, never `blank`, when a budget is exhausted", async () => {
+    const perIp = fakeWorld({ ...blankWorld(), allowRateLimit: (r) => r.subjectKind !== "ip" });
+    await expect(resolveCardCodeLanding(GOOD_CODE, request(), perIp.deps)).resolves.toEqual({
+      kind: "nothing",
+    });
+
+    const perCard = fakeWorld({ ...blankWorld(), allowRateLimit: (r) => r.subjectKind !== "card" });
+    await expect(resolveCardCodeLanding(GOOD_CODE, request(), perCard.deps)).resolves.toEqual({
+      kind: "nothing",
+    });
+  });
+
+  /**
+   * Both budgets are spent before a blank answer is given, so sorting a list of
+   * codes into claimable and not is capped at the same rate as previewing.
+   */
+  it("spends both budgets before answering `blank`", async () => {
+    const fake = fakeWorld(blankWorld());
+    await resolveCardCodeLanding(GOOD_CODE, request(), fake.deps);
+
+    expect(fake.consumed.map((r) => r.subjectKind)).toEqual(["ip", "card"]);
+  });
+
+  it("records no disclosure for a blank card, because nothing was disclosed", async () => {
+    const fake = fakeWorld(blankWorld());
+    await resolveCardCodeLanding(GOOD_CODE, request(), fake.deps);
+
+    expect(fake.recorded).toHaveLength(0);
+  });
+
+  it("leaves the vCard path refusing an unassigned card exactly as before", async () => {
+    const fake = fakeWorld(blankWorld());
+    await expect(
+      resolveCardCodePreview(GOOD_CODE, request("vcard"), fake.deps),
+    ).resolves.toBeNull();
+  });
+
+  it("still returns the preview for a healthy assigned card", async () => {
+    const fake = fakeWorld(healthyWorld());
+    const landing = await resolveCardCodeLanding(GOOD_CODE, request(), fake.deps);
+
+    expect(landing.kind).toBe("preview");
   });
 });

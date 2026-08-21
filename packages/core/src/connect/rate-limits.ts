@@ -72,6 +72,21 @@ export const RATE_LIMIT_ACTIONS = {
    */
   cardPreview: "card_preview",
   /**
+   * Claiming a blank card (`public.claim_unassigned_card`), per user and per
+   * card, per hour. Thresholds seeded by 20260821120000.
+   *
+   * REGISTERED HERE BUT NOT CONSUMED HERE, WHICH IS UNIQUE IN THIS LIST. Every
+   * other action is spent by TypeScript calling `store.consumeRateLimit`. This
+   * one is spent inside the `security definer` function itself, because that
+   * function is granted to `authenticated` and is therefore reachable directly
+   * over PostgREST — a limit enforced in the calling TypeScript would be
+   * bypassed by one `rpc()` call from a browser console. The name lives in this
+   * object anyway, because this object is the one place an action name is
+   * allowed to exist and a second copy of the literal `"card_claim"` is exactly
+   * how a limit silently becomes two half-empty counters.
+   */
+  cardClaim: "card_claim",
+  /**
    * Not a limit — a coalescing marker. Records that the card's owner was pushed
    * a tap notification, so the next tap inside
    * `nfc_tap_notification_coalesce_seconds` does not push again (§4.5

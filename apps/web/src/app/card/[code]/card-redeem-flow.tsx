@@ -6,6 +6,7 @@ import { ConnectApiError, redeemNfc } from "@smartcard/api-client";
 
 import { Button } from "@/components/ui/button";
 
+import { ClaimCardButton } from "./claim-card-button";
 import { initialRedeemState, redeemReducer } from "./redeem-state";
 
 /**
@@ -77,7 +78,11 @@ export function CardRedeemFlow({ code }: { code: string }) {
       )}
 
       {(state.phase === "failure" || state.phase === "error") && (
-        <ErrorPanel message={state.message} onRetry={() => dispatch({ type: "retry" })} />
+        <ErrorPanel
+          message={state.message}
+          onRetry={() => dispatch({ type: "retry" })}
+          code={code}
+        />
       )}
     </div>
   );
@@ -90,11 +95,48 @@ function apiErrorMessage(error: unknown): string {
     : "Couldn't reach SmartCard. Check your connection and try again.";
 }
 
-function ErrorPanel({ message, onRetry }: { message: string; onRetry: () => void }) {
+/**
+ * A refused tap, plus the way out of the most common reason for one.
+ *
+ * WHY "SET UP THIS CARD" IS OFFERED ON EVERY FAILURE RATHER THAN ONLY ON
+ * `card_unassigned`
+ *
+ * Because this screen is not allowed to know which failure it got. The redeem
+ * API returns `userFacingMessage()`'s text and no reason code, and
+ * `user-messages.ts` fuses `card_not_found`, `card_unassigned` and
+ * `card_revoked` into one sentence on purpose — distinguishing them "would turn
+ * the endpoint into an oracle for which 48-bit card codes exist". Branching
+ * this affordance on the real reason would require the API to leak it, which
+ * would undo that in order to hide a button.
+ *
+ * Offering it unconditionally costs nothing, because the button is not the
+ * check: `claim_unassigned_card` re-resolves the code and refuses anything that
+ * is not `unassigned` (20260821120000). Pressing it on a revoked or unknown
+ * card spends a little of the caller's own claim budget and returns the same
+ * one refusal. The copy is written as a conditional — "if this is a new card" —
+ * so it never asserts that this particular card is claimable, which is exactly
+ * what this screen cannot know.
+ */
+function ErrorPanel({
+  message,
+  onRetry,
+  code,
+}: {
+  message: string;
+  onRetry: () => void;
+  code: string;
+}) {
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-destructive">{message}</p>
       <Button onClick={onRetry}>Try again</Button>
+
+      <div className="flex flex-col items-center gap-2 pt-2">
+        <p className="max-w-[34ch] text-[13px] leading-[19px] text-muted-foreground text-pretty">
+          If this is a new card that nobody has set up yet, you can make it yours.
+        </p>
+        <ClaimCardButton code={code} />
+      </div>
     </div>
   );
 }
