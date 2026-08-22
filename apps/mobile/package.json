@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.9",
+    "@kinde/expo": "0.8.0",
     "@smartcard/api-client": "workspace:*",
     "@smartcard/core": "workspace:*",
     "@smartcard/types": "workspace:*",
