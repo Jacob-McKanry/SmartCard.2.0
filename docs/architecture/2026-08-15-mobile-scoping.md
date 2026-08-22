@@ -1,7 +1,7 @@
 # Mobile scoping — what exists, what is missing, and in what order to build it
 
 **Date:** 2026-08-15
-**Status:** Scoping only. Nothing in this document is built, and nothing in `apps/`, `packages/` or `supabase/` was changed to write it. It is a plan to be signed off, in the sense CLAUDE.md's "Plan before building" means — the phases below are proposals, not a queue that starts running.
+**Status:** Signed off, and now partially built. Originally scoping only; the phases below were proposals. See "Build log and deviations" at the end of this document for what has actually shipped and where the implementation departed from what is written here.
 **Scope:** `apps/mobile`, and the parts of `apps/web` and `packages/*` that mobile depends on.
 
 ---
@@ -321,3 +321,54 @@ The reasoning:
 - Which read-only surfaces Phase 6 covers, and in what order.
 
 If any phase above is approved, the phase's own plan gets proposed and signed off before it is implemented, per CLAUDE.md.
+
+---
+
+## 9. Build log and deviations
+
+Added 2026-08-22. CLAUDE.md requires that a deviation from a signed-off decision be recorded where the original decision lives, so this section is that record. It is appended rather than woven into the phases above, so the original reasoning stays readable next to what actually happened.
+
+### 9.1 The API surface was built far ahead of this document's ordering
+
+This document put the server-side bearer path in Phase 2 and read-only Route Handlers in Phase 6. Both shipped before any mobile work started, and the scope is wider than Phase 6 describes:
+
+- **The bearer seam** (`apps/web/src/server/auth/api-context.ts`) is built, with the three §1.6 constraints honoured. It also fixed a live bug this document did not catch: the four existing connect endpoints ran the CSRF check in a way that admitted a bearer caller and then immediately called the cookie-only path, so a native client would have been refused for having no cookie.
+- **`/api/v1/*` covers every domain, read *and* write** — profile, feed, connections, events, activity, cards, onboarding, account — not the read-only subset Phase 6 proposed. "Editing stays on the web for the pilot" is no longer the constraint; the routes exist and mobile screens can use them when they are built.
+- **`packages/api-client` has typed wrappers for all of it**, backed by shared Zod response schemas in `packages/types/src/api/`.
+
+The practical effect is that Phase 6 is largely pre-built and Phase 2's *server* half is done. What remains of Phase 2 is the client half: the actual sign-in flow on the phone.
+
+### 9.2 Phase 0 — what shipped, and what was deliberately left
+
+Shipped: app identity (`name` `SmartCard`, `slug` `smartcard`, `scheme` `smartcard`), `ios.bundleIdentifier` and `android.package` (§9.3), the three usage-description strings, `eas.json` with the three §7.2 profiles, `expo-dev-client`, a `test` script so `turbo run test` stops skipping mobile, and the removal of the unused `@supabase/supabase-js` that §5.1 asked for.
+
+Deliberately **not** done in this pass, contrary to Phase 0 as written: deleting the Expo template screens and assets, and adding the tab skeleton. Neither is a prerequisite for a development build, and bundling them would have made the diff that establishes permanent store identity harder to review. They belong with the first real screens.
+
+**`eas.json` is unverified against EAS's own schema.** It is valid JSON and matches the documented shape, but `eas config` requires an Expo login, so the first `eas build` is the first real test of it.
+
+### 9.3 Store identity: fresh listings, not an update to the existing app
+
+The owner confirmed a previously shipped SmartCard app exists on both stores, then decided this rebuild ships as a **fresh submission** rather than an update to those listings. So no legacy bundle identifier had to be recovered, and none of the constraints that reusing one would have imposed apply — matching signing keys, version numbers above what is live, and a working legacy-account migration before existing users could be upgraded into a rebuilt app.
+
+Identity chosen: **`tech.smartcard.app`** for both platforms — reverse-DNS of `smartcard.tech`, the domain the 7,142 physical cards are permanently encoded against (§Q1). The old listings stay up until the owner retires them; existing users do not auto-upgrade and would have to install the new app.
+
+### 9.4 Deviation: `@kinde/expo` rather than hand-rolled `expo-auth-session`
+
+Phase 2 above specifies "`expo-auth-session` PKCE against the `SmartCard Mobile` Kinde application". The implementation uses Kinde's own Expo SDK instead. Reasoning:
+
+- `@kinde/expo` is built *on* `expo-auth-session`, `expo-web-browser` and `expo-secure-store` — the three packages this document already listed as present-but-unused. Its bundle imports nothing else native, so it needs **no config plugin and no additional native module**, and the choice does not change what goes into a build.
+- It stores tokens in `expo-secure-store`, satisfying §5's rule 4 (`never AsyncStorage`).
+- It exposes `getAccessToken()` and `getIdToken()`, which are exactly the two values `api-context.ts` consumes (`Authorization: Bearer` and `X-Kinde-Id-Token`).
+- Hand-rolling PKCE, refresh and revocation for a security-critical path is more risk than delegating to the vendor's maintained implementation, which is the opposite of the tradeoff this document assumed when it named the lower-level library.
+
+Known caveats, recorded so they are not rediscovered: the package is pre-1.0 (`0.8.0`), and its manifest lists `@vitejs/plugin-react` and `dotenv` as runtime dependencies — verified as install bloat only, since neither appears in the shipped bundle. Its README claims it targets SDK 56; its `peerDependencies` say `^56.0.0 || ^57.0.0`.
+
+### 9.5 Refinement: the api-client token provider is async, and there are two of them
+
+§1.2 proposed `getToken?: () => Promise<string | null>` on `ConnectApiOptions`, reasoning that an async provider means "a screen never handles a refresh race by hand". That reasoning is right and applies equally to `ApiV1Options`, which currently takes a static `accessToken` string — a value that can expire between being read and being sent. `ApiV1Options` gains the async provider alongside the static field.
+
+It needs a **second** provider for the ID token. `api-context.ts` reads `X-Kinde-Id-Token` to obtain an email claim when creating a brand-new `public.users` row, and `ApiV1Options` has no way to set that header today. Without it, the first API call from a fresh mobile signup can fail with `MissingEmailClaimError` — a failure that only appears for genuinely new users, which is the worst kind to discover late.
+
+### 9.6 Environment variable names
+
+Using the names §5 rule 2 fixes — `EXPO_PUBLIC_KINDE_DOMAIN`, `EXPO_PUBLIC_KINDE_CLIENT_ID`, `EXPO_PUBLIC_API_URL` — rather than the longer ones drafted while planning. All three are safe to embed in the bundle: a native PKCE client id is public by design, which is the reason PKCE exists. Rule 2's list stands unchanged; no secret gets an `EXPO_PUBLIC_` prefix.
