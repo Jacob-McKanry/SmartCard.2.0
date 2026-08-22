@@ -9,7 +9,14 @@
  */
 import { z } from "zod";
 
-import { integerSchema, latitudeSchema, longitudeSchema, timestamptzSchema, uuidSchema } from "./scalars";
+import {
+  integerSchema,
+  latitudeSchema,
+  longitudeSchema,
+  timestamptzSchema,
+  uuidSchema,
+  withoutDefaults,
+} from "./scalars";
 import { eventCancelReasonSchema, eventStatusSchema, eventVisibilitySchema } from "./enums";
 
 /**
@@ -185,7 +192,14 @@ export type EventInsert = z.infer<typeof eventInsertSchema>;
  * cannot be handed to somebody else after the fact. That asymmetry with
  * `eventInsertSchema` is deliberate and is the reason column-level grants exist
  * at all — RLS cannot say "this row but not that column".
+ *
+ * `withoutDefaults(...)` BEFORE `.partial()`, not `eventInsertSchema.partial()`
+ * directly — see that function's header in `./scalars` for why the obvious
+ * version silently resets `description`, `visibility`, `capacity`,
+ * `requires_approval` and `cover_image_path` to their create-time defaults on
+ * ANY update that does not resend all five, which is a bug this schema
+ * actually had (2026-08-22).
  */
-export const eventUpdateSchema = eventInsertSchema.partial().strict();
+export const eventUpdateSchema = withoutDefaults(eventInsertSchema).partial().strict();
 
 export type EventUpdate = z.infer<typeof eventUpdateSchema>;
