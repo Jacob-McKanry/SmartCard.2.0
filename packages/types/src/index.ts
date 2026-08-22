@@ -13,3 +13,4 @@
 // the route's validation, the browser's call, and (later) the mobile client's.
 export * from "./db";
 export * from "./connect";
+export * from "./api";
