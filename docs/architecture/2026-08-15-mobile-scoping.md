@@ -369,6 +369,16 @@ Known caveats, recorded so they are not rediscovered: the package is pre-1.0 (`0
 
 It needs a **second** provider for the ID token. `api-context.ts` reads `X-Kinde-Id-Token` to obtain an email claim when creating a brand-new `public.users` row, and `ApiV1Options` has no way to set that header today. Without it, the first API call from a fresh mobile signup can fail with `MissingEmailClaimError` — a failure that only appears for genuinely new users, which is the worst kind to discover late.
 
-### 9.6 Environment variable names
+### 9.6 Phase 2's client half is built; Phase 1 is the remaining gate
+
+Sign-in, the auth gate, the config-error screen and a chain-proving screen are in `apps/mobile/src`, and `apps/mobile` now contributes tests to `turbo run test` where it previously contributed none. What is **not** done is Phase 1 — no development build exists yet, so none of it has run on hardware. Everything above is verified only by type-check, lint, unit tests and a successful `expo export`. Treat "signed in as…" as unproven until a phone shows it.
+
+Two findings from building it, both worth keeping:
+
+**A cleartext API URL is refused unless it is loopback or a private LAN range.** Every request carries an access token in a header; over cleartext to a routable host that token is readable in transit, and a stolen access token is a signed-in session. The first version of that check used `/^10\./`, which also matches `10.0.0.1.evil.com` — a routable name somebody else controls. Anchored dotted-quad matching now, caught by the module's own test.
+
+**`apps/mobile` cannot reuse the web `env.ts`'s `process.env[name]` helper shape.** Expo has no runtime environment; Babel substitutes `EXPO_PUBLIC_*` reads at build time and only when the key is static. Measured against a real `expo export` bundle: dot access and a literal-string bracket key are both inlined, a variable key is not — it silently becomes `undefined` in a release build while passing every test and every dev run. The accessors are therefore written out one per variable, and that is load-bearing rather than stylistic.
+
+### 9.7 Environment variable names
 
 Using the names §5 rule 2 fixes — `EXPO_PUBLIC_KINDE_DOMAIN`, `EXPO_PUBLIC_KINDE_CLIENT_ID`, `EXPO_PUBLIC_API_URL` — rather than the longer ones drafted while planning. All three are safe to embed in the bundle: a native PKCE client id is public by design, which is the reason PKCE exists. Rule 2's list stands unchanged; no secret gets an `EXPO_PUBLIC_` prefix.
