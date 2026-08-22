@@ -53,6 +53,133 @@ describe("requestApiV1", () => {
     expect((init.headers as Record<string, string>)["Authorization"]).toBeUndefined();
   });
 
+  it("sends the token a static accessToken supplies", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true, value: "x" }));
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      accessToken: "static-token",
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer static-token");
+  });
+
+  it("asks getToken at request time and sends what it answers", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true, value: "x" }));
+    const getToken = vi.fn().mockResolvedValue("fresh-token");
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      getToken,
+    });
+
+    expect(getToken).toHaveBeenCalledTimes(1);
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer fresh-token");
+  });
+
+  it("prefers the live getToken answer over a stale static accessToken when both are given", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true, value: "x" }));
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      accessToken: "stale-token",
+      getToken: async () => "fresh-token",
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer fresh-token");
+  });
+
+  it("re-asks getToken on every request rather than caching the first answer", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true, value: "x" })));
+    const getToken = vi.fn().mockResolvedValueOnce("first").mockResolvedValueOnce("second");
+    const opts = { fetchImpl, getToken };
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), opts);
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), opts);
+
+    const headerOf = (call: number) =>
+      ((fetchImpl.mock.calls[call] as [string, RequestInit])[1].headers as Record<string, string>)[
+        "Authorization"
+      ];
+    expect(headerOf(0)).toBe("Bearer first");
+    expect(headerOf(1)).toBe("Bearer second");
+  });
+
+  it("sends no Authorization header when getToken answers null", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true, value: "x" }));
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      getToken: async () => null,
+    });
+
+    const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect((init.headers as Record<string, string>)["Authorization"]).toBeUndefined();
+  });
+
+  it("lets a getToken failure propagate unchanged instead of disguising it as a transport error", async () => {
+    const fetchImpl = vi.fn();
+    const boom = new Error("secure store unavailable");
+
+    await expect(
+      requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+        fetchImpl,
+        getToken: async () => {
+          throw boom;
+        },
+      }),
+    ).rejects.toBe(boom);
+
+    // No request was attempted, so calling this "couldn't reach SmartCard" would be a lie.
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("sends the ID token as X-Kinde-Id-Token when a provider supplies one", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(200, { ok: true, value: "x" }));
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      getToken: async () => "access",
+      getIdToken: async () => "id-token",
+    });
+
+    const headers = (fetchImpl.mock.calls[0] as [string, RequestInit])[1].headers as Record<
+      string,
+      string
+    >;
+    expect(headers["X-Kinde-Id-Token"]).toBe("id-token");
+    expect(headers["Authorization"]).toBe("Bearer access");
+  });
+
+  it("omits X-Kinde-Id-Token entirely when there is no provider or it answers null", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(() => Promise.resolve(jsonResponse(200, { ok: true, value: "x" })));
+
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      getToken: async () => "access",
+    });
+    await requestApiV1("GET", "/api/v1/x", undefined, (json) => echoSchema.parse(json), {
+      fetchImpl,
+      getToken: async () => "access",
+      getIdToken: async () => null,
+    });
+
+    for (const call of [0, 1]) {
+      const headers = (fetchImpl.mock.calls[call] as [string, RequestInit])[1].headers as Record<
+        string,
+        string
+      >;
+      expect(headers["X-Kinde-Id-Token"]).toBeUndefined();
+    }
+  });
+
   it("classifies a non-JSON body as unreachable rather than throwing a raw SyntaxError", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response("not json", { status: 200 }));
 

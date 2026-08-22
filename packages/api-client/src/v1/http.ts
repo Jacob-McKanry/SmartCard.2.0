@@ -48,8 +48,57 @@ export interface ApiV1Options {
   baseUrl?: string;
   /** Injectable so tests can run without a network and without a DOM `fetch` global. */
   fetchImpl?: typeof fetch;
-  /** A Kinde access token, for a caller with no session cookie. Omit on web. */
+  /**
+   * A Kinde access token as a plain string, for a caller with no session
+   * cookie. Omit on web. Prefer `getToken` in a real app — see below.
+   */
   accessToken?: string;
+  /**
+   * Where the access token comes from, asked for at the moment the request is
+   * built rather than whenever the caller happened to read it.
+   *
+   * WHY AN ASYNC PROVIDER AND NOT JUST THE STRING ABOVE
+   *
+   * A Kinde access token expires. A screen holding `accessToken` as a value
+   * has to notice that itself and refresh before every call, and the window
+   * between reading the token and sending it is a race it has no good way to
+   * close. A provider hands that problem to whoever actually owns the session
+   * — `@kinde/expo`'s `getAccessToken()` refreshes internally and is already
+   * async — so no screen ever handles a refresh race by hand. This is the
+   * shape `docs/architecture/2026-08-15-mobile-scoping.md` §1.2 asked for.
+   *
+   * Takes precedence over `accessToken` when both are given: the live answer
+   * beats the remembered one. Returning `null` sends no `Authorization`
+   * header at all, which is the same as having no credential — honest, and it
+   * lets the server's own cookie fallback decide what to do.
+   *
+   * A throw from here propagates unchanged rather than becoming an
+   * `ApiV1Error`. Failing to obtain a token is not a transport failure and
+   * must not be disguised as one — no request was attempted, so reporting
+   * "couldn't reach SmartCard" would be a lie.
+   */
+  getToken?: () => Promise<string | null>;
+  /**
+   * Where the Kinde ID token comes from, sent as `X-Kinde-Id-Token`.
+   *
+   * WHY A SECOND TOKEN EXISTS AT ALL
+   *
+   * `apps/web/src/server/auth/api-context.ts` reads this header for exactly
+   * one purpose: `ensureUser` needs an email to create a BRAND-NEW
+   * `public.users` row, `users.email` is NOT NULL, and Kinde commonly puts
+   * profile claims on the ID token rather than the access token. An existing
+   * user never needs it — their row is found by `kinde_user_id`. So the only
+   * caller this matters to is somebody signing up on the phone for the first
+   * time, and the failure without it is `MissingEmailClaimError`.
+   *
+   * Sent on every request when the provider is present, not just the first
+   * one, because a client cannot know which request is a user's first-ever.
+   * The server ignores it whenever the access token already carries an email,
+   * so the cost is bytes rather than behaviour. Note the server treats a
+   * supplied-but-unverifiable ID token as a refusal rather than ignoring it,
+   * which is why this is a provider and not a value a screen assembles.
+   */
+  getIdToken?: () => Promise<string | null>;
 }
 
 /**
@@ -108,8 +157,15 @@ export async function requestApiV1<TResponse>(
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
-  if (opts.accessToken !== undefined && opts.accessToken !== "") {
-    headers["Authorization"] = `Bearer ${opts.accessToken}`;
+  // `getToken` wins over `accessToken` when both are set — see its own note.
+  const accessToken = opts.getToken !== undefined ? await opts.getToken() : opts.accessToken;
+  if (accessToken !== undefined && accessToken !== null && accessToken !== "") {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+
+  const idToken = opts.getIdToken !== undefined ? await opts.getIdToken() : undefined;
+  if (idToken !== null && idToken !== undefined && idToken !== "") {
+    headers["X-Kinde-Id-Token"] = idToken;
   }
 
   let response: Response;
