@@ -185,6 +185,16 @@ export const eventInsertSchema = z.object({
 export type EventInsert = z.infer<typeof eventInsertSchema>;
 
 /**
+ * The shape a caller actually needs to supply to create an event — every
+ * field with a `.default()` above (`description`, `visibility`, `capacity`,
+ * etc.) is optional here, unlike `EventInsert` (`z.infer`'s *output* type,
+ * where those defaults have already been filled in). `createEvent`'s client
+ * wrapper takes this type so a mobile caller isn't forced to restate every
+ * default just to make a `{ city_id, title, starts_at }` event.
+ */
+export type EventInsertInput = z.input<typeof eventInsertSchema>;
+
+/**
  * What a host may change about an event they already own — mirrors the combined
  * column-level UPDATE grants from 20260809211300 and 20260814051100.
  *
