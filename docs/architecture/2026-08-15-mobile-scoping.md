@@ -128,7 +128,7 @@ People will assume the app "does NFC". Be precise about which part, because the 
 
 **And the surprise: for most of the pilot's phones, the app does not need to implement NFC reading at all.** On iPhone XS and later, iOS reads NDEF URL tags **in the background** with no app open, shows a notification banner, and — if the URL matches a domain in the app's `associatedDomains` entitlement — routes it into the app as a Universal Link rather than to Safari. Android does the same thing through App Links and the NDEF intent. So the primary card-tap flow is delivered by **§7.3's deep-link setup, not by an NFC library**:
 
-1. `smartcard.tech` serves `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`. **Neither file exists today** — `apps/web/public/` contains five SVGs and nothing else, and the domain is not yet pointed at the Vercel project (Q15 is resolved as a decision, not as a completed action).
+1. `smartcard.tech` serves `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`. **Neither file exists today** — `apps/web/public/` contains five SVGs and nothing else. The domain itself is no longer a blocker: **Q15 is complete as of 2026-08-22** (owner-confirmed — the DNS cutover is live and serving the Vercel project), so only the two association files remain.
 2. The app declares `associatedDomains: ["applinks:smartcard.tech"]` and matching Android intent filters.
 3. The app owns a `/card/[code]` route that posts to `POST /api/connect/nfc/redeem` — the same call `apps/web/src/app/card/[code]/card-redeem-flow.tsx` already makes.
 
@@ -217,7 +217,7 @@ Server: `getAuthenticatedContextFromBearer(request)`, with the three constraints
 
 ### Phase 4 — Deep links and the card tap (§7.3)
 
-Point `smartcard.tech` at the Vercel project (Cloudflare proxy **off** for that record, per Q15). Serve `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` from `apps/web`. Add `associatedDomains` and Android intent filters. Build the app's `/card/[code]` screen calling `redeemNfc` through the API client, and the `/c/[token]` QR-preview equivalent.
+~~Point `smartcard.tech` at the Vercel project (Cloudflare proxy **off** for that record, per Q15).~~ **Done 2026-08-22 — the cutover is live.** Serve `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json` from `apps/web`. Add `associatedDomains` and Android intent filters. Build the app's `/card/[code]` screen calling `redeemNfc` through the API client, and the `/c/[token]` QR-preview equivalent.
 
 *Testable by:* tapping a real production card with the app installed and landing in the app; tapping it without the app installed and landing on the existing web preview.
 
@@ -278,7 +278,7 @@ Non-negotiable, from CLAUDE.md and §7.4. Any change that would breach one of th
 
 **Uncertainties this pass could not resolve, flagged rather than glossed:**
 
-- Whether `smartcard.tech` currently resolves to the Vercel project (Q15 is a decision, not a completed action; the deployment note in the README still cites the `*.vercel.app` URL).
+- ~~Whether `smartcard.tech` currently resolves to the Vercel project.~~ **Resolved 2026-08-22:** the cutover is live and serving (owner-confirmed; this container's egress proxy blocks outbound requests to the domain, so it was not machine-verified from here). The one consequence worth noting is that the risk register's "this phase depends on a DNS cutover that affects the live web app, so it should not be done casually mid-pilot" no longer applies to Phase 4 — that cost has already been paid.
 - Whether a `SmartCard Mobile` application exists in the Kinde business yet, and therefore whether `KINDE_MOBILE_CLIENT_ID` has a value. The code path handles it being unset; the phase that needs it does not.
 - Exact current Apple/Google/EAS pricing and Play closed-testing terms (§3).
 - Whether Expo Go's iOS push behaviour differs from Android's on SDK 57. Immaterial — the dev build is required for NFC regardless — but do not let anyone "just test push in Expo Go" and conclude the pipeline is broken.
