@@ -98,6 +98,8 @@ Design implication: an RSVP button needs at least these rendered states: not ans
 - **Pending count**: host-only (their own queue depth).
 - **The actual attendee list**: never exposed to anyone except a computed count. There is no "see who's going" screen showing names, for anyone but the host's own approval queue (below). "You know 4 people going" is answerable (your own connections only), a full guest list is not.
 
+> **Amended 2026-08-27 — an opt-in post-event roster now exists, by owner decision.** Attendees of an event who have each opted in can see each other on that event's page, at card-preview disclosure depth, with no connect action. The pre-event "see who's going" surface stays refused, unanswered visibility means hidden, and nobody appears through anyone else's action. Full reasoning and invariants: `docs/architecture/2026-08-27-event-attendee-roster.md`.
+
 ### Host approval queue (host-only screen)
 Everyone `pending`, `waitlisted`, or `going`, each with name/photo, so the host can approve/deny (with an explicit "admit past capacity" override that's visually distinct from a normal approve — it's a recorded exception, not the default path). `interested` and `not_going` people never appear here.
 

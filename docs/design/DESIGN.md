@@ -639,11 +639,16 @@ These are design constraints, not tone preferences.
   connection was reported back to its owner as 4 AM.
 - **Never build a directory.** No profile URLs, no username search, no guest
   lists, no mutual-connection browsing, no share-profile link.
+  *(Amended 2026-08-27: one bounded exception — the opt-in post-event attendee
+  roster, `docs/architecture/2026-08-27-event-attendee-roster.md`. Everything
+  else in this bullet stands.)*
 - **Failures reveal nothing.** One generic message; never a distance, a reason
   code, or anything that confirms a record exists.
 - **Counts are public, names are not.** Going / interested / waitlist counts and
   seats remaining are visible to anyone who can see an event; pending count is
-  host-only; the attendee list is nobody's.
+  host-only; the attendee list is nobody's — *except, as of the 2026-08-27
+  amendment, fellow attendees of that same event, and only for people who
+  opted in. See `docs/architecture/2026-08-27-event-attendee-roster.md`.*
 
 ---
 

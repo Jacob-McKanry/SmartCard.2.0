@@ -24,6 +24,8 @@ Even "your own connections who are going" was considered and rejected, on the gr
 
 **Decision (owner, 2026-08-22):** build everything except the directory. Connections continue to require NFC or a live GPS-verified QR scan. This document assumes that and does not revisit it.
 
+> **Superseded in part, 2026-08-27.** The owner, after two flag-and-confirm rounds, amended the non-negotiable rule: an **opt-in, attendee-only, post-event roster** now exists — see `2026-08-27-event-attendee-roster.md` for the decision, the design, and the finding that pairwise co-attendee visibility (phone and email included) had existed in the RLS layer all along. What that amendment does **not** change is this paragraph's second sentence: connections still require NFC or a live GPS-verified scan, and the roster has no connect action. §4.3 below and §8's roster bullet are superseded accordingly; everything else in this document stands.
+
 ---
 
 ## 1. What already exists, and what does not
@@ -239,6 +241,8 @@ The event page as it exists today, plus "You attended this." Counts, the `connec
 
 **No attendee list.** A profile is reachable from an event only if that person is already a connection, through the ordinary connection route. That is the boundary this whole document is organised around, and it is the thing to check hardest in the mockups.
 
+> **Superseded 2026-08-27** by the roster amendment (`2026-08-27-event-attendee-roster.md`): opted-in attendees are now also reachable from the event page, view-and-save only, with the connect wall in place. The mockups' C1/C2 screens were updated the same day.
+
 ---
 
 ## 5. Email, as its own phase
@@ -295,7 +299,7 @@ The CSV parsing is the easy 5%. The cost is in §3 and in the RLS.
 - The attendee directory. Refused above; reopening it means amending the non-negotiable product rule in CLAUDE.md and the four documents in §0, as a deliberate decision with its own write-up.
 - Whether attendance should ever become a *connection* by any route. It should not, under the current thesis.
 - The email provider.
-- Whether an event roster (a bounded, opt-in visibility surface among people who share an event) should exist in any form. Raised and discussed 2026-08-27, not resolved — a separate write-up if pursued, because it needs `users` to gain a visibility setting that does not exist yet (§9.4).
+- ~~Whether an event roster should exist in any form.~~ **Resolved 2026-08-27: it does.** The separate write-up this bullet asked for is `2026-08-27-event-attendee-roster.md`, including the `users` visibility column §9.4 said would be needed.
 
 ---
 
