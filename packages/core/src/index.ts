@@ -173,3 +173,8 @@ export {
   type NormalizeResult,
   type StatusClass,
 } from "./events/attendee-import";
+
+// RFC 4180 CSV reader for guest-list uploads. Hand-written rather than a
+// dependency because everything in this package ships to mobile — see the
+// module header for that tradeoff and why it is acceptable here.
+export { parseCsv, type CsvParseResult } from "./events/csv";
