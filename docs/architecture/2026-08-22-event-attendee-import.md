@@ -110,7 +110,15 @@ Two things differ.
 
 **The blast radius is bounded.** `ensureUser`'s dangerous case is account takeover — cards, connections, the whole graph, permanently. Here the worst case is that an attacker reads one CSV row: a name, a phone number, a company, some social handles. Real harm, but bounded, one-shot, and containing nothing that grants access to anything.
 
-**Verification is required, and it is not required in `ensureUser`'s dangerous case.** The claim demands `users.email_verified = true` — meaning Kinde or an upstream IdP has proven mailbox control. The attack `ensureUser` describes works precisely because it needs *no* such proof.
+**Verification is required, and it is not required in `ensureUser`'s dangerous case.** The claim demands a verified email — meaning Kinde or an upstream IdP has proven mailbox control. The attack `ensureUser` describes works precisely because it needs *no* such proof.
+
+**Read the live token claim, NOT `users.email_verified`.** An earlier draft of this document said to gate on the column. That is wrong, and checking the live database is what caught it:
+
+- `ensureUser` writes `email_verified` **only on INSERT**. An existing row returns early and the column is never updated again, so it is frozen at whatever was true the moment the account was created. Somebody who verifies their email a day later still reads `false` here, forever.
+- Nothing in the app reads that column today — it is write-only, so the staleness has never mattered and never surfaced.
+- Measured 2026-08-26 on the production project: of 341 live users, 337 came from the legacy import and 4 signed up through the app. **All four real signups have `email_verified = false`.** The 305 `true` values are legacy-import data, not anything Kinde asserted. No migration sets the column, so those values came in with the seed.
+
+Two consequences. First, the gate must read `identity.emailVerified` from the freshly verified token (what `api-context.ts` already resolves per request), never the stored column. Second, and more urgent: **Kinde is not currently asserting `email_verified` for real signups**, so this feature would refuse every genuine user until that is configured. See Q-E.
 
 So the rule is: **a matching email address is a lookup key and never an authorization.** Authorization is `email_verified = true` on the matching address.
 
@@ -229,7 +237,7 @@ The CSV parsing is the easy 5%. The cost is in §3 and in the RLS.
 | **Q-B** | Row cap per import, and per-host rate limit. | Nothing yet stops a host uploading 50,000 addresses. Needs a number. |
 | **Q-C** | Does the person get told *which host* uploaded them, and can they refuse and be purged? | A "remove me and don't ask again" path is close to mandatory under GDPR/CCPA and is the right thing regardless. Needs a suppression list that survives future imports. |
 | **Q-D** | Exact Luma export columns. | Column mapping cannot be finalised without a real template. The owner is providing one. |
-| **Q-E** | Which Kinde connections are enabled, per §3.3. | Determines whether `email_verified` is a strong claim or a weak one, and therefore whether a separate emailed code is needed on top. |
+| **Q-E** | **Kinde is not asserting `email_verified` today — this must be fixed before the feature can ship at all.** Measured 2026-08-26: all four non-legacy users read `false`. Which connections are enabled, and is verification mandatory on each? | This is now a blocker rather than a question. §3.2's authorization gate is the whole security argument, and it currently evaluates false for every real user. Also determines whether a separate emailed code is needed on top. |
 
 ---
 
