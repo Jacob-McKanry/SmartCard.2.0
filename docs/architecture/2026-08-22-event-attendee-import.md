@@ -1,8 +1,8 @@
 # Event attendee import — CSV to claimed profile
 
-**Date:** 2026-08-22
+**Date:** 2026-08-22, updated 2026-08-27
 **Status:** Proposal. Nothing here is built. Requires sign-off before implementation, per CLAUDE.md's "Plan before building."
-**Scope:** A host uploads an attendee CSV (Luma export) to one of their events; the people on it are emailed and can claim a pre-filled SmartCard profile they control.
+**Scope:** A host uploads an attendee CSV (Luma, Eventbrite, Partiful, or similar) to one of their events; the people on it are emailed and can claim a pre-filled SmartCard profile they control. Extended 2026-08-27 to add host verification (§9) after the owner raised spam risk, and corrected §3.2's authorization gate against the live database.
 **Visual mockups:** published separately as an artifact (linked in the sign-off thread) covering both flows screen by screen.
 
 ---
@@ -87,6 +87,24 @@ This is not tidiness. It means a breach of this table exposes only *unclaimed* r
 - Longer retention means a growing database of contact details for people who never signed up, accumulating across every host who ever uploads.
 
 180 days is a proposal, not a finding. **Open question Q-A below.**
+
+### 2.3.1 What a real export actually contains — checked against a live Luma file
+
+A real Luma guest-list export was supplied 2026-08-27 (`Private_Black_Tie_Networking_Mixer__Guests…csv`, 100 rows). Two findings change what "import" is allowed to mean, found by reading the file rather than assuming its shape:
+
+**`approval_status` is not attendance — it is the host's RSVP decision, and it has three values.** The file has rows marked `approved`, `declined`, and `invited`. Several `declined` rows are people the host explicitly refused entry; several `invited` rows never responded at all. **The import must filter to `approval_status = 'approved'` and silently drop everything else.** Importing a `declined` row would mark someone the host turned away as having attended their event — the opposite of what happened.
+
+**`checked_in_at` is blank on every row, including every `approved` one.** Luma has a real check-in feature and this host never used it. So even the strongest signal a mainstream ticketing platform offers is absent here, which means **this system has no path to "verified attended" from CSV data at all — only "the host says this person was on the list."** That is a weaker claim than the phrase "attendee import" suggests, and it should be reflected everywhere the product says so out loud:
+
+- Email subject/body: not *"You attended Founders Dinner"* — *"Jacob added you to the guest list for Founders Dinner"*.
+- Claim screen: not *"You attended"* — *"You were on the guest list"* or *"Jacob says you were there"*.
+- The event page afterwards (§4.3): the same softening applies to any "you attended" chip.
+
+This does not weaken §3's security argument — that argument was never about whether the host told the truth, only about whether the *claiming person* controls the email address. But it does mean the product must not claim more certainty than a spreadsheet can support, and the mockups (§4) need this copy pass before anything ships.
+
+**Column names differ by platform, and that is already handled, not a new problem.** The Luma file's headers (`email`, `first_name`, `last_name`, `phone_number`, custom question columns like `"What company do you work for/with?"`) will not match Eventbrite's or Partiful's own export headers. §4.1 step 3's column-mapping screen — proposing a match, letting the host confirm or repoint each column, requiring only email — already handles any CSV shape without a per-platform parser. Confirmed against this real file rather than assumed: nothing here needed a Luma-specific importer.
+
+**Duplicate rows exist per person.** Several guests appear on more than one row with the same email (multiple ticket registrations under one `guest_id`). The schema's `unique (event_id, email)` constraint already makes this safe — the import upserts on that key rather than erroring, and the second row for the same person is a no-op.
 
 ### 2.4 Attendance is not an RSVP
 
@@ -221,9 +239,10 @@ The second is what can poison the domain's reputation and take the first down wi
 | CSV parse, upload, column mapping, preview | 1–2 sessions | Sonnet or Opus / high |
 | Claim + prefill flow | 1–2 sessions | Opus / xhigh — §3 lives here |
 | Retroactive attendance history | ~½ session | Sonnet / high — same lookup, run over all rows |
+| Host verification: application, `is_verified_host`, admin review queue (§9) | 1–2 sessions | Opus / high — a new privilege boundary |
 | Email (separate phase) | 2–3 sessions + DNS/deliverability + ongoing ops | Opus / high |
 
-**~4–6 focused sessions excluding email.**
+**~6–8 focused sessions excluding email**, up from ~4–6 with host verification added.
 
 The CSV parsing is the easy 5%. The cost is in §3 and in the RLS.
 
@@ -236,8 +255,8 @@ The CSV parsing is the easy 5%. The cost is in §3 and in the RLS.
 | **Q-A** | Retention for unclaimed rows — 180 days proposed. | Directly trades retroactive-history usefulness against how long we hold contact details for people who never signed up. A product and legal call, not a technical one. |
 | **Q-B** | Row cap per import, and per-host rate limit. | Nothing yet stops a host uploading 50,000 addresses. Needs a number. |
 | **Q-C** | Does the person get told *which host* uploaded them, and can they refuse and be purged? | A "remove me and don't ask again" path is close to mandatory under GDPR/CCPA and is the right thing regardless. Needs a suppression list that survives future imports. |
-| **Q-D** | Exact Luma export columns. | Column mapping cannot be finalised without a real template. The owner is providing one. |
-| **Q-E** | **Kinde is not asserting `email_verified` today — this must be fixed before the feature can ship at all.** Measured 2026-08-26: all four non-legacy users read `false`. Which connections are enabled, and is verification mandatory on each? | This is now a blocker rather than a question. §3.2's authorization gate is the whole security argument, and it currently evaluates false for every real user. Also determines whether a separate emailed code is needed on top. |
+| **Q-D** | ~~Exact Luma export columns.~~ **Resolved 2026-08-27** — a real export was supplied and read; see §2.3.1. Eventbrite's and Partiful's own headers are still unseen, but the mapping screen does not require them in advance (§2.3.1's third finding). |
+| **Q-E** | **Partially addressed, not closed.** 2026-08-26: the owner enabled Email+Password and Username+Password connections in Kinde (see §10) specifically to reduce sign-in friction, which is progress, but this document's own gate depends on **email verification being mandatory on every enabled connection**, and that toggle's state has not been confirmed for either new connection. Until confirmed, treat Q-E as open. |
 
 ---
 
@@ -247,3 +266,76 @@ The CSV parsing is the easy 5%. The cost is in §3 and in the RLS.
 - The attendee directory. Refused above; reopening it means amending the non-negotiable product rule in CLAUDE.md and the four documents in §0, as a deliberate decision with its own write-up.
 - Whether attendance should ever become a *connection* by any route. It should not, under the current thesis.
 - The email provider.
+- Whether an event roster (a bounded, opt-in visibility surface among people who share an event) should exist in any form. Raised and discussed 2026-08-27, not resolved — a separate write-up if pursued, because it needs `users` to gain a visibility setting that does not exist yet (§9.4).
+
+---
+
+## 9. Host verification — added 2026-08-27
+
+**Why this exists.** Anyone who can create an event today could otherwise upload a CSV to it. That is a spam and abuse surface with no gate at all: a bad actor creates a throwaway event and imports a purchased or scraped list, and every one of those addresses gets an email that looks legitimate because it comes from `smartcard.tech`. The owner raised this unprompted, correctly — it is a real gap in §2/§3 as written, which assumed a trustworthy host without ever establishing what makes a host trustworthy.
+
+**The mechanism: a flat, account-level flag, not a per-event approval.** Owner's decision, 2026-08-27: once approved, a host may import to *any* of their events, not just the one they applied against. This is deliberately the same shape `is_admin` already uses — a boolean the client can never set, flipped only by an admin action — reusing a privilege pattern this codebase already has rather than inventing a parallel one.
+
+### 9.1 Schema
+
+```
+public.host_applications
+  id                    uuid pk
+  user_id               uuid not null references users(id) on delete cascade
+  organization_name     text not null
+  applicant_role        text not null        -- "your role" at the organization
+  past_event_link       text not null        -- a Luma/Eventbrite/Partiful page or social post
+  expected_event_size    text                 -- free text bucket, not a hard number
+  hosting_frequency      text                 -- e.g. "one-off", "monthly series"
+  status                text not null default 'pending'
+                          check (status in ('pending', 'approved', 'rejected')),
+  submitted_at          timestamptz not null default now(),
+  decided_at            timestamptz,
+  decided_by_user_id    uuid references users(id) on delete set null,
+  rejection_note        text                 -- shown to the applicant; see 9.3
+  unique (user_id) -- one live application per user; re-applying after rejection replaces it
+```
+
+```
+public.users
+  + is_verified_host    boolean not null default false
+```
+
+`is_verified_host` follows `is_admin`'s existing exclusion pattern exactly: absent from `userProfileUpdateSchema` and from the column-level UPDATE grant, so a client cannot set it on itself by any route, including a raw PostgREST call. The only writer is `decide_host_application`, a `security definer` function, mirroring how `has_completed_signup` is set only by server code that observed the real event, never claimed by the row itself.
+
+### 9.2 The application fields, and why these four
+
+Decided with the owner 2026-08-27, multi-select:
+
+- **Organization name + the applicant's role** — bare minimum identity.
+- **A link to a past event** (a Luma/Eventbrite/Partiful page, a social post) — cheap to fabricate, but it filters out the zero-effort case, which is most spam.
+- **Expected event size / hosting frequency** — lets an admin judge risk at a glance ("500-person recurring series" reads differently from "one dinner party"); free text, not a hard cap, since this is input to human judgment, not a machine gate.
+
+Not asked: government ID, business registration, or anything that would make the form itself a data-collection liability disproportionate to what it protects.
+
+### 9.3 The admin review screen
+
+Gated on `is_admin = true` — the same column every other privileged check in this codebase already uses, and the **first UI surface that actually reads it**; today `is_admin` exists only as a thing every grant excludes.
+
+- **Queue**: pending applications, oldest first, showing the four fields plus the applicant's existing profile (name, photo — an admin reviewing this is not a stranger to the applicant's other data).
+- **Approve**: sets `is_verified_host = true`, `status = 'approved'`. No note required.
+- **Reject**: sets `status = 'rejected'`. `rejection_note` is optional free text; if present, it is what the applicant sees, so it should read as a reason to a person, not an internal flag (e.g. *"We couldn't verify a past event — feel free to reapply with a link."*), never a copy-paste of internal suspicion.
+- **Re-application**: a rejected applicant can submit again; the `unique(user_id)` means a new submission replaces the old row rather than accumulating a history an admin has to page through.
+
+### 9.4 What this does and does not solve
+
+**Solves:** a stranger cannot spin up an event and blast a purchased list through a domain with SmartCard's name on it, without a human having looked at who they are first.
+
+**Does not solve:** a verified host acting in bad faith on a real list — uploading people who were invited but never actually attended (§2.3.1's `approval_status` finding is the relevant control there, not this one), or reusing verified status across many low-quality events. `is_verified_host` is a **floor**, not a guarantee; it raises the cost of abuse from "click a button" to "convince a human once," which is the level of friction most of this codebase's other defenses (rate limits, indistinguishable refusals) are calibrated to as well.
+
+**Not the same question as the roster.** §8 lists an event-roster visibility feature as raised but unresolved. Host verification and a roster are independent: this section gates *who may import a list at all*; a roster (if ever built) would additionally gate *who among a verified list may see each other*, and would need its own visibility column on `users` that does not exist today. Do not conflate "this host is trustworthy enough to import" with "this attendee agreed to be seen."
+
+---
+
+## 10. Build log — Kinde configuration changes made 2026-08-26/27
+
+Recorded here because they are inputs to §3's security argument, even though they happened in the Kinde dashboard rather than in this repo.
+
+- **Refresh token expiry** raised from 15 days to 365 days on the Mobile application, and **session inactivity timeout** raised, to fix "asks for a code every sign-in" — a UX complaint unrelated to this feature, but relevant background for why the owner then asked about adding a password connection.
+- **Email + Password** and **Username + Password** connections enabled on the Web application (2026-08-26), alongside the pre-existing Email Code, Google, and Apple connections. Username + Code was deliberately left off — a bare username has no channel to receive a code on.
+- **Not yet confirmed:** whether "require email verification" is turned on for the two new password connections. This is the one setting §3.2's entire gate depends on, and it is a different toggle from the ones changed above. Q-E stays open until this is confirmed and re-measured against the live database, the same way §3.2's original finding was — assumption is exactly what produced the wrong gate the first time.
