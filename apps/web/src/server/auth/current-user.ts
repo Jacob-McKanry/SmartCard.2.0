@@ -8,6 +8,7 @@ import { ensureUser } from "@/server/auth/ensure-user";
 import {
   KindeTokenVerificationError,
   verifyKindeAccessToken,
+  verifyKindeIdToken,
   type KindeIdentity,
 } from "@/server/auth/kinde-identity";
 import { mintSupabaseAccessToken } from "@/server/auth/supabase-token";
@@ -43,6 +44,24 @@ export interface AuthenticatedContext {
   kindeUserId: string;
   /** RLS-bound Supabase client. Never the service role. */
   supabase: SupabaseClient;
+  /**
+   * The caller's address as the freshly verified Kinde token asserted it, or
+   * `null` when it carried none.
+   *
+   * NOT `public.users.email`. That column is written by `ensureUser` on INSERT
+   * and never updated, so it is frozen at signup — see
+   * `SupabaseTokenEmailClaims` for why the difference is load-bearing rather
+   * than pedantic.
+   */
+  email: string | null;
+  /**
+   * Whether the LIVE token says an identity provider proved mailbox control.
+   *
+   * The guest-list claim gate reads this (via the minted Supabase token's
+   * `email_verified` claim, not via this field directly), so it is
+   * security-relevant rather than informational. `false` on any doubt.
+   */
+  emailVerified: boolean;
 }
 
 /**
@@ -99,21 +118,43 @@ export const getAuthenticatedContext = cache(async (): Promise<AuthenticatedCont
   const enriched = await withProfileClaimsFromSession(session, identity);
 
   const userId = await ensureUser(enriched);
-  const supabaseAccessToken = await mintSupabaseAccessToken(userId);
+  const supabaseAccessToken = await mintSupabaseAccessToken(userId, {
+    email: enriched.email,
+    emailVerified: enriched.emailVerified,
+  });
 
   return {
     userId,
     kindeUserId: identity.kindeUserId,
     supabase: rlsClient(supabaseAccessToken),
+    email: enriched.email,
+    emailVerified: enriched.emailVerified,
   };
 });
 
 /**
  * Fills in profile claims that Kinde puts in the ID token rather than the
- * access token (commonly `email`, `given_name`, `family_name`).
+ * access token (commonly `email`, `given_name`, `family_name`,
+ * `email_verified`).
  *
- * These are only ever used to seed a *new* `users` row, and only when the
- * access token did not carry them. They are read from the SDK's session, which
+ * WHAT CHANGED WHEN THE CLAIM GATE NEEDED `email_verified`
+ *
+ * These used to be "only ever used to seed a *new* `users` row", which is why
+ * this returned early the moment the access token carried an email — a
+ * complete identity for `ensureUser`'s purposes was a complete identity, full
+ * stop. That is no longer true. `email_verified` now travels into the minted
+ * Supabase token and is read by the guest-list claim gate (§3.2), so an
+ * identity carrying an email but no verification claim is *incomplete* even
+ * though `ensureUser` would be perfectly happy with it. The early return
+ * therefore now requires both, and the read below happens on more requests
+ * than it used to.
+ *
+ * The claim is taken from the ID token specifically. Kinde puts `email_verified`
+ * there rather than in the access token on the default configuration, which is
+ * exactly the asymmetry this function already existed to paper over for `email`.
+ *
+ * The remaining claims are still only used to seed a new row. They are read
+ * from the SDK's session, which
  * on the web is safe for a specific reason — but NOT the reason this comment
  * used to give. It claimed the session cookie is "encrypted with our client
  * secret"; that is not true of the installed `@kinde-oss/kinde-auth-nextjs`
@@ -140,7 +181,7 @@ async function withProfileClaimsFromSession(
   session: ReturnType<typeof getKindeServerSession>,
   identity: KindeIdentity,
 ): Promise<KindeIdentity> {
-  if (identity.email !== null) {
+  if (identity.email !== null && identity.emailVerified) {
     return identity;
   }
 
@@ -153,8 +194,58 @@ async function withProfileClaimsFromSession(
 
   return {
     ...identity,
+    emailVerified:
+      identity.emailVerified || (await idTokenSaysEmailVerified(session, identity.kindeUserId)),
     email: user.email ?? identity.email,
     firstName: user.given_name ?? identity.firstName,
     lastName: user.family_name ?? identity.lastName,
   };
+}
+
+/**
+ * `email_verified` from the session's ID token, as a strict boolean.
+ *
+ * WHY THIS VERIFIES THE RAW TOKEN ITSELF RATHER THAN CALLING `session.getClaim`
+ *
+ * The obvious version is `session.getClaim("email_verified", "id_token")`, and
+ * the first cut of this function was exactly that. It does not type-check, and
+ * the reason it does not is a reason not to use it: the SDK declares the
+ * returned `value` as `string` (`KindeState` in
+ * `@kinde-oss/kinde-auth-nextjs/dist/types/src/types.d.ts`), while
+ * `email_verified` is a JSON boolean in every token Kinde issues. So the
+ * accessor's own type is wrong about this claim, and code written against it
+ * would have to either coerce — turning the string `"false"` into `true`, since
+ * it is non-empty — or compare through a cast that quietly assumes the
+ * declaration is a lie. Neither is a thing to build a security gate on.
+ *
+ * `verifyKindeIdToken` is the path the mobile half already uses
+ * (`api-context.ts`), it re-verifies against Kinde's JWKS rather than trusting
+ * the SDK's own check, it returns a real `boolean` (`payload["email_verified"]
+ * === true`, `kinde-identity.ts`), and it enforces the `sub` equality invariant
+ * this file's caller cares about. Using it here means both platforms answer
+ * this security question with one implementation instead of two — which is what
+ * §5.3 asked for and what `kinde-identity.ts` warns about drifting from.
+ *
+ * FAILS CLOSED. No ID token in the session, an unverifiable one, a `sub` that
+ * disagrees with the access token, or an absent claim all answer `false`. The
+ * gate this feeds (§3.2) treats `false` as "fall back to the grandfather
+ * clause", so a false negative costs a genuinely-verified new signup their
+ * guest-list claim — annoying, and visible. A false positive lets somebody read
+ * a stranger's phone number. Those are not symmetrical.
+ *
+ * The throw is swallowed deliberately: a session with no ID token is an
+ * ordinary state, and it must degrade to "unverified" rather than take down a
+ * page that has nothing to do with guest-list claims.
+ */
+async function idTokenSaysEmailVerified(
+  session: ReturnType<typeof getKindeServerSession>,
+  kindeUserId: string,
+): Promise<boolean> {
+  try {
+    const raw = await session.getIdTokenRaw();
+    if (!raw) return false;
+    return (await verifyKindeIdToken(raw, kindeUserId)).emailVerified;
+  } catch {
+    return false;
+  }
 }

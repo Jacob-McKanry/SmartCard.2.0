@@ -226,8 +226,123 @@ describe("the chain it hands off to", () => {
 
     const result = await getApiAuthenticatedContext(bearer());
 
-    expect(mintSupabaseAccessToken).toHaveBeenCalledWith("row-id");
+    expect(mintSupabaseAccessToken).toHaveBeenCalledWith("row-id", {
+      email: "someone@example.com",
+      emailVerified: true,
+    });
     expect(rlsClient).toHaveBeenCalledWith("minted-token");
     expect(result).toMatchObject({ ok: true, context: { userId: "row-id" } });
+  });
+});
+
+/**
+ * THE EMAIL CLAIMS THE GUEST-LIST CLAIM GATE RUNS ON (§3.2).
+ *
+ * `public.claim_event_import` reads `email` and `email_verified` out of the
+ * minted Supabase token, because `public.users` cannot answer either question
+ * honestly — `ensureUser` writes both columns on INSERT and never updates them.
+ * So what this file hands to `mintSupabaseAccessToken` IS the gate's input, and
+ * every assertion below is about that value rather than about a response shape.
+ *
+ * The direction of every failure is the same: `emailVerified: false`. That does
+ * not refuse anybody outright — the grandfather clause (§3.2.1) still admits
+ * accounts predating the import — it costs a genuinely-verified NEW signup a
+ * claim. False negatives are visible and annoying; a false positive lets
+ * somebody read a stranger's phone number.
+ */
+describe("the email claims that reach the minted token", () => {
+  const unverified = { ...IDENTITY, emailVerified: false };
+
+  it("carries them onto the context as well as into the token", async () => {
+    const result = await getApiAuthenticatedContext(bearer());
+
+    expect(result).toMatchObject({
+      ok: true,
+      context: { email: "someone@example.com", emailVerified: true },
+    });
+  });
+
+  it("consults the ID token when the access token has an email but no verification claim", async () => {
+    // The widened guard. Kinde puts `email_verified` in the ID token on the
+    // default configuration, so an access token with an email is no longer a
+    // complete identity — it was, back when these claims only ever seeded a new
+    // `users` row.
+    verifyKindeAccessToken.mockResolvedValue(unverified);
+    verifyKindeIdToken.mockResolvedValue({
+      email: "someone@example.com",
+      emailVerified: true,
+      firstName: "Sam",
+      lastName: "Rivera",
+    });
+
+    await getApiAuthenticatedContext(
+      headers({ authorization: "Bearer t", "x-kinde-id-token": "id-token" }),
+    );
+
+    expect(verifyKindeIdToken).toHaveBeenCalled();
+    expect(mintSupabaseAccessToken).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ emailVerified: true }),
+    );
+  });
+
+  it("does NOT let a bad ID token 401 a request that already has an email", async () => {
+    // The split that keeps the widened guard from becoming a regression. This
+    // token was only ever going to UPGRADE `emailVerified`; a stale ID token
+    // beside a fresh access token is an ordinary client state, because
+    // `@kinde/expo` refreshes the two independently. Before the guard widened,
+    // this request never read the ID token at all and simply succeeded.
+    verifyKindeAccessToken.mockResolvedValue(unverified);
+    verifyKindeIdToken.mockRejectedValue(new KindeTokenVerificationError("stale"));
+
+    const result = await getApiAuthenticatedContext(
+      headers({ authorization: "Bearer t", "x-kinde-id-token": "stale-token" }),
+    );
+
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it("degrades that failure to unverified rather than to verified", async () => {
+    // The half of the previous test that actually matters. Succeeding is only
+    // correct if it grants nothing — a swallowed error must not leave the gate
+    // reading `true`.
+    verifyKindeAccessToken.mockResolvedValue(unverified);
+    verifyKindeIdToken.mockRejectedValue(new KindeTokenVerificationError("stale"));
+
+    await getApiAuthenticatedContext(
+      headers({ authorization: "Bearer t", "x-kinde-id-token": "stale-token" }),
+    );
+
+    expect(mintSupabaseAccessToken).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ emailVerified: false }),
+    );
+  });
+
+  it("STILL refuses a bad ID token when there is no email without it", async () => {
+    // Unchanged, and the reason the split exists rather than a blanket swallow.
+    // Here the ID token is load-bearing: `ensureUser` needs it to seed a new
+    // row, so a caller who sent a forged or mismatched one must not get the
+    // same treatment as one who sent none.
+    verifyKindeAccessToken.mockResolvedValue({ ...IDENTITY, email: null, emailVerified: false });
+    verifyKindeIdToken.mockRejectedValue(new KindeTokenVerificationError("forged"));
+
+    const result = await getApiAuthenticatedContext(
+      headers({ authorization: "Bearer t", "x-kinde-id-token": "someone-elses" }),
+    );
+
+    expect(result).toMatchObject({ ok: false, status: 401 });
+    expect(mintSupabaseAccessToken).not.toHaveBeenCalled();
+  });
+
+  it("sends a null email rather than inventing one when no token carried it", async () => {
+    verifyKindeAccessToken.mockResolvedValue({ ...IDENTITY, email: null, emailVerified: false });
+
+    await getApiAuthenticatedContext(bearer());
+
+    expect(mintSupabaseAccessToken).toHaveBeenCalledWith(expect.any(String), {
+      email: null,
+      emailVerified: false,
+    });
   });
 });

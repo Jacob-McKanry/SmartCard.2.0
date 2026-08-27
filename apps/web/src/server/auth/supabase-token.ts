@@ -174,16 +174,85 @@ function signer(): Promise<Signer> {
 }
 
 /**
+ * The email claims this token carries, alongside `sub` and `role`.
+ *
+ * WHY AN EMAIL ADDRESS IS IN A JWT AT ALL
+ *
+ * `public.claim_event_import` (the guest-list claim path,
+ * `docs/architecture/2026-08-22-event-attendee-import.md` §3.2) has to answer
+ * two questions inside the database: *which* address is this caller's, and did
+ * an identity provider actually prove they control it. Neither is answerable
+ * from `public.users` — `ensureUser` writes `email` and `email_verified` only
+ * on INSERT and never updates them, so both columns are frozen at signup and
+ * both are stale for anybody who has since verified or changed an address.
+ * §3.2 says so in as many words: read the live token claim, never the column.
+ *
+ * The alternative was passing them as RPC arguments, which is not an
+ * alternative at all — a Server Action is a POST endpoint anybody can call, so
+ * an argument is client-supplied, and §3.2.1 is explicit that a client-asserted
+ * "I am verified" defeats the entire gate.
+ *
+ * WHY THIS IS AS TRUSTWORTHY AS `sub` ALREADY IS
+ *
+ * Identical provenance. Both are derived server-side from a Kinde token this
+ * process just verified against Kinde's JWKS, and both are then signed with a
+ * key only this server holds. Nothing about the email claim is weaker than the
+ * `sub` claim that the whole RLS model already rests on; a caller who could
+ * forge one could forge the other and would already own the database.
+ *
+ * WHAT THIS DOES COST, STATED RATHER THAN GLOSSED
+ *
+ * An email address now appears in `request.jwt.claims`, so anything that logs
+ * that setting logs an address. That is a real, if small, widening — it is
+ * accepted because the token is minted per request, lives five minutes, is
+ * never sent to a browser (`rls-client.ts` uses it server-side only), and the
+ * alternative is a claim gate that cannot work.
+ */
+export interface SupabaseTokenEmailClaims {
+  /**
+   * The address the verified Kinde token asserted, or `null` when it carried
+   * none. Not read from `public.users` — see the type header.
+   */
+  email: string | null;
+  /**
+   * Whether the LIVE token says an identity provider proved mailbox control.
+   *
+   * `false` is the safe answer and the one every failure produces: an absent
+   * claim, an unreadable ID token, a connection type that does not assert it.
+   * A caller who reads `false` here is not refused outright — the grandfather
+   * clause (§3.2.1) admits accounts that predate the import — so failing this
+   * way costs a genuinely-verified new signup a claim rather than letting an
+   * unverified one through.
+   */
+  emailVerified: boolean;
+}
+
+/**
  * @param userId `public.users.id` — already resolved and already verified to
  *   belong to the authenticated Kinde identity. This function does not check
  *   that; it signs what it is given, which is why nothing but `ensureUser()`'s
  *   return value should ever reach it.
+ * @param claims The caller's email claims, from the same verified Kinde token
+ *   `userId` was resolved from. Same rule: this function does not check them,
+ *   it signs them. They must never originate in a request body.
  */
-export async function mintSupabaseAccessToken(userId: string): Promise<string> {
+export async function mintSupabaseAccessToken(
+  userId: string,
+  claims: SupabaseTokenEmailClaims,
+): Promise<string> {
   const signing = await signer();
   const nowSeconds = Math.floor(Date.now() / 1000);
 
-  return await new SignJWT({ role: "authenticated" })
+  return await new SignJWT({
+    role: "authenticated",
+    // Omitted rather than sent as `null` when unknown, so the RPC's
+    // `claims ->> 'email'` is null in exactly one way instead of two.
+    ...(claims.email === null ? {} : { email: claims.email }),
+    // Always present, always a boolean. A missing claim and a false one mean
+    // the same thing to the gate, but writing it unconditionally means a
+    // reader of a decoded token can tell "we said no" from "we forgot to say".
+    email_verified: claims.emailVerified,
+  })
     // `kid` is not decoration here: it is how Supabase selects which trusted
     // public key to verify against, and a token without it is rejected even
     // when the key itself is trusted.

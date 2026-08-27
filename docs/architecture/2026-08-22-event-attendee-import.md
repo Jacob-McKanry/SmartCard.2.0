@@ -392,6 +392,33 @@ Recorded here because they are inputs to §3's security argument, even though th
 
 Not built yet: the host application form and admin review screens (§9.2/§9.3), the claim flow (§4.2), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
 
+### 11.1.2 How the database learns the caller's verified email — decided 2026-08-27
+
+§3.2 says the gate must read the live token claim, never the stored column. Reading the code showed the claim could not reach the database at all:
+
+- `mintSupabaseAccessToken(userId)` signed only `{ role: "authenticated" }` and `sub`. No `email`, no `email_verified`.
+- `getAuthenticatedContext()` built a JWKS-verified `KindeIdentity` carrying `emailVerified` and then discarded it, returning only `{ userId, kindeUserId, supabase }`.
+
+**Decided: both claims travel in the minted Supabase token.** `mintSupabaseAccessToken(userId, { email, emailVerified })` signs `email` (omitted when unknown) and `email_verified` (always, always a boolean). The RPC will read them from `request.jwt.claims`.
+
+The provenance is identical to `sub`'s: derived server-side from a Kinde token this process just verified against Kinde's JWKS, then signed with a key only this server holds. Nothing about the email claim is weaker than the claim the whole RLS model already rests on.
+
+**Rejected: passing them as RPC arguments.** A Server Action is a POST endpoint anybody can call, so an argument is client-supplied — §3.2.1 is explicit that a client-asserted "I am verified" defeats the gate.
+
+**Considered and not taken: refreshing `users.email`/`email_verified` on each sign-in.** Simpler SQL, but it adds a write to every authenticated request and §3.2's "never the stored column" exists for a reason.
+
+**The cost, stated rather than glossed:** an email address now appears in `request.jwt.claims`, so anything logging that setting logs an address. Accepted — the token is per-request, lives five minutes, and never reaches a browser.
+
+### 11.1.3 `email_verified` is read from the ID token, by one implementation on both platforms
+
+Kinde puts `email_verified` in the ID token, not the access token, on the default configuration. Both auth paths therefore now consult the ID token when the access token has no verification claim — a widening of a guard that previously fired only when the access token carried no *email*, because these claims used to be needed solely to seed a new `users` row and an email was a complete identity for that purpose. It no longer is.
+
+On the web this is `session.getIdTokenRaw()` handed to the same `verifyKindeIdToken` the mobile path uses. The obvious alternative, `session.getClaim("email_verified", "id_token")`, was written first and does not type-check — and the reason it does not is a reason not to use it: **the SDK declares the returned `value` as `string`, while `email_verified` is a JSON boolean in every token Kinde issues.** Code written against that declaration must either coerce (turning the string `"false"` into `true`, since it is non-empty) or cast through an assumption that the SDK's own type is wrong. Neither belongs under a security gate. Re-verifying the raw token gives a real boolean, re-checks the JWKS signature rather than trusting the SDK's check, enforces the `sub` equality invariant, and leaves one implementation of this question instead of two — which is what §5.3 asked for.
+
+**A bad ID token is fatal only when it was load-bearing.** With no email on the access token it is required to seed a row, and a forged or mismatched one is refused exactly as before. With an email already in hand it was only going to *upgrade* `emailVerified`, so a failure degrades to unverified rather than to a 401 — a stale ID token beside a fresh access token is an ordinary client state, since `@kinde/expo` refreshes the two independently, and widening the guard must not turn working requests into refusals. The degradation grants nothing: `emailVerified` stays whatever the access token said.
+
+Every failure path answers `false`. That does not refuse anybody outright — the grandfather clause still admits accounts predating the import — it costs a genuinely-verified *new* signup their claim. Visible and annoying, versus a false positive letting somebody read a stranger's phone number.
+
 ### 11.1.1 The four screens are four steps of one route, not four routes
 
 `/events/[eventId]/import` renders one client component (`import-wizard.tsx`) holding one parse, stepping through choose → map → review → done. Four routes would mean handing the parsed rows between them — re-parsing per step, session storage, or a server round trip — and every one of those reintroduces §11.2's problem: the preview and the write becoming two interpretations of the same bytes. The host attests to a list, so the list they looked at has to be the array that gets sent.
