@@ -386,10 +386,21 @@ Recorded here because they are inputs to §3's security argument, even though th
 | CSV reader (RFC 4180) | `packages/core/src/events/csv.ts` | 22 tests |
 | Column mapping, status classification, normalisation | `packages/core/src/events/attendee-import.ts` | 28 tests, against the real Luma headers from §2.3.1 |
 | Payload / summary schemas | `packages/types/src/db/event-attendee-imports.ts` | — |
-| Service | `apps/web/src/server/events/attendee-import-service.ts` | 27 tests, five mutations confirmed red |
+| Service | `apps/web/src/server/events/attendee-import-service.ts` | 29 tests, six mutations confirmed red |
 | Server Action | `apps/web/src/app/(app)/events/[eventId]/import/actions.ts` | — |
+| The four host screens (§4.1) | `apps/web/src/app/(app)/events/[eventId]/import/` | 15 tests, seven mutations confirmed red |
 
-Not built yet: the four host screens (upload, map columns, review-and-attest, status), the host application form and admin review screens (§9.2/§9.3), the claim flow (§4.2), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+Not built yet: the host application form and admin review screens (§9.2/§9.3), the claim flow (§4.2), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+
+### 11.1.1 The four screens are four steps of one route, not four routes
+
+`/events/[eventId]/import` renders one client component (`import-wizard.tsx`) holding one parse, stepping through choose → map → review → done. Four routes would mean handing the parsed rows between them — re-parsing per step, session storage, or a server round trip — and every one of those reintroduces §11.2's problem: the preview and the write becoming two interpretations of the same bytes. The host attests to a list, so the list they looked at has to be the array that gets sent.
+
+The entry point is a link on the host panel of `/events/[eventId]`. It is shown to **every** host rather than only verified ones: whether the caller may import is a question for the database, and hiding the door would either mean the panel reading a flag it has no business holding, or the door vanishing for the wrong reason during an outage. The page behind it explains itself to a host who cannot use it yet.
+
+`public.is_verified_host()` decides which of two screens that page draws. It is a drawing decision and never a gate — the RPC re-derives verification from the JWT, and the Server Action is reachable without ever loading the page. It fails closed: any error answers `false`, which shows a real verified host an explanation during an outage rather than letting them map thirty columns and attest before the database refuses them.
+
+There is no "apply to be a verified host" button on the unverified screen, because that form is a later slice. §7's rule against inventing a capability covers a link as much as a button.
 
 ### 11.2 Decision: the browser sends parsed rows, not the uploaded file
 

@@ -13,7 +13,7 @@ import { UserFacingError } from "@/server/errors";
  * The service layer (§1.7) for guest-list import —
  * `docs/architecture/2026-08-22-event-attendee-import.md` §2.
  *
- * ONE FUNCTION, AND EVERYTHING IT DOES IS TRANSLATION
+ * TWO FUNCTIONS, AND EVERYTHING THEY DO IS TRANSLATION
  *
  * It validates the shape of the payload, calls `public.import_event_attendees`
  * through the caller's own RLS-bound client, and turns the database's refusal
@@ -42,6 +42,44 @@ import { UserFacingError } from "@/server/errors";
  * second set of checks. The status screen (§3.9) shows counts, which is what
  * the import itself answers with.
  */
+
+/**
+ * Whether the CALLER may upload a guest list at all.
+ *
+ * FOR DRAWING A SCREEN, NEVER FOR DECIDING ONE. The import RPC re-derives this
+ * from the JWT and refuses without it, so a `true` from here buys nobody
+ * anything — it exists so the import page can show a verified host the wizard
+ * and an unverified one an explanation, instead of showing everyone a form that
+ * fails at the end. Treating this as the gate would be a mistake of the "the
+ * button was hidden" kind: `importEventAttendees` is reachable without ever
+ * loading the page.
+ *
+ * SELF-ONLY BY CONSTRUCTION. `public.is_verified_host()` takes no argument and
+ * reads `private.current_user_id()`, so there is no version of this that
+ * answers about somebody else — asking "is Sam a verified host?" is not
+ * expressible. That matters because the underlying column is deliberately
+ * absent from the `users` SELECT grant (20260814230000): widening the grant to
+ * let a screen read it would have disclosed the flag to every connection and
+ * co-attendee, none of whom have any need for it. The RPC is the narrow hole
+ * cut for exactly this one caller asking about exactly themselves.
+ *
+ * Fails CLOSED (CLAUDE.md). Any error answers `false`, which shows a real
+ * verified host the "you can't import yet" explanation during an outage. That
+ * is the correct direction to be wrong in: the alternative is showing somebody
+ * a wizard, letting them map thirty columns, and refusing at the database after
+ * they have attested.
+ */
+export async function isVerifiedHost(supabase: SupabaseClient): Promise<boolean> {
+  const { data, error } = await supabase.rpc("is_verified_host");
+  if (error) {
+    console.error("[events/import] is_verified_host failed", {
+      error: error.message,
+      cause: JSON.stringify(error),
+    });
+    return false;
+  }
+  return data === true;
+}
 
 /**
  * Write one guest list into one event.

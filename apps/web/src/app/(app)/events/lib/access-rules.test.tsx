@@ -79,6 +79,7 @@ vi.mock("lucide-react", () => {
     Clock: Stub,
     ListChecks: Stub,
     Lock: Stub,
+    Upload: Stub,
     UserPlus: Stub,
     Users: Stub,
     X: Stub,
