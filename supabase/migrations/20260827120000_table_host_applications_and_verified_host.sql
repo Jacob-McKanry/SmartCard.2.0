@@ -1,10 +1,23 @@
 -- =============================================================================
 -- 20260827120000_table_host_applications_and_verified_host.sql
 --
+-- APPLIED to project `crpsbnbegeoqtlgshltt` on 2026-08-27 and verified live:
+--   0 applications, 0 verified hosts, 341 users unchanged, and zero client
+--   grants of any kind on `users.is_verified_host` (neither SELECT nor UPDATE)
+--   or on `host_applications` (neither INSERT, UPDATE nor DELETE).
+--   `get_advisors(security)` returns no new CLASS of finding: INFO count
+--   unchanged at five, and the three new WARNs are
+--   `authenticated_security_definer_function_executable` for the three RPCs
+--   below — the intended posture, joining eight pre-existing identical entries
+--   for the RSVP RPCs, `claim_unassigned_card` and `soft_delete_own_account`.
+--   `private.is_admin()` correctly does not appear, being unexposed.
+--   The migration record's `version` was corrected to match this filename;
+--   Supabase had recorded its own apply-time timestamp instead.
+--
 -- WHAT THIS CHANGES
 --   Adds `public.users.is_verified_host`, `public.host_applications`,
---   `private.is_admin()`, and two RPCs — `public.submit_host_application` and
---   `public.decide_host_application`.
+--   `private.is_admin()`, and three RPCs — `public.submit_host_application`,
+--   `public.decide_host_application` and `public.is_verified_host`.
 --
 --   Nothing else changes. No existing policy, grant or function is altered.
 --   Every existing account keeps `is_verified_host = false`, so this migration
