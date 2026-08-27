@@ -62,13 +62,24 @@ New column on `users` (e.g. `roster_visibility text check (visible|hidden)`, **n
 
 Served by a `security definer` RPC (`event_attendee_profile(event_id, user_id)`) that checks: caller is an attendee, subject is an attendee, subject opted in — then returns the card-preview field set. An RPC rather than widening the base `users` policy, so the column exposure is scoped to this one checked context and the base grants stay untouched. Refusals indistinguishable, as always. **Save to Contacts** reuses `vcard.ts` behind the same checks (the user-facing label is never "vCard"). In place of any connect action: *"To add this person on SmartCard, please connect in person."*
 
-### 3.5 Views are logged and visible to the person viewed
+### 3.5 Views are logged privately — no user-facing surface at all
 
-An `event_roster_views` table (viewer, subject, event, timestamp), surfaced on the subject's `/activity` — the same §4.5 detection posture as `card_preview_views`, but **named**: *"Maya Rodriguez viewed your profile · Founders Dinner."* Recommended over anonymous counts because the viewer here is a verified co-attendee, visibility is symmetric (they can only see you if you can see them), and named logging is the cheapest real deterrent against quiet bulk harvesting. Owner may flip to anonymous (§8-1). Contact saves log too.
+**Owner decision, 2026-08-27:** an `event_roster_views` table (viewer, subject, event, timestamp, and whether a contact save occurred) records every profile open and Save to Contacts from a roster. It is **not surfaced to anyone in the product** — not the subject, not the viewer, not the host.
 
-### 3.6 Rate limits
+- **RLS: deny-all, no exceptions and no app read path.** No RPC, no route, no admin screen. Investigation happens through the service role against the live database when there is an actual incident to investigate. This is deliberately less machinery than §9's host-application review got: an admin UI here would be a screen whose only purpose is reading who looked at whom, which is a surveillance surface nobody asked for and a liability to leave lying around.
+- **Retention: 90 days**, purged on the same schedule as the import table. A who-viewed-whom log that nothing ever reads is pure liability past its investigative usefulness.
 
-`app_config` pattern, as everywhere: roster page size cap, per-viewer profile-read and contact-save budgets per event per day. Named logging deters; limits enforce.
+**What this costs, stated honestly.** The earlier draft recommended surfacing views to the subject *by name* on the grounds that a deterrent only works if the person knows they are seen. Private logs deter nobody — they are forensics, not prevention. So the deterrent is gone and **§3.6's rate limits stop being a backstop and become the primary technical control** against bulk harvesting. They need real numbers before build, not placeholders (§8-1).
+
+**The inconsistency this creates, recorded rather than smoothed over.** `card_preview_views` already surfaces to the subject on `/activity` — anonymously (`{source, surface, viewedAt}`, no viewer identity), but visibly. So after this decision the roster gives a person **less** visibility into who accessed their contact details than the card-tap flow does, on a surface with a **larger** exposure (many profiles browsable, versus one card at a time). That is a real asymmetry in the wrong direction and it should be revisited if roster abuse ever shows up in practice.
+
+The reasoning that makes it defensible anyway: §4.5's card-preview signal exists because a preview can mean a *stolen card* — it is security-relevant to the subject and actionable (they can revoke). A co-attendee viewing your profile at an event you both chose to attend is neither: there is nothing to revoke, and a "Kim viewed your profile 3 times" feed at a networking event creates social friction disproportionate to the risk. Anonymous-but-visible counts remain available as a middle option if that judgment turns out wrong.
+
+**What still carries the safety of this amendment:** the opt-in gate (§3.3), not the logging. Nobody appears on a roster without their own choice, and that control is untouched by this decision. Logging was always the second line.
+
+### 3.6 Rate limits — now the primary control, not a backstop
+
+`app_config` pattern, as everywhere: roster page size cap, plus per-viewer budgets per event per day for profile opens and for contact saves. Because §3.5 removed the visible deterrent, these are the only thing standing between a curious attendee and a full harvest of an event's opted-in contact details. Proposed starting values, to be confirmed (§8-1): **60 profile opens** and **25 contact saves** per viewer per event per day — generous for a person working a room, well short of quietly draining a 200-person event. Exceeding a budget refuses indistinguishably, per §3.4.
 
 ## 4. Threat model deltas, stated plainly
 
@@ -91,11 +102,11 @@ Visibility column + three choice surfaces (claim step, sign-in prompt, onboardin
 2. `roster_visibility` null or `hidden` ⇒ absent from roster, `event_attendee_profile` refuses, `shares_event_with` false.
 3. Non-attendee caller ⇒ roster and profile RPCs refuse, indistinguishably.
 4. Unclaimed import rows appear on no surface.
-5. Every profile open and contact save from a roster writes a view row.
+5. Every profile open and contact save from a roster writes a view row — **and no app code path reads that table.** Both halves are the test: a missing write is a hole in the audit trail, and a read path appearing anywhere is §3.5's decision quietly reversing itself.
 6. No cross-event query by name/handle/email exists.
 
 ## 8. Open questions (owner)
 
-1. Named vs anonymous view logging (§3.5 — recommended named).
+1. ~~Named vs anonymous view logging.~~ **Resolved 2026-08-27: neither — logged privately, no user-facing surface (§3.5).** What this leaves open is the replacement: confirm the §3.6 rate-limit numbers (proposed 60 profile opens / 25 contact saves per viewer per event per day), since they are now the primary control rather than a backstop.
 2. Roster live from `starts_at` vs only after `ends_at` (recommended `starts_at`).
 3. Prompt copy, and whether the choice UI pre-selects either option (recommended: no pre-selection, two equal buttons).
