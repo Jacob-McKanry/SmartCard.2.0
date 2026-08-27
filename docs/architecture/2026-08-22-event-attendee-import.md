@@ -92,7 +92,15 @@ This is not tidiness. It means a breach of this table exposes only *unclaimed* r
 
 A real Luma guest-list export was supplied 2026-08-27 (`Private_Black_Tie_Networking_Mixer__Guests…csv`, 100 rows). Two findings change what "import" is allowed to mean, found by reading the file rather than assuming its shape:
 
-**`approval_status` is not attendance — it is the host's RSVP decision, and it has three values.** The file has rows marked `approved`, `declined`, and `invited`. Several `declined` rows are people the host explicitly refused entry; several `invited` rows never responded at all. **The import must filter to `approval_status = 'approved'` and silently drop everything else.** Importing a `declined` row would mark someone the host turned away as having attended their event — the opposite of what happened.
+**`approval_status` is not attendance — it is the host's RSVP decision, and it has three values.** The file has rows marked `approved`, `declined`, and `invited`. Several `declined` rows are people the host explicitly refused entry; several `invited` rows never responded at all. Importing a `declined` row would mark someone the host turned away as having attended their event — the opposite of what happened.
+
+**Decided 2026-08-27: two independently-toggleable buckets, not one filter.** The mapping screen (§4.1 step 3) shows every distinct value found in the detected status column, grouped:
+
+- **Approved** — checked by default, always offered.
+- **Waitlisted** — unchecked by default, offered when the platform's export has a distinct waitlist status. Genuinely ambiguous (a waitlisted person may or may not have gotten in later), so it is the host's call per event rather than a hardcoded rule.
+- **Everything else** (`declined`, `invited`, `cancelled`, `rejected`, and any value not recognized as approved- or waitlist-like) — shown for transparency, **never offered as a toggle**. These are the values where the platform itself is recording that the person either was refused or never responded, and no host-side judgment call belongs there.
+
+This is a value *category* match, not a fixed string match — Eventbrite and Partiful will not spell these the same way Luma does, so the importer classifies by a small keyword heuristic (`approve`, `confirm`, `going`, `yes` → approved-like; `waitlist`, `pending` → waitlist-like) and lets the host recategorize a value the heuristic gets wrong, rather than hardcoding Luma's exact three strings.
 
 **`checked_in_at` is blank on every row, including every `approved` one.** Luma has a real check-in feature and this host never used it. So even the strongest signal a mainstream ticketing platform offers is absent here, which means **this system has no path to "verified attended" from CSV data at all — only "the host says this person was on the list."** That is a weaker claim than the phrase "attendee import" suggests, and it should be reflected everywhere the product says so out loud:
 
@@ -138,7 +146,28 @@ Two things differ.
 
 Two consequences. First, the gate must read `identity.emailVerified` from the freshly verified token (what `api-context.ts` already resolves per request), never the stored column. Second, and more urgent: **Kinde is not currently asserting `email_verified` for real signups**, so this feature would refuse every genuine user until that is configured. See Q-E.
 
-So the rule is: **a matching email address is a lookup key and never an authorization.** Authorization is `email_verified = true` on the matching address.
+So the rule is: **a matching email address is a lookup key and never an authorization.** Authorization is `email_verified = true` on the matching address — **or the grandfather clause below.**
+
+### 3.2.1 The grandfather clause — added 2026-08-27, and why it is a better rule, not a weaker one
+
+The owner asked whether existing accounts could simply be marked verified in bulk to sidestep Q-E. The literal version of that does nothing — §3.2 already established that `users.email_verified` is not what the gate reads, so writing `true` into a column nothing checks changes nothing.
+
+But the question pointed at something real: **the actual threat this gate defends against is a brand-new account, created in the last few minutes, specifically to claim someone else's row.** `email_verified` was always a *proxy* for "this account isn't that" — checking mailbox control at the moment of claim. An account that existed before the import happened obviously was not created for it, independent of what its live verification claim says today.
+
+**The gate becomes:** allow the claim when EITHER
+
+1. the caller's `users.created_at` predates the import's `imported_at`, **or**
+2. the caller's live token asserts `email_verified = true`.
+
+This is strictly better than the single-condition version, not a carve-out from it:
+
+- It covers all 341 existing accounts with **no data migration and no bulk write** — `created_at` already exists and is already accurate.
+- It still stops the actual attack for brand-new signups, which is the case Kinde's verification setting (Q-E) has to be correct for.
+- It is a closer match to the real threat model than "verified email" ever was. A ten-year-old account with a stale verification claim is obviously not a drive-by attacker; a two-minute-old account with a technically-true verification claim from a misconfigured connection (§3.3's residual risk) still could be. Condition 1 is immune to §3.3's concern entirely; condition 2 is the fallback for accounts that don't have the luxury of already existing.
+
+One sharp edge: this makes an existing account's **join date** load-bearing for a security decision, which nothing in the codebase currently treats as sensitive. `created_at` must be read from the row itself inside the `security definer` function, never accepted as a client-supplied value — the same posture every other check in this document already takes, stated explicitly here because it is easy to get backwards (a client-supplied "I've had this account for years" claim would defeat the whole point).
+
+This also changes what §9's host-verification gate protects, in a way worth naming: a malicious *verified host* uploading a list of real people's emails still cannot make an attacker succeed at claiming someone else's row, because condition 1/2 is evaluated per *claiming account*, not per import. The two gates are independent and both have to hold.
 
 ### 3.3 The residual risk, stated plainly
 
@@ -170,7 +199,7 @@ Deny-all, no exceptions, including the host. All access is through `security def
 
 - `import_event_attendees(...)` — host-only, writes rows, records attestation
 - `event_import_summary(event_id)` — host-only, returns **counts only**
-- `get_claimable_import(lookup_token)` — returns prefill only when §3.2's conditions hold, else null
+- `get_claimable_import(lookup_token)` — returns prefill only when §3.2/§3.2.1's conditions hold (verified email, or a pre-existing account), else null
 - `claim_event_import(lookup_token, approved_fields)` — writes, then destroys per §2.2
 - `own_attended_events()` — the caller's own claimed rows
 
@@ -256,7 +285,7 @@ The CSV parsing is the easy 5%. The cost is in §3 and in the RLS.
 | **Q-B** | Row cap per import, and per-host rate limit. | Nothing yet stops a host uploading 50,000 addresses. Needs a number. |
 | **Q-C** | Does the person get told *which host* uploaded them, and can they refuse and be purged? | A "remove me and don't ask again" path is close to mandatory under GDPR/CCPA and is the right thing regardless. Needs a suppression list that survives future imports. |
 | **Q-D** | ~~Exact Luma export columns.~~ **Resolved 2026-08-27** — a real export was supplied and read; see §2.3.1. Eventbrite's and Partiful's own headers are still unseen, but the mapping screen does not require them in advance (§2.3.1's third finding). |
-| **Q-E** | **Partially addressed, not closed.** 2026-08-26: the owner enabled Email+Password and Username+Password connections in Kinde (see §10) specifically to reduce sign-in friction, which is progress, but this document's own gate depends on **email verification being mandatory on every enabled connection**, and that toggle's state has not been confirmed for either new connection. Until confirmed, treat Q-E as open. |
+| **Q-E** | **Narrowed 2026-08-27 by the grandfather clause (§3.2.1), not closed.** All 341 existing accounts can already claim regardless of Kinde's verification setting, since their `created_at` predates any import. What still needs confirming: "require email verification" mandatory on the Email+Password and Username+Password connections enabled 2026-08-26 (see §10) — this only gates **brand-new signups going forward**, which is a narrower and lower-urgency blocker than the original framing. |
 
 ---
 
