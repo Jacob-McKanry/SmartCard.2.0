@@ -372,3 +372,41 @@ Recorded here because they are inputs to §3's security argument, even though th
 - **Refresh token expiry** raised from 15 days to 365 days on the Mobile application, and **session inactivity timeout** raised, to fix "asks for a code every sign-in" — a UX complaint unrelated to this feature, but relevant background for why the owner then asked about adding a password connection.
 - **Email + Password** and **Username + Password** connections enabled on the Web application (2026-08-26), alongside the pre-existing Email Code, Google, and Apple connections. Username + Code was deliberately left off — a bare username has no channel to receive a code on.
 - **Not yet confirmed:** whether "require email verification" is turned on for the two new password connections. This is the one setting §3.2's entire gate depends on, and it is a different toggle from the ones changed above. Q-E stays open until this is confirmed and re-measured against the live database, the same way §3.2's original finding was — assumption is exactly what produced the wrong gate the first time.
+
+---
+
+## 11. Build log — what is implemented, and the decisions the build made
+
+### 11.1 What exists as of 2026-08-27
+
+| Layer | Where | State |
+|---|---|---|
+| Host verification | `20260827120000_table_host_applications_and_verified_host.sql` | Applied and verified live (§9.1) |
+| Import table + write RPC | `20260827130000_table_event_attendee_imports.sql` | Applied and verified live |
+| CSV reader (RFC 4180) | `packages/core/src/events/csv.ts` | 22 tests |
+| Column mapping, status classification, normalisation | `packages/core/src/events/attendee-import.ts` | 28 tests, against the real Luma headers from §2.3.1 |
+| Payload / summary schemas | `packages/types/src/db/event-attendee-imports.ts` | — |
+| Service | `apps/web/src/server/events/attendee-import-service.ts` | 27 tests, five mutations confirmed red |
+| Server Action | `apps/web/src/app/(app)/events/[eventId]/import/actions.ts` | — |
+
+Not built yet: the four host screens (upload, map columns, review-and-attest, status), the host application form and admin review screens (§9.2/§9.3), the claim flow (§4.2), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+
+### 11.2 Decision: the browser sends parsed rows, not the uploaded file
+
+Not stated either way in §2, so it is recorded here. The CSV is read, mapped and reviewed **in the browser**; what crosses to the Server Action is the array the host actually confirmed, as JSON.
+
+The reason that matters is not size. It is that this feature's entire lawful basis is a host looking at a list and attesting to it (§2, decision 3). Re-parsing server-side would make the preview and the write two separate interpretations of the same bytes — one different guess about a quoted field, one column mapped differently — and a disagreement between them would import something nobody reviewed. Sending the reviewed rows makes "what the host saw is what got imported" true by construction rather than by two parsers agreeing.
+
+It costs nothing in trust, because the rows were host-supplied either way: a host can already call the RPC with a hand-written list, which the migration header says in as many words, and none of the five gates ever looked at row content. It is also smaller — a real Luma export has thirty columns and lists a guest once per ticket, while the confirmed payload keeps seven fields and one row per person — so the existing 6MB `serverActions.bodySizeLimit` in `next.config.ts` covers a full 5,000-row import several times over with no config change.
+
+### 11.3 Decision: a missing attestation and an empty list are refused before the RPC, not by it
+
+The RPC refuses an unattested import (`22023`), so a second check in the service looks redundant. It is not: the RPC consumes one of the host's ten daily imports **before** doing the work, deliberately, so that probing is not free (§3.7). Letting an un-ticked checkbox reach the database would spend a real host's budget on a bug of ours. The service therefore checks the attestation first — before the payload shape, too, so that a host who forgot the checkbox is told about the checkbox rather than sent looking for a problem in their file.
+
+The empty list is the same argument one step along, and it is a real case rather than a defensive one: a host whose status column excluded every row has a file that maps to nothing. The RPC would accept it, loop over nothing, report four zeroes and charge an import for the privilege. The service refuses it with a message naming the two things worth checking — which column is mapped to the email address, and which statuses were chosen — because the host cannot see why the list came out empty from the outcome alone. The check lives in the service rather than the Server Action so that every future caller gets it, including the mobile route when it lands.
+
+### 11.4 The refusal messages name no thresholds, on purpose
+
+`app_config` is unreadable to `authenticated` (§3.8), which is the right posture — but it means the row cap and the daily limit cannot be read on this side. The user-facing messages therefore say "too big to import in one go" and "today's import limit" without a number. A figure written into the TypeScript would be a copy that goes stale the moment the real one is raised, which is precisely what would happen on the night of a pilot event. Both messages stay actionable without one: split the file, or come back tomorrow.
+
+No message carries the database's own words. `42501` in particular stays merged across "not signed in", "not a verified host" and "not the host of this event", because the RPC answers identically for all three so that a guessed event id cannot be used to discover whether it exists (§3.6) — splitting it into three friendlier sentences would rebuild that probe one layer up. There is a test that fails if it ever does.
