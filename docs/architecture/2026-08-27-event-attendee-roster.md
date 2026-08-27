@@ -43,7 +43,11 @@ Union of, for one event: users with a `going` RSVP, and users with a claimed `ev
 
 ### 3.2 Who can read a roster
 
-Only someone on it (host included — hosting an event you ran counts as having been there, via their own `going` row or a host branch). Not "anyone who can see the event": a public event's browse page still shows counts, never names. Recommended: the roster renders only from the event's `starts_at` onward, so this never becomes a pre-event "see who's going" browsing surface — that adjacent feature was refused separately and stays refused.
+Only someone on it (host included — hosting an event you ran counts as having been there, via their own `going` row or a host branch). Not "anyone who can see the event": a public event's browse page still shows counts, never names.
+
+**Decided 2026-08-27: the roster renders only from the event's `starts_at` onward.** Before that moment it does not exist for anyone, including the host. This is what keeps the amendment from silently becoming the pre-event "see who's going" surface that `design-lab-reference.md` refuses and that this amendment does **not** reopen — the difference between "people I was in a room with" and "people who said they might come" is the whole distinction being preserved. Enforced in the RPC against `events.starts_at`, not in the UI, so a direct API call gets the same answer.
+
+Two consequences worth stating. A cancelled event never reaches `starts_at` in any meaningful sense and should be excluded explicitly rather than relying on the timestamp alone (`status <> 'cancelled'`, matching `can_see_event`'s existing narrowing in 20260815130200). And an event whose `starts_at` is edited backwards would retroactively expose a roster — event updates are host-only and already audited, but the RPC should read the *current* `starts_at` at query time rather than caching it, so this stays a host action with a visible trail rather than a stale-cache bug.
 
 ### 3.3 Appearing is opt-in, and the default is hidden
 
@@ -79,7 +83,11 @@ The reasoning that makes it defensible anyway: §4.5's card-preview signal exist
 
 ### 3.6 Rate limits — now the primary control, not a backstop
 
-`app_config` pattern, as everywhere: roster page size cap, plus per-viewer budgets per event per day for profile opens and for contact saves. Because §3.5 removed the visible deterrent, these are the only thing standing between a curious attendee and a full harvest of an event's opted-in contact details. Proposed starting values, to be confirmed (§8-1): **60 profile opens** and **25 contact saves** per viewer per event per day — generous for a person working a room, well short of quietly draining a 200-person event. Exceeding a budget refuses indistinguishably, per §3.4.
+`app_config` pattern, as everywhere: roster page size cap, plus per-viewer budgets per event per day for profile opens and for contact saves. Because §3.5 removed the visible deterrent, these are the only thing standing between a curious attendee and a full harvest of an event's opted-in contact details.
+
+**Decided 2026-08-27: 60 profile opens and 25 contact saves, per viewer, per event, per day.** Generous for someone genuinely working a room; well short of quietly draining a 200-person event, and the saves cap is the tighter of the two because a saved contact is the durable artifact — an open is a look, a save is a copy that leaves the system.
+
+Held in `app_config` rather than hardcoded, precisely because they are now load-bearing: the numbers are a judgment call made before any real event has run through this feature, and the first pilot should be reviewed against actual usage rather than assumed correct. Exceeding a budget refuses indistinguishably, per §3.4 — a caller must not be able to tell "you have hit your limit" from "this person is hidden", or the limit becomes an enumeration oracle for exactly the harvesting it exists to stop.
 
 ## 4. Threat model deltas, stated plainly
 
@@ -104,9 +112,12 @@ Visibility column + three choice surfaces (claim step, sign-in prompt, onboardin
 4. Unclaimed import rows appear on no surface.
 5. Every profile open and contact save from a roster writes a view row — **and no app code path reads that table.** Both halves are the test: a missing write is a hole in the audit trail, and a read path appearing anywhere is §3.5's decision quietly reversing itself.
 6. No cross-event query by name/handle/email exists.
+7. Before `starts_at`, the roster and profile RPCs refuse for **everyone including the host** — and refuse identically to how they refuse a non-attendee. A cancelled event refuses regardless of its timestamp.
+8. A viewer over either rate-limit budget gets the *same* refusal as one asking about a hidden person. Distinguishable refusals here turn the limit into the enumeration oracle it exists to prevent.
 
 ## 8. Open questions (owner)
 
-1. ~~Named vs anonymous view logging.~~ **Resolved 2026-08-27: neither — logged privately, no user-facing surface (§3.5).** What this leaves open is the replacement: confirm the §3.6 rate-limit numbers (proposed 60 profile opens / 25 contact saves per viewer per event per day), since they are now the primary control rather than a backstop.
-2. Roster live from `starts_at` vs only after `ends_at` (recommended `starts_at`).
-3. Prompt copy, and whether the choice UI pre-selects either option (recommended: no pre-selection, two equal buttons).
+1. ~~Named vs anonymous view logging.~~ **Resolved 2026-08-27: neither — logged privately, no user-facing surface (§3.5).**
+2. ~~Roster live from `starts_at` vs only after `ends_at`.~~ **Resolved 2026-08-27: from `starts_at`.** See §3.2.
+3. ~~Confirm the §3.6 rate-limit numbers.~~ **Resolved 2026-08-27: 60 profile opens / 25 contact saves per viewer per event per day**, as proposed. These are the primary control now, so they are tunable in `app_config` rather than hardcoded, and the first real pilot event should be reviewed against actual usage before assuming they are right.
+4. **Still open:** prompt copy for the opt-in choice, and whether the UI pre-selects either option (recommended: no pre-selection, two equal buttons — a pre-selected "share" is a dark pattern on a consent gate, and a pre-selected "hidden" makes the feature look broken).
