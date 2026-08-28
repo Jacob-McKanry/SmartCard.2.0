@@ -192,3 +192,91 @@ export const attendeeImportSummarySchema = z.object({
 });
 
 export type AttendeeImportSummary = z.infer<typeof attendeeImportSummarySchema>;
+
+// ---------------------------------------------------------------------------
+// C4 — the claim flow: `get_claimable_import` and `claim_event_import`
+// ---------------------------------------------------------------------------
+
+/**
+ * The personal prefill from `get_claimable_import`, present only when the
+ * caller passed §3.2/§3.2.1's gate (`can_claim: true`). Every field is
+ * individually keepable on the review screen (§4.2 step 4), which is what
+ * `claimApprovedFieldsSchema` below records.
+ */
+export const attendeeImportClaimPrefillSchema = z.object({
+  first_name: z.string().nullable(),
+  last_name: z.string().nullable(),
+  phone_number: z.string().nullable(),
+  company_name: z.string().nullable(),
+  company_role: z.string().nullable(),
+  social_links: z.array(attendeeImportSocialLinkSchema),
+});
+
+export type AttendeeImportClaimPrefill = z.infer<typeof attendeeImportClaimPrefillSchema>;
+
+/**
+ * What `public.get_claimable_import` returns. A discriminated union on
+ * `available` rather than one object with optional fields, so a caller who
+ * forgets to check `available` first cannot accidentally read `undefined`
+ * out of a shape that looks populated.
+ *
+ * `available: false` is the ONE shape for every refusal §3.6 groups together
+ * — no such token, expired, already claimed, rate-limited on either budget,
+ * or a missing `app_config` row surfacing as a thrown error the caller
+ * catches. This schema cannot express which one happened, on purpose: if a
+ * caller finds itself wanting to, that is the design this type exists to
+ * prevent.
+ *
+ * `available: true` still does not imply the prefill is visible —
+ * `can_claim` gates that separately (§11.1.4's "two disclosure levels").
+ */
+export const claimableImportSchema = z.discriminatedUnion("available", [
+  z.object({ available: z.literal(false) }),
+  z.object({
+    available: z.literal(true),
+    event_id: uuidSchema,
+    event_name: z.string(),
+    host_first_name: z.string().nullable(),
+    host_last_name: z.string().nullable(),
+    can_claim: z.boolean(),
+    prefill: attendeeImportClaimPrefillSchema.nullable(),
+  }),
+]);
+
+export type ClaimableImport = z.infer<typeof claimableImportSchema>;
+
+/**
+ * `p_approved_fields` for `public.claim_event_import` — which prefilled
+ * fields the caller chose to keep. Every key optional and every value
+ * defaults to discard (`claim_event_import` itself reads a missing or
+ * malformed key as `false`, per that migration's own comment) — the
+ * fail-closed direction: get this wrong and the failure is a field the
+ * person did NOT ask for silently not being copied, never the reverse.
+ *
+ * Deliberately not `.strict()`, unlike the import payload row schema: this
+ * object is built by this app's own review screen, not accepted from a CSV a
+ * host uploaded, so there is no adjacent-column-leak risk to guard against
+ * here.
+ */
+export const claimApprovedFieldsSchema = z.object({
+  first_name: z.boolean().optional(),
+  last_name: z.boolean().optional(),
+  phone_number: z.boolean().optional(),
+  company_name: z.boolean().optional(),
+  company_role: z.boolean().optional(),
+  social_links: z.boolean().optional(),
+});
+
+export type ClaimApprovedFields = z.infer<typeof claimApprovedFieldsSchema>;
+
+/**
+ * What `public.claim_event_import` returns: a boolean and nothing else,
+ * matching `CardClaimResult` for the identical §3.6 reason — wrong token,
+ * already claimed, expired, wrong email, rate-limited and a lost race all
+ * collapse to `{claimed: false}`.
+ */
+export const claimEventImportResultSchema = z.object({
+  claimed: z.boolean(),
+});
+
+export type ClaimEventImportResult = z.infer<typeof claimEventImportResultSchema>;
