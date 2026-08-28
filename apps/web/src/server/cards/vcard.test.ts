@@ -86,15 +86,9 @@ describe("field list", () => {
     ]);
   });
 
-  it("never emits URL, whatever it is given", () => {
-    // `social_links` does reach this feature now, and the preview page renders
-    // it as tiles — but the FILE still carries no links. `vcard.ts`'s header
-    // states the invariant this protects and it is one-directional: the file
-    // may say less than the page, never more. So this assertion stays, with a
-    // different reason behind it than the one it was written for.
+  it("emits no URL when there are no social links", () => {
     const vcard = buildVCard({ ...SAM, photo: PHOTO });
     expect(vcard).not.toMatch(/^URL/m);
-    expect(vcard).not.toContain("instagram");
   });
 
   it("emits no PHOTO when there is no photo, and the file is still valid without one", () => {
@@ -113,6 +107,69 @@ describe("field list", () => {
   it("uses CRLF and terminates the final line", () => {
     expect(buildVCard(SAM).endsWith("END:VCARD\r\n")).toBe(true);
     expect(buildVCard(SAM)).not.toMatch(/[^\r]\n/);
+  });
+});
+
+/**
+ * The URL properties, added 2026-08-28 — see the file header for the
+ * reversal this records. `CardPreview.socialLinks` (`id`, `platform`, `url`)
+ * is handed to `buildVCard` unchanged; only `url` is read.
+ */
+describe("the URL properties (social links)", () => {
+  const LINKS = [
+    { id: "1", platform: "instagram", url: "https://instagram.com/samrivera" },
+    { id: "2", platform: "linkedin", url: "https://linkedin.com/in/samrivera" },
+  ];
+
+  it("emits one URL per link, in the order given", () => {
+    const vcard = buildVCard({ ...SAM, socialLinks: LINKS });
+    const urlLines = vcard.split("\r\n").filter((line) => line.startsWith("URL:"));
+    expect(urlLines).toEqual([
+      "URL:https://instagram.com/samrivera",
+      "URL:https://linkedin.com/in/samrivera",
+    ]);
+  });
+
+  it("sits between EMAIL and PHOTO, so a parser that stops at the first field it dislikes has already read every text property", () => {
+    const properties = buildVCard({ ...SAM, socialLinks: LINKS, photo: PHOTO })
+      .split("\r\n")
+      .filter((line) => line !== "" && !line.startsWith(" "))
+      .map((line) => line.split(/[;:]/)[0]);
+
+    expect(properties).toEqual([
+      "BEGIN",
+      "VERSION",
+      "FN",
+      "ORG",
+      "TITLE",
+      "NOTE",
+      "TEL",
+      "EMAIL",
+      "URL",
+      "URL",
+      "PHOTO",
+      "END",
+    ]);
+  });
+
+  it("omits a link whose url is blank rather than emitting an empty URL", () => {
+    const vcard = buildVCard({ ...SAM, socialLinks: [{ url: "   " }] });
+    expect(vcard).not.toMatch(/^URL/m);
+  });
+
+  it("escapes a url the same way every other free-text field is escaped", () => {
+    // A url is something a user typed into a link field, not a value this app
+    // generated — it gets no less scrutiny than the bio does.
+    const vcard = buildVCard({
+      ...SAM,
+      socialLinks: [{ url: "https://example.com/a;b,c\nd" }],
+    });
+    expect(vcard).toContain("URL:https://example.com/a\\;b\\,c\\nd");
+  });
+
+  it("treats absent, undefined and empty the same as no social links", () => {
+    expect(buildVCard(SAM)).toBe(buildVCard({ ...SAM, socialLinks: undefined }));
+    expect(buildVCard(SAM)).toBe(buildVCard({ ...SAM, socialLinks: [] }));
   });
 });
 
