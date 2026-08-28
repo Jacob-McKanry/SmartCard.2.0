@@ -75,7 +75,17 @@ export function mapGeolocationErrorCode(code: number): LocationDenialReason {
 export function locationDenialMessage(reason: LocationDenialReason): string {
   switch (reason) {
     case "permission-denied":
-      return "SmartCard needs your location to confirm you met in person. Location access is turned off for this site — turn it on in your browser or device settings, then reload this page.";
+      // Deliberately more specific than "check your settings", per the
+      // 2026-08-28 report: a device's Location Services can be fully on while
+      // the BROWSER still remembers a per-site denial for this address —
+      // that per-site permission lives separately, in the browser's own
+      // site/page settings menu (Safari: the "aA" icon in the address bar;
+      // Chrome: the icon left of the address bar), not in the device's
+      // system settings. Turning the device toggle on alone does not clear
+      // an earlier per-site "don't allow", which is what a real fix report
+      // traced back to. The reload instruction stays: a permission fixed
+      // mid-session is not always picked up by "Try again" alone.
+      return "SmartCard needs your location to confirm you met in person. This looks like a site-specific permission rather than your device's location setting — check this browser's site settings for smartcard.tech (tap the icon next to the address bar) and allow location there, then reload this page.";
     case "position-unavailable":
       return "We couldn't get a GPS fix on this device. Move somewhere with a clearer view of the sky and try again.";
     case "timeout":
