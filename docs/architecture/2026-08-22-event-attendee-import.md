@@ -393,7 +393,151 @@ Recorded here because they are inputs to §3's security argument, even though th
 | `get_claimable_import` (§3.8, C2 of the claim flow) | `20260828120000_fn_get_claimable_import.sql` | 11 scenarios verified live in a rolled-back transaction; applied and re-verified against the deployed function |
 | `claim_event_import` (§3.8, C3 of the claim flow) | `20260828130000_fn_claim_event_import.sql` | 8 scenarios verified live in a rolled-back transaction; applied and re-verified against the deployed function |
 
-Not built yet: the claim screens (C4), `own_attended_events()` and "you attended" on the event page (C5), the host application form and admin review screens (§9.2/§9.3), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+| The claim screens (§4.2, C4) | `apps/web/src/app/claim/[token]/`, `apps/web/src/server/events/claim-service.ts` | Built and verified 2026-08-28; migration verified live in a rolled-back transaction, applied |
+
+| `own_attended_events` (§3.8/§4.3, C5) | `20260828150000_fn_own_attended_events.sql` | Verified live in a rolled-back transaction (own rows only, ordering, another claimant's and an unclaimed row both absent, `anon` refused execution); applied |
+| The event-page "guest list" note (§4.3, C5) | `apps/web/src/app/(app)/events/[eventId]/page.tsx` (`AttendedNote`), `apps/web/src/server/events/attended-events-service.ts` | Built and verified 2026-08-28 |
+
+Not built yet: the host application form and admin review screens (§9.2/§9.3), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+
+### 11.1.7 C5 — `own_attended_events()` and the event-page note — built 2026-08-28
+
+The last of §3.8's five RPCs, and the read that finally uses the fact §2.2
+deliberately kept: `(event_id, claimed_by_user_id, claimed_at)`, left behind
+on every claimed row specifically so "events I attended" could someday be
+answered from it.
+
+**No rate limit, unlike its four siblings — and that is a property of the
+function's own shape, not a relaxed standard.** `get_claimable_import` and
+`claim_event_import` both take a caller-supplied token and can be pointed at
+somebody else's row, which is exactly what §3.6/§3.7 exist to bound.
+`own_attended_events()` takes no argument at all — the only input is
+`private.current_user_id()`, resolved from the caller's own verified
+session — so there is no other identity to probe for. Recorded in the
+migration's own header so a future reader does not read the absence of a
+rate limit here as an oversight copied from the wrong sibling.
+
+**Verified live in a rolled-back transaction, not assumed from the query's
+shape.** A claimant with two claimed rows across two events saw exactly
+those two, most-recent-claim-first; an unrelated user with one claimed row
+saw exactly that one; a second host's unclaimed row (a live, unexpired
+import nobody had claimed) appeared for nobody; and a caller with no
+session (`anon`) was refused *execution* outright rather than returning zero
+rows through a filter — the grant, not just the `WHERE` clause, is what a
+reader should trust here, and the test checks the grant.
+
+**The event-page note is deliberately not "You attended", contradicting
+§4.3's own heading.** §2.3.1's copy pass — "this system has no path to
+'verified attended' from CSV data, only 'the host says this person was on
+the list'" — names the event-page chip explicitly as covered by the same
+softening the claim screens already got. `AttendedNote` says "You were on
+the guest list for this event," the identical phrasing `claim-review.tsx`
+and `claim-teaser.tsx` use, rather than a third independently-worded variant
+of the same claim.
+
+**Deliberately disconnected from `ownRsvp` and the RSVP status enum**,
+exactly as §2.4 specifies. `listOwnAttendedEventIds` is read and rendered
+independently of `getOwnRsvp` on the event page — a claimed guest can hold
+any RSVP status, including none at all, and the note's visibility does not
+consult it.
+
+**`listOwnAttendedEventIds` fails closed to an empty set on every error
+mode, including a thrown one** — `attended-events-service.test.ts` asserts
+this for an RPC error, a malformed response, and a thrown transport failure.
+This is not a §3.6 oracle concern (there is nothing to probe; every failure
+already answers only about the caller's own data) — it is CLAUDE.md's
+fail-closed rule applied to which DIRECTION a failure should lean: an
+unreadable result must never show a claim of attendance the app could not
+actually verify. The event page itself must not go down over this either,
+matching the posture `getEventHostProfile` and `getConnectionsAttending`
+already take on the same page.
+
+### 11.1.6 C4, the claim screens — built 2026-08-28
+
+Four components rendered from one route (`/claim/[token]`), splitting not by
+§4.2's literal step numbers but by disclosure level — see the route's own
+header for the full mapping. The decisions worth recording here are the ones
+not already implied by C2/C3:
+
+**`/claim/[token]` sits outside `(app)`, and outside `/events/`.** The
+`(app)` layout redirects every signed-out visitor to `/`, which would lose
+the token — the same failure `/card/[code]`'s header describes for a lost
+NFC tap, and the same fix: its own self-contained gate,
+`postLoginRedirectURL` pointed at itself. `/events/claim/[token]` was
+considered and rejected: `(app)/events/[eventId]` is a single dynamic
+segment one level below `/events`, so a second, differently-gated route tree
+sharing that prefix invites exactly the kind of collision this codebase
+avoids elsewhere. `/claim/[token]` matches the shape already established by
+`/card/[code]` and `/c/[token]` — short, token-driven, pre-auth — rather than
+inventing a fourth pattern.
+
+**A gap found building this screen, not anticipated building C2/C3:
+`get_claimable_import` never returned `event_id`.** §4.2 step 5 is "land on
+the event", and nothing in either RPC's response said which one — C2 and C3
+both predate there being a screen that needed to route anywhere.
+`20260828140000_fn_get_claimable_import_event_id.sql` adds it to
+`get_claimable_import`'s jsonb only; `claim_event_import` still answers
+exactly `{claimed: boolean}` and was not touched, because the caller already
+has `event_id` from the read that happens before the review screen ever
+renders. Disclosing it is not a wider grant than `event_name` already makes
+at the identical level (§11.1.4): an id is not a narrower secret than a
+title once a caller already holds the 244-bit token. Verified live in a
+rolled-back transaction — matching caller sees `event_id` and the prefill,
+an unrelated real account sees `event_id`/`event_name` but no prefill, an
+unknown token stays the bare `{available: false}` — then re-verified against
+the deployed function before this file was updated.
+
+**Signed out is not `/card/[code]`'s "show a preview anyway".** That route's
+preview works signed-out because `card-preview-service.ts` runs with the
+service role for its own bounded reason (a real client IP to rate-limit on).
+`get_claimable_import` deliberately does not do that (20260828120000's
+header) — no per-caller rate-limit key exists for `anon` — so a signed-out
+visitor here sees a generic "you've been added to a guest list" screen with
+no event or host name at all, never a teaser. This is §4.2's "unverified"
+reinterpreted exactly as C2's own migration already reinterpreted it:
+signed-in-but-unproven, not signed-out.
+
+**The teaser (`available: true, can_claim: false`) and the refusal
+(`available: false`) are two different components, not one parameterised by
+a reason.** The teaser discloses event and host name — already knowable from
+holding the token — with one fixed sentence that names no specific cause
+(wrong account, unverified, already claimed). The refusal discloses nothing
+at all. Collapsing them into one component with an `available` prop would
+have been harmless today, but it would invite a future edit to thread a real
+reason through both branches "since they're basically the same screen" —
+exactly the drift §3.6 exists to prevent. Two components with no shared prop
+surface make that mistake structurally harder to make.
+
+**Every prefilled field defaults to checked, unlike the host's attestation
+checkbox.** The host's checkbox (`review-and-attest.tsx`) cannot start
+ticked because it is a claim of authority over someone else's contacts. The
+claim screen's checkboxes are the opposite kind of choice — a person keeping
+or discarding their OWN data — matching §4.2's own "default is filled in".
+A field with no value in the row renders no checkbox at all, both because
+there is nothing to keep or discard and because an unfixable trap ("check
+this box to keep a value that doesn't exist") is worse than an absence.
+
+**The copy pass from §2.3.1 is enforced by a test, not just written once.**
+`claim-review.test.tsx` asserts the word "attended" never appears on the
+review screen under any prefill shape, and that "guest list" does — the same
+category of test `import-screens.test.tsx` already runs for the host side's
+own rules, so the sentence this document insists on cannot regress silently
+through an unrelated copy edit.
+
+**`getClaimableImport` fails closed to `{available: false}` on every error,
+including a thrown one — never just on a graceful `{available: false}`
+answer.** `get_claimable_import` itself raises (`55000`) rather than
+answering gracefully when its own rate-limit config is missing
+(20260828120000). If the TypeScript wrapper let that surface as a thrown
+error while every other refusal renders `ClaimNotAvailable`, a misconfigured
+deploy would be visibly distinguishable from a bad token — the exact oracle
+§3.6 rules out, moved one layer up instead of fixed. `claim-service.test.ts`
+asserts this explicitly, including for a raw transport failure and an
+unrecognised response shape. `claimEventImport` (the write) does not follow
+this pattern and throws on a transport failure — a claim is an action a
+caller expects to have worked or not, and that distinction is what lets the
+Server Action offer a retry rather than silently equating "we could not ask"
+with "the answer was no".
 
 ### 11.1.4 `get_claimable_import` — the first read path into the table, and why it requires `authenticated`
 

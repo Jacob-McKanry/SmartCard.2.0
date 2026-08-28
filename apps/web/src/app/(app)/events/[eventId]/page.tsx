@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { CalendarX2, ChevronLeft, Lock, Users } from "lucide-react";
+import { BadgeCheck, CalendarX2, ChevronLeft, Lock, Users } from "lucide-react";
 import type { RsvpStatus } from "@smartcard/types";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
@@ -13,6 +13,7 @@ import {
   getOwnRsvp,
 } from "@/server/events/events-service";
 import { listEventInvites } from "@/server/events/events-service";
+import { listOwnAttendedEventIds } from "@/server/events/attended-events-service";
 import { listOwnConnections } from "@/server/connections/connections-service";
 import { signedEventCoverUrl } from "@/server/events/cover-url";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
@@ -59,6 +60,10 @@ import { InviteLauncher, type InviteCandidate } from "./invite-launcher";
  *     ids; they are turned into a sentence here and never reach a component.
  *  4. **The pill renders the stored status**, read back from `event_rsvps`, not
  *     the button the viewer pressed.
+ *  5. **"You were on the guest list" (`AttendedNote`, C5) is not an RSVP.** It
+ *     reads `own_attended_events()` — the viewer's own claimed CSV-import
+ *     rows — and renders independently of `ownRsvp`. §2.4 of the import
+ *     design keeps attendance out of the RSVP status enum on purpose.
  *
  * WHERE THE DESIGN WANTED SOMETHING THIS BACKEND DOES NOT HAVE
  *
@@ -105,7 +110,7 @@ export default async function EventDetailPage({
   }
   const { event, city } = item;
 
-  const [ownRsvp, counts, connectionsAttending, host, coverUrl, ownConnectionsHere] =
+  const [ownRsvp, counts, connectionsAttending, host, coverUrl, ownConnectionsHere, attendedEventIds] =
     await Promise.all([
       getOwnRsvp(supabase, event.id, userId),
       getEventAttendanceCounts(supabase, event.id),
@@ -113,7 +118,9 @@ export default async function EventDetailPage({
       getEventHostProfile(supabase, event.host_user_id),
       signedEventCoverUrl(supabase, event.cover_image_path),
       getOwnConnectionsAtEvent(supabase, event.id, userId),
+      listOwnAttendedEventIds(supabase),
     ]);
+  const wasClaimedGuest = attendedEventIds.has(event.id);
 
   const role = viewerRole(event.host_user_id, userId, ownRsvp);
   const knowLine = connectionsAttendingLine(connectionsAttending);
@@ -216,6 +223,8 @@ export default async function EventDetailPage({
         knowLine={knowLine}
         isHosting={role === "host"}
       />
+
+      {wasClaimedGuest ? <AttendedNote /> : null}
 
       <StatRow stats={counts === null ? null : publicStats(counts)} />
 
@@ -496,6 +505,52 @@ function CancelledNotice({ ownStatus }: { ownStatus: RsvpStatus | null }) {
             ? "It is not going ahead, so your request will not be answered. Nothing else about your account changes."
             : "It is not going ahead. It stays here so you know, rather than disappearing from your list."}
         </span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * C5 — §4.3 of the 2026-08-22 attendee-import design: "the event page...
+ * plus 'You attended this.'" Shown whenever the viewer's own claimed rows
+ * (`own_attended_events()`, 20260828150000) include this event.
+ *
+ * WHY THE WORDS ARE NOT "YOU ATTENDED", EVEN THOUGH §4.3's OWN HEADING SAYS
+ * THAT
+ *
+ * §2.3.1 is explicit that the softening it requires for the claim screens
+ * "applies to any 'you attended' chip" on the event page too — this system
+ * has no check-in signal from any CSV a host has ever uploaded, only "the
+ * host said this person was on the list." Copying §4.3's heading verbatim
+ * would be exactly the regression that rule exists to prevent, so this uses
+ * the identical phrasing `claim-review.tsx` and `claim-teaser.tsx` already
+ * use rather than inventing a third variant of the same sentence.
+ *
+ * WHY THIS IS COMPLETELY SEPARATE FROM `ownRsvp`/`RsvpBlock`
+ *
+ * §2.4 of the import design: "deliberately not adding an `attended` value to
+ * the RSVP status enum... 'events I attended' is answered from the claimed
+ * import rows instead, which touches nothing existing." This note reads
+ * `attendedEventIds`, never `ownRsvp.status`, and renders independently of
+ * it — a claimed guest can also hold any RSVP status (`going`, no row at
+ * all, even `denied` for a private event they later got added to by CSV) and
+ * none of that combination needs the RSVP machinery to know about this.
+ */
+function AttendedNote() {
+  return (
+    <div
+      className="flex items-center gap-[11px] rounded-[22px] p-[15px]"
+      style={{ background: "var(--sc-accent-tint)", border: "1px solid rgba(11,96,255,.18)" }}
+    >
+      <span
+        className="flex size-[30px] shrink-0 items-center justify-center rounded-[10px]"
+        style={{ background: "rgba(255,255,255,.6)", color: "var(--sc-accent-deep)" }}
+        aria-hidden
+      >
+        <BadgeCheck size={15} strokeWidth={2} />
+      </span>
+      <span className="min-w-0 text-[13px] leading-[18px] font-medium">
+        You were on the guest list for this event.
       </span>
     </div>
   );
