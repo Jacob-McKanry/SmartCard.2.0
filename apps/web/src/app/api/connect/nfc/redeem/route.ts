@@ -15,9 +15,16 @@ import { connectErrorResponse, readAuthenticatedRequest } from "@/server/connect
  *
  * NO GPS GATE, AND THAT IS NOT A WEAKER RULE. NFC's read range is a few
  * centimetres, so physical range IS the proximity proof — and a better one than
- * GPS, because it cannot be spoofed from another city by a rooted phone. A tap
- * therefore never produces a `meeting_locations` row; absence of location is
- * represented by absence of the row (§2.4).
+ * GPS, because it cannot be spoofed from another city by a rooted phone.
+ *
+ * A TAP MAY STILL PRODUCE A `meeting_locations` ROW, SINCE 2026-08-28 — SEE
+ * `nfc-verifier.ts`'S HEADER FOR WHY THAT IS NOT THE SAME THING AS A GATE.
+ * `nfcRedeemRequestSchema.location` is optional, never checked against
+ * anything, and never able to change whether this endpoint accepts or refuses
+ * a tap — it exists purely so a connection made by tapping can carry the same
+ * kind of cosmetic "met at ___" label a QR-verified one already does. Absence
+ * (no fix offered, denied, or the client's short best-effort window elapsing)
+ * still produces no row, exactly as every tap did before this field existed.
  *
  * WHAT DEFENDS A STOLEN CARD, STATED PLAINLY (§4.7 threat 7). Nothing on this
  * path prevents it. Whoever holds the card can connect to its owner, and Q17

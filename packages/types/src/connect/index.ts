@@ -207,6 +207,16 @@ export const cardCodeSchema = z
 export const nfcRedeemRequestSchema = z
   .object({
     code: cardCodeSchema,
+    /**
+     * Added 2026-08-28, deliberately optional and never a gate — see
+     * `nfc-verifier.ts`'s header for the full reasoning. NFC's proximity
+     * proof is the tap itself (a few centimetres of read range); this fix is
+     * carried through only so a tap can, like a QR-verified meeting, get a
+     * `meeting_locations` row for display (the profile's city history, a
+     * "met at ___" label). A tap with none, a denied one, or a stale one all
+     * still create the connection exactly as before this field existed.
+     */
+    location: gpsFixInputSchema.optional(),
   })
   .strict();
 
