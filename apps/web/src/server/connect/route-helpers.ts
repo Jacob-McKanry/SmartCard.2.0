@@ -2,7 +2,7 @@ import "server-only";
 
 import { userFacingMessage, type RequestContext } from "@smartcard/core";
 
-import { getAuthenticatedContext } from "@/server/auth/current-user";
+import { getApiAuthenticatedContext } from "@/server/auth/api-context";
 import { ConnectRefusedError } from "@/server/connect/connect-service";
 import { buildRequestContext } from "@/server/connect/request-context";
 import { checkSameOrigin } from "@/server/connect/same-origin";
@@ -12,11 +12,13 @@ import { checkSameOrigin } from "@/server/connect/same-origin";
  *
  * WHY EVERY CONNECT ENDPOINT AUTHENTICATES FIRST, WITH NO EXCEPTIONS
  * §4.2 step 4 and §4.5 step 3 both have the caller send their auth token, and
- * there is no anonymous path anywhere in this flow. `getAuthenticatedContext()`
- * runs the whole §5.4 chain — Kinde session, JWKS verification, `ensureUser()`,
- * a freshly minted 5-minute Supabase token — and returns null when there is no
- * signed-in user. Null is a 401 here, never a fallback identity and never a
- * silent no-op: on this codepath, silence is indistinguishable from a bypass.
+ * there is no anonymous path anywhere in this flow. `getApiAuthenticatedContext()`
+ * runs the whole §5.4 chain — Kinde credential, JWKS verification, `ensureUser()`,
+ * a freshly minted 5-minute Supabase token — and refuses when there is no
+ * signed-in user. A refusal is a 401 (or a 503 when Kinde's key server, rather
+ * than the token, was the thing that failed), never a fallback identity and
+ * never a silent no-op: on this codepath, silence is indistinguishable from a
+ * bypass.
  *
  * A Route Handler is a public HTTP endpoint reachable by anyone who can send
  * the request, whether or not they ever loaded a page of ours — the same
@@ -25,7 +27,7 @@ import { checkSameOrigin } from "@/server/connect/same-origin";
  * checks are the whole of the boundary.
  *
  * WHY THE SAME-ORIGIN CHECK COMES BEFORE THE AUTHENTICATION CHECK
- * These endpoints are authenticated by a cookie, which the browser attaches
+ * These endpoints accept a cookie, which the browser attaches
  * because of where the request is going rather than because of who caused it to
  * be sent — so "is the caller signed in?" is the wrong first question. A
  * cross-site forged POST is sent BY a signed-in victim and passes every
@@ -33,6 +35,14 @@ import { checkSameOrigin } from "@/server/connect/same-origin";
  * `checkSameOrigin` refuses to let a third-party page be the thing that asks,
  * before any session is read or any token is minted. Read `same-origin.ts` for
  * what it checks and why `SameSite=Lax` is not treated as sufficient on its own.
+ *
+ * It runs for bearer callers too, and that is not redundant. A bearer token
+ * carries no CSRF surface of its own — an attacker's page cannot read the
+ * mobile app's secure storage, so there is nothing ambient to borrow — but a
+ * request that presents a browser's `Origin`/`Sec-Fetch-Site` signals IS a
+ * browser whatever else it sends. Skipping the check whenever an
+ * `Authorization` header appeared would hand any attacker page a one-header
+ * bypass of the whole defence.
  *
  * WHY THE ERROR SHAPE IS SO PLAIN
  * §4.2 step 7: a rejection tells the user that it did not work and nothing
@@ -84,9 +94,20 @@ export async function readAuthenticatedRequest(
     throw new HttpError(403, "That request wasn't valid.");
   }
 
-  const auth = await getAuthenticatedContext();
-  if (auth === null) {
-    throw new HttpError(401, "You need to be signed in to connect.");
+  // Cookie OR bearer token — see `api-context.ts`. Until 2026-08-21 this called
+  // the cookie-only web path, which meant these endpoints could not actually
+  // serve the mobile client that `same-origin.ts` was written to accommodate:
+  // the CSRF check let a header-less native caller through and the very next
+  // line then refused it for having no cookie. Nothing changes for the browser,
+  // which still takes the same path it always did.
+  const auth = await getApiAuthenticatedContext(request.headers);
+  if (!auth.ok) {
+    throw new HttpError(
+      auth.status,
+      auth.status === 503
+        ? "We couldn't verify your sign-in just now. Try again in a moment."
+        : "You need to be signed in to connect.",
+    );
   }
 
   let body: unknown;
@@ -100,7 +121,7 @@ export async function readAuthenticatedRequest(
   }
 
   return {
-    ctx: buildRequestContext({ callerUserId: auth.userId, headers: request.headers }),
+    ctx: buildRequestContext({ callerUserId: auth.context.userId, headers: request.headers }),
     body,
   };
 }

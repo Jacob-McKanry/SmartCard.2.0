@@ -165,3 +165,89 @@ export async function verifyKindeAccessToken(token: string): Promise<KindeIdenti
     lastName: stringClaim(payload, "family_name"),
   };
 }
+
+/**
+ * The profile claims carried by a Kinde ID token, for the ONE caller that needs
+ * them: seeding a brand-new `users` row on the mobile path.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM THE WEB'S VERSION
+ *
+ * On the web, `withProfileClaimsFromSession` reads these off the Kinde SDK's
+ * session, and `current-user.ts` explains at length why that is trustworthy
+ * there (the SDK re-validates every token it reads out of the cookie against
+ * JWKS) — and states, in the same breath, that the reasoning "does not transfer
+ * to mobile", because §5.2's flow has no such cookie and must therefore "obtain
+ * these claims by verifying the ID token against Kinde's JWKS the same way
+ * `verifyKindeAccessToken` does, not by trusting a request body". This is that
+ * function. It is the instruction being followed, not a new idea.
+ *
+ * THE INVARIANT THIS ENFORCES, WHICH IS THE WHOLE POINT
+ *
+ * `expectedSub` is the `sub` from the ALREADY-VERIFIED access token, and a
+ * mismatch throws. Without it, a caller could present their own valid access
+ * token alongside somebody else's valid ID token and have the second person's
+ * email address written onto the first person's brand-new row. Both tokens
+ * would be genuine, both would pass every signature check, and the result would
+ * be an account seeded with an identity its holder does not own. `current-user.ts`
+ * names this as "the invariant to preserve either way": profile claims may only
+ * ever be attached to the identity that was actually verified.
+ *
+ * WHY `aud` RATHER THAN `azp`
+ *
+ * OIDC requires an ID token's `aud` to be the client id it was issued for, and
+ * only requires `azp` when there are multiple audiences. The access-token check
+ * above uses `azp` because that is what Kinde puts on an access token; using the
+ * claim each token type actually guarantees is what keeps both checks real
+ * rather than incidentally-passing. `jwtVerify`'s `audience` option accepts the
+ * allow-list directly and fails closed on no match.
+ */
+export interface KindeProfileClaims {
+  email: string | null;
+  emailVerified: boolean;
+  firstName: string | null;
+  lastName: string | null;
+}
+
+export async function verifyKindeIdToken(
+  token: string,
+  expectedSub: string,
+): Promise<KindeProfileClaims> {
+  if (typeof token !== "string" || token.trim() === "") {
+    throw new KindeTokenVerificationError("no ID token was supplied");
+  }
+
+  let payload: JWTPayload;
+  try {
+    ({ payload } = await jwtVerify(token, kindeJwks(), {
+      issuer: kindeIssuerUrl(),
+      audience: [...kindeAllowedClientIds()],
+      // Pinned for the same reason as the access token — see the header above.
+      algorithms: ["RS256"],
+      clockTolerance: 5,
+    }));
+  } catch (cause) {
+    if (cause instanceof joseErrors.JOSEError) {
+      throw new KindeTokenVerificationError(cause.code, { cause, code: cause.code });
+    }
+    throw new KindeTokenVerificationError("ID token verification failed", { cause });
+  }
+
+  const subject = stringClaim(payload, "sub");
+  if (subject === null) {
+    throw new KindeTokenVerificationError("ID token has no `sub` claim");
+  }
+  if (subject !== expectedSub) {
+    // See the header: this is the check that stops one person's profile claims
+    // being attached to another person's verified identity.
+    throw new KindeTokenVerificationError(
+      "ID token describes a different subject than the access token it was sent with",
+    );
+  }
+
+  return {
+    email: stringClaim(payload, "email"),
+    emailVerified: payload["email_verified"] === true,
+    firstName: stringClaim(payload, "given_name"),
+    lastName: stringClaim(payload, "family_name"),
+  };
+}
