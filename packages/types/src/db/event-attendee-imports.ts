@@ -280,3 +280,21 @@ export const claimEventImportResultSchema = z.object({
 });
 
 export type ClaimEventImportResult = z.infer<typeof claimEventImportResultSchema>;
+
+// ---------------------------------------------------------------------------
+// C5 — "you attended": `own_attended_events`
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of `public.own_attended_events()` — the two fields §2.2's
+ * destroy-on-claim `UPDATE` leaves behind on a claimed row. Nothing else
+ * about the import survives to be read back.
+ */
+export const ownAttendedEventSchema = z.object({
+  event_id: uuidSchema,
+  claimed_at: timestamptzSchema,
+});
+
+export type OwnAttendedEvent = z.infer<typeof ownAttendedEventSchema>;
+
+export const ownAttendedEventsSchema = z.array(ownAttendedEventSchema);

@@ -395,7 +395,62 @@ Recorded here because they are inputs to §3's security argument, even though th
 
 | The claim screens (§4.2, C4) | `apps/web/src/app/claim/[token]/`, `apps/web/src/server/events/claim-service.ts` | Built and verified 2026-08-28; migration verified live in a rolled-back transaction, applied |
 
-Not built yet: `own_attended_events()` and "you attended" on the event page (C5), the host application form and admin review screens (§9.2/§9.3), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+| `own_attended_events` (§3.8/§4.3, C5) | `20260828150000_fn_own_attended_events.sql` | Verified live in a rolled-back transaction (own rows only, ordering, another claimant's and an unclaimed row both absent, `anon` refused execution); applied |
+| The event-page "guest list" note (§4.3, C5) | `apps/web/src/app/(app)/events/[eventId]/page.tsx` (`AttendedNote`), `apps/web/src/server/events/attended-events-service.ts` | Built and verified 2026-08-28 |
+
+Not built yet: the host application form and admin review screens (§9.2/§9.3), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+
+### 11.1.7 C5 — `own_attended_events()` and the event-page note — built 2026-08-28
+
+The last of §3.8's five RPCs, and the read that finally uses the fact §2.2
+deliberately kept: `(event_id, claimed_by_user_id, claimed_at)`, left behind
+on every claimed row specifically so "events I attended" could someday be
+answered from it.
+
+**No rate limit, unlike its four siblings — and that is a property of the
+function's own shape, not a relaxed standard.** `get_claimable_import` and
+`claim_event_import` both take a caller-supplied token and can be pointed at
+somebody else's row, which is exactly what §3.6/§3.7 exist to bound.
+`own_attended_events()` takes no argument at all — the only input is
+`private.current_user_id()`, resolved from the caller's own verified
+session — so there is no other identity to probe for. Recorded in the
+migration's own header so a future reader does not read the absence of a
+rate limit here as an oversight copied from the wrong sibling.
+
+**Verified live in a rolled-back transaction, not assumed from the query's
+shape.** A claimant with two claimed rows across two events saw exactly
+those two, most-recent-claim-first; an unrelated user with one claimed row
+saw exactly that one; a second host's unclaimed row (a live, unexpired
+import nobody had claimed) appeared for nobody; and a caller with no
+session (`anon`) was refused *execution* outright rather than returning zero
+rows through a filter — the grant, not just the `WHERE` clause, is what a
+reader should trust here, and the test checks the grant.
+
+**The event-page note is deliberately not "You attended", contradicting
+§4.3's own heading.** §2.3.1's copy pass — "this system has no path to
+'verified attended' from CSV data, only 'the host says this person was on
+the list'" — names the event-page chip explicitly as covered by the same
+softening the claim screens already got. `AttendedNote` says "You were on
+the guest list for this event," the identical phrasing `claim-review.tsx`
+and `claim-teaser.tsx` use, rather than a third independently-worded variant
+of the same claim.
+
+**Deliberately disconnected from `ownRsvp` and the RSVP status enum**,
+exactly as §2.4 specifies. `listOwnAttendedEventIds` is read and rendered
+independently of `getOwnRsvp` on the event page — a claimed guest can hold
+any RSVP status, including none at all, and the note's visibility does not
+consult it.
+
+**`listOwnAttendedEventIds` fails closed to an empty set on every error
+mode, including a thrown one** — `attended-events-service.test.ts` asserts
+this for an RPC error, a malformed response, and a thrown transport failure.
+This is not a §3.6 oracle concern (there is nothing to probe; every failure
+already answers only about the caller's own data) — it is CLAUDE.md's
+fail-closed rule applied to which DIRECTION a failure should lean: an
+unreadable result must never show a claim of attendance the app could not
+actually verify. The event page itself must not go down over this either,
+matching the posture `getEventHostProfile` and `getConnectionsAttending`
+already take on the same page.
 
 ### 11.1.6 C4, the claim screens — built 2026-08-28
 
