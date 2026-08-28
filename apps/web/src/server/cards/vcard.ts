@@ -44,12 +44,32 @@
  *     (`MAX_PREVIEW_SOCIAL_LINKS`, `card-preview-service.ts`) — so this file
  *     still cannot say more than the page, it just no longer says less on
  *     purpose.
- *   * No N (the structured name). vCard 3.0 nominally requires it and its
- *     absence means some clients import the whole name into the first-name
- *     field. The brief named six properties and N was not among them, so this
- *     follows the brief rather than second-guessing it; adding
- *     `N:Last;First;;;` is a one-line change if the owner wants clean
- *     first/last splitting on import.
+ *   * N (the structured name) was ADDED 2026-08-28, and the paragraph it
+ *     replaces was wrong in a way worth recording, because it is the whole
+ *     bug. It read: "No N. vCard 3.0 nominally requires it and its absence
+ *     means some clients import the whole name into the first-name field. The
+ *     brief named six properties and N was not among them, so this follows the
+ *     brief rather than second-guessing it; adding `N:Last;First;;;` is a
+ *     one-line change if the owner wants clean first/last splitting on
+ *     import."
+ *
+ *     Two things in that were mistaken. "Nominally requires" understates it —
+ *     RFC 2426 §3.1.2 lists N as one of the properties a vCard 3.0 MUST
+ *     include. And the consequence is far worse than untidy first/last
+ *     splitting: iOS Contacts builds a person's displayed name from N, not
+ *     from FN, so with N absent there is NO person name at all. iOS then
+ *     treats the card as an ORGANISATION contact and shows ORG in the name
+ *     position — or, with no ORG either, saves a contact with no name.
+ *
+ *     Reported by the owner as "the name isn't saving — it saves as
+ *     'SmartCard' for each person", which is exactly this: their own
+ *     `company_name` is the literal string "SmartCard", so their card
+ *     displayed as their employer. Measured against the live database rather
+ *     than reasoned about: of 315 active cardholders, 135 would import
+ *     showing their company instead of their name, 180 with no name
+ *     whatsoever, and 4 (the ones tested) as the literal word "SmartCard".
+ *     The failure was total — every card, every person — and it was invisible
+ *     from this side because the file we generate looked fine.
  *
  * WHY THERE IS NO LINE FOLDING, EXCEPT FOR THE PHOTO
  * RFC 2426 says lines SHOULD be folded at 75 octets. The text properties do not
@@ -221,12 +241,60 @@ export function vCardDisplayName(fields: VCardFields): string {
 }
 
 /**
+ * The structured name — `N:Family;Given;Additional;Prefixes;Suffixes` — which
+ * is what a contacts app actually files a person under.
+ *
+ * WHY THIS IS BUILT FROM THE COLUMNS AND NOT FROM `vCardDisplayName`
+ * The display name has a fallback chain that ends at a company and then at a
+ * placeholder. Neither of those is a *name*, and putting one in the family-name
+ * slot would assert that "Northwind" is somebody's surname. So this reads
+ * `firstName`/`lastName` directly, and when there is no human name to state it
+ * emits the empty structured name `N:;;;;` rather than inventing one.
+ *
+ * WHAT AN EMPTY `N` MEANS, AND WHY IT IS THE RIGHT ANSWER RATHER THAN A GAP
+ * `N:;;;;` beside `FN:Northwind` and `ORG:Northwind` is precisely how vCard
+ * represents an organisational contact, and it is what iOS renders as a company
+ * rather than a person. For a row that genuinely has no first or last name —
+ * 180 of the 315 live cardholders, mostly from the legacy import — "we do not
+ * know this person's name" is the true statement, and the org (or the FN
+ * placeholder) carrying the label is the honest outcome. The bug being fixed
+ * here is that EVERY card looked like that, including the 135 that have a
+ * perfectly good name sitting in the columns.
+ *
+ * ALL FOUR SEMICOLONS ARE ALWAYS PRESENT. A five-component property with
+ * components missing is not "shorter", it is malformed, and a parser that
+ * counts fields would mis-assign what it does find.
+ *
+ * THE COMPONENT SEPARATORS ARE NOT ESCAPED; THE VALUES INSIDE THEM ARE. Each
+ * part goes through `escapeVCardValue` on its own — so a surname containing a
+ * semicolon or comma is escaped and cannot add a component — and the four
+ * structural `;` are then written literally. Escaping the joined string, or
+ * joining unescaped parts, would each be wrong in the opposite direction.
+ */
+export function vCardStructuredName(fields: VCardFields): string {
+  const family = usable(fields.lastName);
+  const given = usable(fields.firstName);
+
+  const escape = (part: string | null): string =>
+    part === null ? "" : escapeVCardValue(part);
+
+  // family;given;additional;prefixes;suffixes — the last three are values this
+  // schema has no column for, and an absent value is an empty component.
+  return `${escape(family)};${escape(given)};;;`;
+}
+
+/**
  * Builds the file. Pure: no clock, no environment, no I/O — so every escaping
  * rule above is testable directly rather than through an HTTP response.
  */
 export function buildVCard(fields: VCardFields): string {
   const lines: string[] = ["BEGIN:VCARD", `VERSION:${VCARD_VERSION}`];
 
+  // N BEFORE FN, which is the order essentially every real vCard uses and the
+  // order RFC 2426's own examples show. The spec does not require it, but a
+  // parser that reads the first name-ish property it recognises should meet
+  // the structured one first.
+  lines.push(`N:${vCardStructuredName(fields)}`);
   lines.push(`FN:${escapeVCardValue(vCardDisplayName(fields))}`);
 
   const company = usable(fields.companyName);

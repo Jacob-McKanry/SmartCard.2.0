@@ -60,14 +60,14 @@ describe("escaping", () => {
 
   it("a bio containing a raw newline does not truncate the file", () => {
     const vcard = buildVCard({ ...EMPTY, firstName: "Sam", bio: "First para.\n\nSecond para." });
-    // Exactly five physical lines: BEGIN, VERSION, FN, NOTE, END.
-    expect(vcard.split("\r\n").filter((line) => line !== "")).toHaveLength(5);
+    // Exactly six physical lines: BEGIN, VERSION, N, FN, NOTE, END.
+    expect(vcard.split("\r\n").filter((line) => line !== "")).toHaveLength(6);
     expect(vcard).toContain("NOTE:First para.\\n\\nSecond para.");
   });
 });
 
 describe("field list", () => {
-  it("emits exactly the six text properties and the three structural lines when there is no photo", () => {
+  it("emits exactly the seven text properties and the three structural lines when there is no photo", () => {
     const properties = buildVCard(SAM)
       .split("\r\n")
       .filter((line) => line !== "")
@@ -76,6 +76,7 @@ describe("field list", () => {
     expect(properties).toEqual([
       "BEGIN",
       "VERSION",
+      "N",
       "FN",
       "ORG",
       "TITLE",
@@ -111,6 +112,107 @@ describe("field list", () => {
 });
 
 /**
+ * THE STRUCTURED NAME. This block is the regression guard for the bug that
+ * made every saved contact nameless: with no `N`, iOS Contacts has no person
+ * name to file the card under, so it renders the card as an ORGANISATION and
+ * shows `ORG` where the name belongs — reported as "the name saves as
+ * 'SmartCard' for each person", because that owner's `company_name` is the
+ * literal string "SmartCard".
+ *
+ * Measured on the live database at the time of the fix: of 315 active
+ * cardholders, 135 would have imported showing their company, 180 with no
+ * name at all, and 4 as the word "SmartCard".
+ *
+ * The property is mandatory in vCard 3.0 (RFC 2426 §3.1.2), so the first
+ * test here is the one that must never go green by accident.
+ */
+describe("the structured name (N)", () => {
+  function nLineOf(fields: Parameters<typeof buildVCard>[0]): string {
+    const line = buildVCard(fields)
+      .split("\r\n")
+      .find((l) => l.startsWith("N:"));
+    if (line === undefined) throw new Error("no N property in the vCard");
+    return line;
+  }
+
+  it("is always present — its absence is the whole bug", () => {
+    // Deliberately checked for the emptiest possible card as well as a full
+    // one: N is required unconditionally, not "when we happen to have a name".
+    expect(buildVCard(SAM)).toMatch(/^N:/m);
+    expect(buildVCard(EMPTY)).toMatch(/^N:/m);
+    expect(buildVCard({ ...EMPTY, companyName: "Northwind" })).toMatch(/^N:/m);
+  });
+
+  it("puts family and given names in the right slots, in that order", () => {
+    // vCard 3.0 orders N as Family;Given;Additional;Prefixes;Suffixes.
+    // Reversing the first two is the obvious mistake and would file everyone
+    // under their first name.
+    expect(nLineOf(SAM)).toBe("N:Rivera;Sam;;;");
+  });
+
+  it("always writes all four separators, even when every component is empty", () => {
+    // A five-component property with components missing is malformed rather
+    // than short, and a parser counting fields would mis-assign what it finds.
+    expect(nLineOf(EMPTY)).toBe("N:;;;;");
+  });
+
+  it("keeps the slot empty rather than inventing a surname from the company", () => {
+    // `vCardDisplayName` falls back to the company and then to a placeholder.
+    // Neither is a NAME, and putting one in the family slot would assert that
+    // "Northwind" is somebody's surname. The empty N plus ORG is exactly how
+    // vCard represents an organisational contact.
+    const orgOnly = { ...EMPTY, companyName: "Northwind" };
+    expect(nLineOf(orgOnly)).toBe("N:;;;;");
+    expect(buildVCard(orgOnly)).toContain("FN:Northwind");
+    expect(buildVCard(orgOnly)).toContain("ORG:Northwind");
+  });
+
+  it("handles a first name alone and a last name alone, which the migrated data really contains", () => {
+    expect(nLineOf({ ...EMPTY, firstName: "Sam" })).toBe("N:;Sam;;;");
+    expect(nLineOf({ ...EMPTY, lastName: "Rivera" })).toBe("N:Rivera;;;;");
+  });
+
+  it("treats a whitespace-only name as absent, not as a name made of spaces", () => {
+    expect(nLineOf({ ...EMPTY, firstName: "   ", lastName: "\t" })).toBe("N:;;;;");
+  });
+
+  it("escapes the values without escaping the structural separators", () => {
+    // The separators must stay literal or the property collapses to fewer
+    // components; the values must be escaped or a name can ADD components.
+    // Both directions are wrong in a way that silently mis-imports.
+    const line = nLineOf({ ...EMPTY, lastName: "Smith;Jones", firstName: "Sam,Jr" });
+    expect(line).toBe("N:Smith\\;Jones;Sam\\,Jr;;;");
+    // Still exactly five components once the escaped ones are discounted.
+    expect(line.slice(2).replace(/\\./g, "").split(";")).toHaveLength(5);
+  });
+
+  it("cannot be used to inject another property through a newline", () => {
+    const hostile = { ...EMPTY, lastName: "Evil\r\nEMAIL;TYPE=INTERNET:attacker@example.test" };
+    const vcard = buildVCard(hostile);
+
+    // The newline survives only as the two-character escape, so it never ends
+    // the property.
+    expect(nLineOf(hostile)).toContain("\\n");
+
+    // The address DOES appear in the file — as escaped text inside N and FN,
+    // which is the honest rendering of a name somebody typed. What must not
+    // exist is a real LINE that a parser would read as a new property, so the
+    // assertion is about the file's line structure rather than its substrings.
+    // (Asserting `not.toContain("attacker@example.test")` would fail here for
+    // a card that is perfectly safe, and asserting on a trailing CRLF fails
+    // for the same reason: FN legitimately ends with that text.)
+    const lines = vcard.split("\r\n");
+    expect(lines.some((l) => l.startsWith("EMAIL"))).toBe(false);
+    expect(lines.filter((l) => l.startsWith("N:"))).toHaveLength(1);
+  });
+
+  it("agrees with FN for an ordinary person, so the two never describe different people", () => {
+    expect(nLineOf(SAM)).toBe("N:Rivera;Sam;;;");
+    expect(buildVCard(SAM)).toContain("FN:Sam Rivera");
+  });
+});
+
+/**
  * The URL properties, added 2026-08-28 — see the file header for the
  * reversal this records. `CardPreview.socialLinks` (`id`, `platform`, `url`)
  * is handed to `buildVCard` unchanged; only `url` is read.
@@ -139,6 +241,7 @@ describe("the URL properties (social links)", () => {
     expect(properties).toEqual([
       "BEGIN",
       "VERSION",
+      "N",
       "FN",
       "ORG",
       "TITLE",
@@ -192,6 +295,7 @@ describe("the embedded PHOTO property", () => {
     expect(properties).toEqual([
       "BEGIN",
       "VERSION",
+      "N",
       "FN",
       "ORG",
       "TITLE",
