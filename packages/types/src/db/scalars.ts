@@ -81,3 +81,75 @@ export const citextSchema = z.string();
  * `jsonb`. Only `app_config.value` uses it.
  */
 export const jsonbSchema = z.json();
+
+/**
+ * Strips every field-level `.default(...)` out of an object schema's shape,
+ * for building a genuinely partial update schema out of an insert schema that
+ * has defaults on it — e.g. `eventUpdateSchema = withoutDefaults(eventInsertSchema).partial().strict()`.
+ *
+ * WHY THIS EXISTS: `INSERT_SCHEMA.partial()` DOES NOT DO WHAT IT LOOKS LIKE IT
+ * DOES, in Zod 4
+ *
+ * The obvious way to build an update schema from an insert schema is
+ * `insertSchema.partial()` — every existing `*UpdateSchema` in this package
+ * used to be written exactly that way, and for a field with no default that is
+ * completely correct: the field becomes optional, and omitting it from an
+ * update leaves it omitted. It is NOT correct for a field that carries
+ * `.default(...)`, which every insert schema has for every column that is
+ * optional on create (`description`, `visibility`, `display_order`, ...):
+ * `.partial()` makes the KEY optional, but Zod still runs the field's own
+ * schema — default included — against `undefined` when the key is missing,
+ * which is precisely when the default fires. The result is that a caller who
+ * sends `{ title: "New title" }` to update ONE field gets every other
+ * defaulted column silently reset to its create-time value, not left alone.
+ *
+ * CONFIRMED, NOT ASSUMED (2026-08-22): `eventUpdateSchema.parse({ title: "x" })`
+ * returned `visibility: "private"`, `capacity: null`, `requires_approval:
+ * false` and five other fields that were never in the input, against zod
+ * 4.4.3 — reproduced in isolation before touching either call site. The same
+ * mechanism affects `socialLinkUpdateSchema` via `display_order`'s
+ * `.default(0)`: editing a link's `platform` or `url` through
+ * `updateSocialLinkAction` silently zeroed its `display_order`, live, on the
+ * shipped web app — the two update schemas in this package built with plain
+ * `.partial()` both had a default-bearing field. This was found while
+ * building the mobile events routes, whose PATCH endpoint sends genuinely
+ * minimal bodies (a mobile "rename this event" screen has no reason to also
+ * resend `capacity`), which is what turned an already-real bug into one that
+ * could not go unnoticed rather than an incidental one the web's own
+ * always-complete-form submissions happened to paper over.
+ *
+ * WHY THIS IS A FUNCTION AND NOT "JUST CALL `.removeDefault()` INLINE TWICE"
+ *
+ * Because the failure mode is silent and the fix is easy to get subtly wrong
+ * (removing defaults from the WRONG schema, or after `.partial()` instead of
+ * before, produces no type error and passes a test that only checks the
+ * happy path). One reviewed implementation, reused at both sites, is what
+ * keeps a third `*InsertSchema.partial()` from reintroducing this by copying
+ * the pattern that looks obviously right.
+ *
+ * `ZodDefault.removeDefault()` returns the schema the default was wrapping,
+ * unwrapping exactly one layer — the field's own validation (type, range,
+ * nullability) is unchanged, so a value that IS supplied is still checked
+ * exactly as strictly as the insert schema checks it. A field with no default
+ * passes through unchanged, so this is safe to apply to every field
+ * unconditionally rather than needing to know which ones have defaults.
+ */
+export function withoutDefaults<Shape extends z.ZodRawShape>(schema: z.ZodObject<Shape>): z.ZodObject<Shape> {
+  const shape = schema.shape;
+  const stripped = {} as Record<string, z.ZodTypeAny>;
+
+  for (const [key, field] of Object.entries(shape)) {
+    stripped[key] = (field instanceof z.ZodDefault ? field.removeDefault() : field) as z.ZodTypeAny;
+  }
+
+  // Typed as `z.ZodObject<Shape>` — the same shape the caller passed in —
+  // rather than a mapped type computing "defaults removed" precisely. That
+  // would be more honest at this line, but it buys nothing at the call site:
+  // both current callers immediately chain `.partial()`, which wraps every
+  // field in `.optional()` regardless of whether it used to carry a default,
+  // so the type `z.infer` produces after `.partial()` is identical either
+  // way. What actually changed is runtime behaviour (no field resurrects a
+  // default when omitted), which no type signature can express or verify —
+  // that is what the tests below are for.
+  return z.object(stripped) as unknown as z.ZodObject<Shape>;
+}

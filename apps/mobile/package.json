@@ -4,14 +4,15 @@
   "version": "1.0.0",
   "dependencies": {
     "@expo/ui": "~57.0.9",
+    "@kinde/expo": "0.8.0",
     "@smartcard/api-client": "workspace:*",
     "@smartcard/core": "workspace:*",
     "@smartcard/types": "workspace:*",
-    "@supabase/supabase-js": "^2.112.2",
     "@tanstack/react-query": "^5.101.4",
     "expo": "~57.0.11",
     "expo-auth-session": "~57.0.6",
     "expo-constants": "~57.0.9",
+    "expo-dev-client": "~57.0.14",
     "expo-device": "~57.0.1",
     "expo-font": "~57.0.1",
     "expo-glass-effect": "~57.0.1",
@@ -42,7 +43,8 @@
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^57.0.6",
     "eslint-config-expo": "~57.0.1",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.7"
   },
   "scripts": {
     "start": "dotenv -e ../../.env.local -- expo start",
@@ -52,7 +54,8 @@
     "ios": "dotenv -e ../../.env.local -- expo start --ios",
     "web": "dotenv -e ../../.env.local -- expo start --web",
     "lint": "expo lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
   },
   "private": true
 }

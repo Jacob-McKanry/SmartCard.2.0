@@ -9,7 +9,14 @@
  */
 import { z } from "zod";
 
-import { integerSchema, latitudeSchema, longitudeSchema, timestamptzSchema, uuidSchema } from "./scalars";
+import {
+  integerSchema,
+  latitudeSchema,
+  longitudeSchema,
+  timestamptzSchema,
+  uuidSchema,
+  withoutDefaults,
+} from "./scalars";
 import { eventCancelReasonSchema, eventStatusSchema, eventVisibilitySchema } from "./enums";
 
 /**
@@ -178,6 +185,16 @@ export const eventInsertSchema = z.object({
 export type EventInsert = z.infer<typeof eventInsertSchema>;
 
 /**
+ * The shape a caller actually needs to supply to create an event — every
+ * field with a `.default()` above (`description`, `visibility`, `capacity`,
+ * etc.) is optional here, unlike `EventInsert` (`z.infer`'s *output* type,
+ * where those defaults have already been filled in). `createEvent`'s client
+ * wrapper takes this type so a mobile caller isn't forced to restate every
+ * default just to make a `{ city_id, title, starts_at }` event.
+ */
+export type EventInsertInput = z.input<typeof eventInsertSchema>;
+
+/**
  * What a host may change about an event they already own — mirrors the combined
  * column-level UPDATE grants from 20260809211300 and 20260814051100.
  *
@@ -185,7 +202,14 @@ export type EventInsert = z.infer<typeof eventInsertSchema>;
  * cannot be handed to somebody else after the fact. That asymmetry with
  * `eventInsertSchema` is deliberate and is the reason column-level grants exist
  * at all — RLS cannot say "this row but not that column".
+ *
+ * `withoutDefaults(...)` BEFORE `.partial()`, not `eventInsertSchema.partial()`
+ * directly — see that function's header in `./scalars` for why the obvious
+ * version silently resets `description`, `visibility`, `capacity`,
+ * `requires_approval` and `cover_image_path` to their create-time defaults on
+ * ANY update that does not resend all five, which is a bug this schema
+ * actually had (2026-08-22).
  */
-export const eventUpdateSchema = eventInsertSchema.partial().strict();
+export const eventUpdateSchema = withoutDefaults(eventInsertSchema).partial().strict();
 
 export type EventUpdate = z.infer<typeof eventUpdateSchema>;

@@ -8,7 +8,11 @@ A from-scratch rebuild of SmartCard: a private social app where connections can 
 
 ## Non-negotiable product rule
 
-A connection can only be created through NFC or a live, GPS-verified QR scan. Never add a global user search, a stranger directory, or any "connect" action reachable from a shareable profile URL. If a feature request conflicts with this, flag it — don't build a workaround.
+A connection can only be created through NFC or a live, GPS-verified QR scan — no exceptions, including the roster below. Never add a global user search or any "connect" action reachable from a shareable profile URL.
+
+**Amended 2026-08-27 (owner decision, `docs/architecture/2026-08-27-event-attendee-roster.md`):** one bounded people-listing surface exists — attendees of an event who have each *opted in* may see each other on that event's page and view/save each other's contact details. It never creates a connection, is readable only by fellow attendees of that same event, and nobody appears on it without their own explicit choice (unanswered = hidden). Read that document before touching anything near it; any widening of it (pre-event visibility, cross-event listing, non-attendee readers, a connect action) is a new amendment, not an extension.
+
+If a feature request conflicts with any of this, flag it — don't build a workaround.
 
 ## Documentation standard
 

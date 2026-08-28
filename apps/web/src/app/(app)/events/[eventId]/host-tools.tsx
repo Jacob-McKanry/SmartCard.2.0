@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ListChecks } from "lucide-react";
+import { ListChecks, Upload } from "lucide-react";
 
 import { HOST_PANEL } from "../lib/surfaces";
 
@@ -39,6 +39,21 @@ import { HOST_PANEL } from "../lib/surfaces";
  *  - **No waitlist-promotion toggle.** Promotion is automatic and unconditional,
  *    inside the transaction that frees the seat. There is no per-event setting,
  *    so there is no switch to draw.
+ *
+ * THE GUEST-LIST IMPORT LINK IS NOT AN EXCEPTION TO "NO GUEST LIST"
+ *
+ * `/events/[eventId]/import` takes a CSV *in*. It does not show one back: there
+ * is no read path to `event_attendee_imports` anywhere in this app, and the
+ * import answers with counts rather than rows. So this panel still has no
+ * screen behind it that lists who is attending, and the link's copy is careful
+ * not to imply one.
+ *
+ * It is shown to every host rather than only to verified ones, deliberately.
+ * Whether the caller may import is a question for the database, and answering
+ * it here would mean this component either reading a flag it has no business
+ * holding or hiding a door for the wrong reason during an outage. The page
+ * behind the link explains itself to a host who cannot use it yet — a visible
+ * "here is why not" beats a control that silently is not there.
  *
  * WHAT IS HERE THAT A READER MIGHT EXPECT ON THE CREATE FORM
  *
@@ -96,6 +111,14 @@ export function HostTools({
         >
           <ListChecks size={15} strokeWidth={2.1} aria-hidden />
           Approval queue
+        </Link>
+        <Link
+          href={`/events/${eventId}/import`}
+          className="flex min-h-11 items-center gap-[7px] rounded-full px-[18px] text-[13px] leading-[17px] font-semibold"
+          style={{ border: "1px solid rgba(255,255,255,.22)", color: "#fff" }}
+        >
+          <Upload size={15} strokeWidth={2.1} aria-hidden />
+          Import a guest list
         </Link>
         {inviteSlot}
       </div>

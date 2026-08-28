@@ -7,7 +7,7 @@
  */
 import { z } from "zod";
 
-import { integerSchema, timestamptzSchema, uuidSchema } from "./scalars";
+import { integerSchema, timestamptzSchema, uuidSchema, withoutDefaults } from "./scalars";
 
 export const socialLinkRowSchema = z.object({
   id: uuidSchema,
@@ -92,7 +92,14 @@ export type SocialLinkInsert = z.infer<typeof socialLinkInsertSchema>;
  * `user_id` is excluded from that grant for the same reason described on
  * `socialLinkInsertSchema`: reassigning a link to another profile is not a
  * thing an edit is allowed to do.
+ *
+ * `withoutDefaults(...)` before `.partial()` — plain `socialLinkInsertSchema
+ * .partial()` silently reset `display_order` to `0` on every edit that did
+ * not resend it, which is exactly what `updateSocialLinkAction` (editing only
+ * `platform`/`url`) does on every call. See `withoutDefaults`'s header in
+ * `./scalars` for the mechanism; this was a real, shipping bug (2026-08-22),
+ * not a hypothetical one.
  */
-export const socialLinkUpdateSchema = socialLinkInsertSchema.partial().strict();
+export const socialLinkUpdateSchema = withoutDefaults(socialLinkInsertSchema).partial().strict();
 
 export type SocialLinkUpdate = z.infer<typeof socialLinkUpdateSchema>;

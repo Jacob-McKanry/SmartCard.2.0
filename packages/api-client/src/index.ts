@@ -16,6 +16,8 @@ export {
   type ConnectApiOptions,
 } from "./connect";
 
+export * from "./v1";
+
 // Placeholder only, to prove the workspace wiring
 // (apps -> packages/api-client -> packages/types) resolves correctly. It parses
 // against a real schema now that packages/types mirrors the database, rather

@@ -151,3 +151,30 @@ export {
   type RsvpRequestOutcome,
   type WaitlistEntry,
 } from "./events/rsvp-rules";
+
+// Guest-list import: what a CSV from Luma, Eventbrite or Partiful *means*.
+// Not a security boundary — `public.import_event_attendees` re-checks every
+// gate from values it reads itself, so a host bypassing this module gains
+// nothing. See the module header for the one rule here that is not cosmetic:
+// a `declined` guest is somebody the host turned away, and importing them
+// would record the opposite of what happened.
+export {
+  IGNORE_COLUMN,
+  classifyStatusValue,
+  detectColumnMapping,
+  normaliseImportRows,
+  normaliseSocialHandle,
+  summariseStatusValues,
+  type ColumnAssignment,
+  type ColumnMapping,
+  type ImportField,
+  type ImportRow,
+  type NormalizeOptions,
+  type NormalizeResult,
+  type StatusClass,
+} from "./events/attendee-import";
+
+// RFC 4180 CSV reader for guest-list uploads. Hand-written rather than a
+// dependency because everything in this package ships to mobile — see the
+// module header for that tradeoff and why it is acceptable here.
+export { parseCsv, type CsvParseResult } from "./events/csv";

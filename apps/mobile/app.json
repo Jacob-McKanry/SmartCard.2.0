@@ -1,16 +1,23 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "SmartCard",
+    "slug": "smartcard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "smartcard",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "tech.smartcard.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "SmartCard uses the camera to scan a connection QR code when you meet someone in person.",
+        "NSLocationWhenInUseUsageDescription": "SmartCard checks your location only while you are making a connection, to confirm you and the other person are actually together.",
+        "NFCReaderUsageDescription": "SmartCard reads your physical SmartCard when you tap it to your phone."
+      }
     },
     "android": {
+      "package": "tech.smartcard.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

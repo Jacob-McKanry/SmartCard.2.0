@@ -138,9 +138,14 @@ export async function getApiAuthenticatedContext(headers: Headers): Promise<ApiA
     return { ok: false, status: statusForTokenFailure(error) };
   }
 
-  // Only ever consulted to fill a gap, and only for a new row — same condition
-  // the web path applies before reading the session's claims.
-  if (identity.email === null) {
+  // Consulted to fill a gap — same condition the web path applies before
+  // reading the session's claims, and widened at the same time and for the same
+  // reason: `email_verified` now travels into the minted Supabase token and is
+  // read by the guest-list claim gate (§3.2), so an identity with an email but
+  // no verification claim is incomplete even though `ensureUser` would accept
+  // it. Kinde puts `email_verified` in the ID token, not the access token, on
+  // the default configuration.
+  if (identity.email === null || !identity.emailVerified) {
     const rawIdToken = headers.get("x-kinde-id-token");
     if (rawIdToken !== null && rawIdToken.trim() !== "") {
       try {
@@ -153,17 +158,35 @@ export async function getApiAuthenticatedContext(headers: Headers): Promise<ApiA
           lastName: claims.lastName ?? identity.lastName,
         };
       } catch (error) {
-        // A supplied-but-unverifiable ID token is refused rather than ignored.
-        // Ignoring it would mean a caller who sent a forged or mismatched token
-        // gets the same treatment as one who sent none — which quietly turns a
-        // detected attack into a normal request.
-        return { ok: false, status: statusForTokenFailure(error) };
+        // WHETHER A BAD ID TOKEN IS FATAL DEPENDS ON WHAT IT WAS FOR, AND THE
+        // SPLIT IS DELIBERATE.
+        //
+        // With no email on the access token, this token is load-bearing:
+        // `ensureUser` needs it to seed a new row, and a caller who sent a
+        // forged or mismatched one must not get the same treatment as one who
+        // sent none — that quietly turns a detected attack into a normal
+        // request. Unchanged: still refused.
+        //
+        // With an email already in hand, this token was only going to *upgrade*
+        // `emailVerified`. Refusing here would be a new 401 on a request that
+        // worked before this branch was widened — and a stale ID token
+        // alongside a fresh access token is an ordinary client state, not an
+        // attack, because `@kinde/expo` refreshes the two independently. So the
+        // failure degrades to "unverified", which costs the caller a guest-list
+        // claim and nothing else. It grants nothing: `emailVerified` stays
+        // whatever the access token said, which is the fail-closed direction.
+        if (identity.email === null) {
+          return { ok: false, status: statusForTokenFailure(error) };
+        }
       }
     }
   }
 
   const userId = await ensureUser(identity);
-  const supabaseAccessToken = await mintSupabaseAccessToken(userId);
+  const supabaseAccessToken = await mintSupabaseAccessToken(userId, {
+    email: identity.email,
+    emailVerified: identity.emailVerified,
+  });
 
   return {
     ok: true,
@@ -171,6 +194,8 @@ export async function getApiAuthenticatedContext(headers: Headers): Promise<ApiA
       userId,
       kindeUserId: identity.kindeUserId,
       supabase: rlsClient(supabaseAccessToken),
+      email: identity.email,
+      emailVerified: identity.emailVerified,
     },
   };
 }

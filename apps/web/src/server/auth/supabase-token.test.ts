@@ -30,6 +30,12 @@ import { mintSupabaseAccessToken, resetSupabaseTokenSignerForTests } from "./sup
  */
 
 const USER_ID = "0f687466-3f44-4b0d-807e-0e2bfbcad9f8";
+/**
+ * The default for tests that are about signing rather than about email claims.
+ * Deliberately the *unverified* shape, so a test that starts caring about the
+ * gate has to say so out loud rather than inherit a permissive fixture.
+ */
+const UNVERIFIED = { email: null, emailVerified: false } as const;
 // A syntactically real but fictional project ref. Deliberately NOT the live
 // project's: every assertion below is relative to this constant, so the tests
 // prove the issuer is derived from `SUPABASE_URL` without the repo having to
@@ -68,7 +74,7 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
     const { privateJwk, publicJwk, kid } = await importedSigningKey();
     process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
 
-    const token = await mintSupabaseAccessToken(USER_ID);
+    const token = await mintSupabaseAccessToken(USER_ID, UNVERIFIED);
 
     // Exactly what Supabase does: fetch the JWKS, match on `kid`, verify.
     const jwks = createLocalJWKSet({ keys: [publicJwk] });
@@ -89,7 +95,7 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
     process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
 
     const before = Math.floor(Date.now() / 1000);
-    const { exp, iat } = claimsOf(await mintSupabaseAccessToken(USER_ID));
+    const { exp, iat } = claimsOf(await mintSupabaseAccessToken(USER_ID, UNVERIFIED));
     const after = Math.ceil(Date.now() / 1000);
 
     // The lifetime bound is measured from the real "now": five minutes, not a
@@ -111,7 +117,7 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
 
     // The user id is data, not configuration — a value shaped like a claim
     // injection must end up in `sub` as a plain string, not alter the token.
-    const payload = claimsOf(await mintSupabaseAccessToken('{"role":"service_role"}'));
+    const payload = claimsOf(await mintSupabaseAccessToken('{"role":"service_role"}', UNVERIFIED));
 
     expect(payload.role).toBe("authenticated");
     expect(payload.sub).toBe('{"role":"service_role"}');
@@ -131,7 +137,7 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
       ext: true,
     });
 
-    const token = await mintSupabaseAccessToken(USER_ID);
+    const token = await mintSupabaseAccessToken(USER_ID, UNVERIFIED);
 
     await expect(jwtVerify(token, createLocalJWKSet({ keys: [publicJwk] }))).resolves.toBeTruthy();
   });
@@ -141,7 +147,7 @@ describe("mintSupabaseAccessToken — ES256 signing key (the current mechanism)"
     const other = await importedSigningKey();
     process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
 
-    const token = await mintSupabaseAccessToken(USER_ID);
+    const token = await mintSupabaseAccessToken(USER_ID, UNVERIFIED);
     const wrongKeySet = createLocalJWKSet({ keys: [other.publicJwk] });
 
     await expect(jwtVerify(token, wrongKeySet)).rejects.toThrow();
@@ -168,25 +174,92 @@ describe("mintSupabaseAccessToken — misconfiguration fails closed rather than 
   it.each(cases)("refuses %s", async (_label, value) => {
     process.env.SUPABASE_JWT_SIGNING_KEY = value;
 
-    await expect(mintSupabaseAccessToken(USER_ID)).rejects.toThrow();
+    await expect(mintSupabaseAccessToken(USER_ID, UNVERIFIED)).rejects.toThrow();
   });
 
   it("fails closed with a named variable when no signing key is configured at all", async () => {
     // `beforeEach` already deleted it. Unset is the one misconfiguration a
     // fresh deployment is most likely to hit, so the error has to say which
     // variable is missing rather than surface as a signing failure.
-    await expect(mintSupabaseAccessToken(USER_ID)).rejects.toThrow(/SUPABASE_JWT_SIGNING_KEY/);
+    await expect(mintSupabaseAccessToken(USER_ID, UNVERIFIED)).rejects.toThrow(/SUPABASE_JWT_SIGNING_KEY/);
   });
 
   it("does not cache the failure, so fixing the variable fixes the app", async () => {
     process.env.SUPABASE_JWT_SIGNING_KEY = "{ broken";
-    await expect(mintSupabaseAccessToken(USER_ID)).rejects.toThrow();
+    await expect(mintSupabaseAccessToken(USER_ID, UNVERIFIED)).rejects.toThrow();
 
     const { privateJwk, publicJwk } = await importedSigningKey();
     process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
     resetSupabaseTokenSignerForTests();
 
-    const token = await mintSupabaseAccessToken(USER_ID);
+    const token = await mintSupabaseAccessToken(USER_ID, UNVERIFIED);
     await expect(jwtVerify(token, createLocalJWKSet({ keys: [publicJwk] }))).resolves.toBeTruthy();
+  });
+});
+
+/**
+ * THE CLAIMS THE GUEST-LIST CLAIM GATE READS (§3.2 of the import design).
+ *
+ * `public.claim_event_import` answers two questions from this token and cannot
+ * answer either from `public.users`: which address is this caller's, and did an
+ * identity provider prove they control it. `ensureUser` writes `email` and
+ * `email_verified` on INSERT and never updates them, so both columns are frozen
+ * at signup — the design says in as many words to read the live token claim.
+ *
+ * That makes the shape of these two claims a security interface, not a detail.
+ * Each test below pins one property the SQL will be written against.
+ */
+describe("mintSupabaseAccessToken — the email claims", () => {
+  async function claimsWith(claims: { email: string | null; emailVerified: boolean }) {
+    const { privateJwk } = await importedSigningKey();
+    process.env.SUPABASE_JWT_SIGNING_KEY = JSON.stringify(privateJwk);
+    return claimsOf(await mintSupabaseAccessToken(USER_ID, claims));
+  }
+
+  it("carries the address and the verification flag", async () => {
+    const payload = await claimsWith({ email: "kim@example.com", emailVerified: true });
+
+    expect(payload.email).toBe("kim@example.com");
+    expect(payload.email_verified).toBe(true);
+  });
+
+  it("writes `email_verified` as a real boolean, not a string", async () => {
+    // The SQL gate will read this as `(claims ->> 'email_verified')::boolean`.
+    // A JSON string `"false"` casts to `false` in Postgres, but a string
+    // `"true"` and a boolean `true` are the same to that cast while being
+    // different to every JS check on the way here — so the type is pinned
+    // rather than left to whatever `SignJWT` does with a truthy value.
+    const payload = await claimsWith({ email: "kim@example.com", emailVerified: false });
+
+    expect(payload.email_verified).toBe(false);
+    expect(typeof payload.email_verified).toBe("boolean");
+  });
+
+  it("omits `email` entirely rather than sending null, so the RPC sees one absent-ness", async () => {
+    const payload = await claimsWith({ email: null, emailVerified: false });
+
+    expect("email" in payload).toBe(false);
+    // Still says no out loud, so a decoded token distinguishes "we said no"
+    // from "we forgot to say".
+    expect(payload.email_verified).toBe(false);
+  });
+
+  it("never lets the email claim displace `sub` or `role`", async () => {
+    // The claims object is spread into `SignJWT`'s payload, so a future edit
+    // that widened it could shadow the two claims every RLS policy in the
+    // schema depends on. `sub` and `role` are set by the builder AFTER the
+    // payload, but that ordering is an implementation detail worth pinning.
+    const payload = await claimsWith({ email: "kim@example.com", emailVerified: true });
+
+    expect(payload.sub).toBe(USER_ID);
+    expect(payload.role).toBe("authenticated");
+  });
+
+  it("keeps the five-minute lifetime, which the extra claims must not change", async () => {
+    const before = Math.floor(Date.now() / 1000);
+    const payload = await claimsWith({ email: "kim@example.com", emailVerified: true });
+
+    expect(Number(payload.exp)).toBeGreaterThanOrEqual(before + 300);
+    expect(Number(payload.exp)).toBeLessThanOrEqual(before + 301);
   });
 });
