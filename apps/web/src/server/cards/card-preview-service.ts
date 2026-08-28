@@ -275,12 +275,25 @@ export interface PreviewSocialLink {
 }
 
 /**
- * The two bands DESIGN.md §3 says Profile draws — and it is two, not §3's three,
- * because Profile ships two: its "cities met people in" band has no data behind
- * it (`meeting_locations.place_label` is a venue or neighbourhood name, not a
- * city), and §3's implementation notes record the omission. The preview mirrors
- * what Profile actually renders; inventing a third band here would put a number
- * on an anonymous page that the owner's own screen refuses to show them.
+ * Two bands, where DESIGN.md §3 names three — AND THE REASON CHANGED ON
+ * 2026-08-28 WITHOUT THE ANSWER CHANGING, WHICH IS WHY THIS PARAGRAPH IS
+ * LONGER THAN IT WAS.
+ *
+ * It used to be two because Profile shipped two: §3's "cities met people in"
+ * band had no data behind it, since `meeting_locations.place_label` is a venue
+ * or neighbourhood name rather than a city. That is no longer true —
+ * `city_label` (20260828170000) and `own_cities_met_in()` (20260828180000)
+ * exist, and `/profile` now draws all three.
+ *
+ * This page still shows two, and that is now a DISCLOSURE decision rather than
+ * a data one. Everything on this surface is read by somebody with no account
+ * who is holding a card, and "this person has met people in 14 cities" is a
+ * new fact about them — a coarse travel history — that nothing here previously
+ * said. The owner asked for the cities band on the OWNER'S OWN profile; nobody
+ * has decided it belongs on an anonymous page, and widening what a permanent,
+ * forwardable URL discloses is the kind of change §4.7 threat 1's amendments
+ * exist to make deliberately rather than as a side effect of a different
+ * feature. Adding it here is a one-line change plus that decision.
  *
  * These are counts and nothing but counts. Neither is derived from a query that
  * returns a row, a name or an id — see `loadPreviewCounts`.

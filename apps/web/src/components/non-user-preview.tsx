@@ -278,11 +278,14 @@ function previewInitials(preview: CardPreview): string {
  * coupling than two literals are worth, and `ring-geometry.test.ts` asserts the
  * layout is legal for every band list the app ships.
  *
- * DESIGN.md §3's third band ("cities met people in") is absent here because it
- * is absent from Profile: the schema has no city on a meeting, and §3's
- * implementation notes record why approximating one would be a number the app
- * cannot stand behind. A preview showing a band the owner's own profile does
- * not show would be inventing a fact about somebody for strangers.
+ * DESIGN.md §3's third band ("cities met people in") is absent here, and as of
+ * 2026-08-28 that is no longer because the data is missing. It exists now
+ * (`meeting_locations.city_label`) and `/profile` draws the band. What keeps
+ * it off THIS screen is that this screen is read by a stranger holding a card:
+ * a coarse travel history is a new fact about somebody, on a permanent
+ * forwardable URL, that nobody has decided to disclose. See
+ * `PreviewCounts` in `card-preview-service.ts` for the full reasoning — the
+ * decision lives there, next to the type that would have to carry the number.
  *
  * An empty array when the counts are unknown, which draws the medallion and no
  * rings — never zeroes, which would be a claim rather than an absence (§7).
