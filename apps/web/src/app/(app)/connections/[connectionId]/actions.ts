@@ -161,10 +161,25 @@ export async function setMarkedPrivateAction(
  * paths are revalidated: this route re-renders into its removed state, and the
  * list drops the row. Nothing about *what is written* changed — the RLS
  * transition and its one-wayness are identical.
+ *
+ * TWO MORE PATHS ADDED 2026-08-28, FOUND BY A REPORT RATHER THAN ANTICIPATED.
+ * `/profile`'s ring diagram and `/` (Home)'s "N connections, all made in
+ * person" line both read `listOwnConnections` too, and neither was in this
+ * list — so removing a connection updated `/connections` (which the user was
+ * looking at) while leaving Next's Router Cache holding whichever count those
+ * two pages last rendered, indefinitely, until something else happened to
+ * revalidate them. The write itself was always correct (`status` really did
+ * flip to `removed`, and a fresh, uncached load of either page always showed
+ * the right number) — this was purely a cache the write never told to drop.
+ * The visible symptom matched exactly: the count never went down, and the
+ * *next* connection made would count up from the stale number rather than
+ * the true one.
  */
 export async function removeConnectionAction(connectionId: string): Promise<void> {
   const context = await requireContext();
   await removeConnection(context.supabase, connectionId);
   revalidatePath("/connections");
   revalidatePath(`/connections/${connectionId}`);
+  revalidatePath("/profile");
+  revalidatePath("/");
 }

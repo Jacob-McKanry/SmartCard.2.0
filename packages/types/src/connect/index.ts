@@ -207,6 +207,16 @@ export const cardCodeSchema = z
 export const nfcRedeemRequestSchema = z
   .object({
     code: cardCodeSchema,
+    /**
+     * Added 2026-08-28, deliberately optional and never a gate — see
+     * `nfc-verifier.ts`'s header for the full reasoning. NFC's proximity
+     * proof is the tap itself (a few centimetres of read range); this fix is
+     * carried through only so a tap can, like a QR-verified meeting, get a
+     * `meeting_locations` row for display (the profile's city history, a
+     * "met at ___" label). A tap with none, a denied one, or a stale one all
+     * still create the connection exactly as before this field existed.
+     */
+    location: gpsFixInputSchema.optional(),
   })
   .strict();
 
@@ -242,3 +252,67 @@ export const connectRedeemResponseSchema = z.discriminatedUnion("ok", [
 ]);
 
 export type ConnectRedeemResponse = z.infer<typeof connectRedeemResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// POST /api/connect/nfc/location   (§4.5, amended 2026-08-28)
+// ---------------------------------------------------------------------------
+/**
+ * Attaches a location to a card-tap meeting AFTER it has already been created.
+ *
+ * WHY THIS EXISTS ALONGSIDE `nfcRedeemRequestSchema.location`, WHICH CARRIES
+ * THE SAME DATA
+ *
+ * Two ways to put a location on an `nfc_card` meeting is a shape worth
+ * justifying rather than leaving a reader to wonder about, because "never add
+ * a second write path" is a rule this codebase takes seriously (§4.7 threat
+ * 4). Both are gated, neither can create a meeting or a connection, and they
+ * exist because the same fix arrives at two genuinely different times:
+ *
+ *   * IN THE REDEEM (`nfcRedeemRequestSchema.location`) — the better path
+ *     whenever a fix is already in hand, because the location lands inside
+ *     `create_verified_connection`'s single transaction: there is no instant
+ *     at which the meeting exists without it, and no second request that can
+ *     fail. A native client holding a recent fix should use this.
+ *   * AFTERWARDS (this schema) — for the web tap, where there is no fix in
+ *     hand and there must not be a wait for one. `/card/[code]` fires its
+ *     redeem the instant the page mounts, deliberately: "the entire product
+ *     value of a physical tap is that it costs nothing beyond the tap itself"
+ *     (`card-redeem-flow.tsx`). Blocking that on a GPS acquisition — up to 15
+ *     seconds, often more indoors — to decorate a record would trade the one
+ *     thing a card is good at for a place name.
+ *
+ * The security argument is identical for both and lives in
+ * `20260828160000_fn_attach_nfc_meeting_location.sql`: a location never
+ * decides whether a connection exists, so neither path is a gate, and the
+ * function behind this one re-derives from the caller's own session that they
+ * are the person who actually tapped.
+ */
+export const nfcLocationAttachRequestSchema = z
+  .object({
+    /**
+     * The meeting the redeem response just returned. Untrusted like every
+     * other client-supplied id: the database re-derives that this meeting is
+     * an `nfc_card` one, that the caller is the person who tapped, that it is
+     * recent, and that it has no location yet.
+     */
+    meetingId: uuidSchema,
+    location: gpsFixInputSchema,
+  })
+  .strict();
+
+export type NfcLocationAttachRequest = z.infer<typeof nfcLocationAttachRequestSchema>;
+
+/**
+ * `{ attached: boolean }` and nothing else — no reason, matching
+ * `CardClaimResult` and `claim_event_import` for the same reason: a caller
+ * who learned WHICH gate refused would have an oracle for which meeting ids
+ * exist and who was in them. There is nothing they could do with the answer
+ * regardless; this is decoration on a connection that already committed.
+ */
+export const nfcLocationAttachResponseSchema = z
+  .object({
+    attached: z.boolean(),
+  })
+  .strict();
+
+export type NfcLocationAttachResponse = z.infer<typeof nfcLocationAttachResponseSchema>;

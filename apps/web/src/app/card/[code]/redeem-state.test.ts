@@ -7,8 +7,15 @@ describe("redeemReducer", () => {
     expect(initialRedeemState).toEqual({ phase: "verifying" });
   });
 
-  it("moves verifying -> success on an ok: true redeem result", () => {
-    expect(redeemReducer(initialRedeemState, { type: "redeem-success" })).toEqual({ phase: "success" });
+  it("moves verifying -> success on an ok: true redeem result, carrying the meeting id", () => {
+    // `meetingId` is an internal handle, not something rendered — the flow
+    // needs it to attach a location once one arrives (§4.5's 2026-08-28
+    // amendment). Asserted here so a future edit cannot quietly drop it and
+    // silently disable the location attach with no visible symptom.
+    expect(redeemReducer(initialRedeemState, { type: "redeem-success", meetingId: "m-1" })).toEqual({
+      phase: "success",
+      meetingId: "m-1",
+    });
   });
 
   it("moves verifying -> failure carrying the API's own message verbatim", () => {
@@ -30,7 +37,7 @@ describe("redeemReducer", () => {
   it("ignores a redeem outcome that arrives after the phase already moved on", () => {
     // Defensive only — mirrors scanner-state.ts's guard against a stale async
     // resolution dispatching into a state that has already moved past it.
-    const success: RedeemState = { phase: "success" };
+    const success: RedeemState = { phase: "success", meetingId: "m-1" };
     expect(redeemReducer(success, { type: "redeem-failure", message: "late" })).toBe(success);
   });
 

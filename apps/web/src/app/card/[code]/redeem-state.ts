@@ -26,12 +26,22 @@
 
 export type RedeemState =
   | { phase: "verifying" }
-  | { phase: "success" }
+  | {
+      phase: "success";
+      /**
+       * The meeting the redeem just created, added 2026-08-28 so the flow can
+       * attach a location to it once one arrives (§4.5's amendment; see
+       * `card-redeem-flow.tsx`). Nothing is RENDERED from it — it is an
+       * internal handle, not a fact shown to anybody, which is why `success`
+       * still carries nothing a screen reads.
+       */
+      meetingId: string;
+    }
   | { phase: "failure"; message: string }
   | { phase: "error"; message: string };
 
 export type RedeemAction =
-  | { type: "redeem-success" }
+  | { type: "redeem-success"; meetingId: string }
   | { type: "redeem-failure"; message: string }
   | { type: "failed"; message: string }
   | { type: "retry" };
@@ -42,7 +52,7 @@ export function redeemReducer(state: RedeemState, action: RedeemAction): RedeemS
   switch (action.type) {
     case "redeem-success":
       if (state.phase !== "verifying") return state;
-      return { phase: "success" };
+      return { phase: "success", meetingId: action.meetingId };
 
     case "redeem-failure":
       if (state.phase !== "verifying") return state;

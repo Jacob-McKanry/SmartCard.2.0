@@ -114,11 +114,41 @@ export function chooseLabel(features: MapboxFeature[]): string | null {
   return parts.length > 0 ? parts.join(", ") : null;
 }
 
+/**
+ * The city alone, for `meeting_locations.city_label` and the profile's
+ * "cities met people in" band (`DESIGN.md` §3, unblocked 2026-08-28).
+ *
+ * WHY THIS IS A SEPARATE FUNCTION RATHER THAN A SPLIT OF `chooseLabel`'s
+ * RESULT. `chooseLabel` returns the most specific thing available, which for
+ * any venue is a bare POI name — "Moscone Center", with no city in it at all.
+ * Parsing a city back out of that string would silently yield nothing for
+ * exactly the venues this is most wanted for, and would yield a
+ * *neighbourhood* ("SoMa") for the fallback shape. Mapbox returns the `place`
+ * feature separately in the same response, so this reads what the geocoder
+ * actually said instead of inferring it.
+ *
+ * `place` is Mapbox's own type for a city or town. Nothing coarser is
+ * accepted: `region` (a state) and `country` are real features in the same
+ * response, and counting those as cities would make the band read "3 cities"
+ * for three meetings in three different parts of one state.
+ */
+export function chooseCity(features: MapboxFeature[]): string | null {
+  const place = features.find((f) => f.place_type?.includes("place"));
+  const text = place?.text;
+  return typeof text === "string" && text.trim() !== "" ? text : null;
+}
+
+/** What one reverse-geocode yields: the display label, and the city, independently. */
+export interface ReverseGeocodeResult {
+  label: string | null;
+  city: string | null;
+}
+
 async function reverseGeocode(
   latitude: number,
   longitude: number,
   accessToken: string,
-): Promise<string | null> {
+): Promise<ReverseGeocodeResult> {
   const url = new URL(`${MAPBOX_REVERSE_ENDPOINT}/${longitude},${latitude}.json`);
   url.searchParams.set("types", "poi,neighborhood,place");
   // No `limit`. See the header: Mapbox's default for reverse geocoding is one
@@ -153,11 +183,12 @@ async function reverseGeocode(
       status: response.status,
       detail: (await readErrorDetail(response)) ?? "no body",
     });
-    return null;
+    return { label: null, city: null };
   }
 
   const payload = (await response.json()) as MapboxResponse;
-  return chooseLabel(payload.features ?? []);
+  const features = payload.features ?? [];
+  return { label: chooseLabel(features), city: chooseCity(features) };
 }
 
 /**
@@ -177,8 +208,14 @@ async function readErrorDetail(response: Response): Promise<string | null> {
 
 /**
  * Reverse-geocodes one meeting's captured fix and writes the result to
- * `meeting_locations.place_label`. Never throws — every failure path is
- * logged and swallowed, matching `sendCardTapNotification`'s contract.
+ * `meeting_locations.place_label` and `.city_label`. Never throws — every
+ * failure path is logged and swallowed, matching `sendCardTapNotification`'s
+ * contract.
+ *
+ * `city_label` was added 2026-08-28 (20260828170000) so `DESIGN.md` §3's
+ * "cities met people in" band could finally be drawn from a real city rather
+ * than from `place_label`, which is a venue or neighbourhood name — see
+ * `chooseCity` for why the two cannot be the same column.
  *
  * Service-role only: `meeting_locations` has no client UPDATE policy at all
  * (§3.2) — rows are written by the verification service alone, and this is
@@ -201,19 +238,33 @@ export async function geocodeMeetingLocation(
       return;
     }
 
-    const label = await reverseGeocode(latitude, longitude, accessToken);
-    if (label === null) {
-      console.info("[geocode] no usable Mapbox result; place_label left null", { meetingId });
+    const { label, city } = await reverseGeocode(latitude, longitude, accessToken);
+
+    // Both null means the response carried nothing usable. Writing an UPDATE
+    // that sets two nulls over two nulls is a wasted round trip.
+    if (label === null && city === null) {
+      console.info("[geocode] no usable Mapbox result; place_label and city_label left null", {
+        meetingId,
+      });
       return;
     }
 
+    // Each column is written only when its own value was actually found.
+    // Building the patch this way rather than always sending both means a
+    // response that yielded a city but no venue name (the common case today —
+    // see the header's note that Mapbox v5 no longer returns POI data) does
+    // not overwrite an existing `place_label` with null.
+    const patch: { place_label?: string; city_label?: string } = {};
+    if (label !== null) patch.place_label = label;
+    if (city !== null) patch.city_label = city;
+
     const { error } = await client
       .from("meeting_locations")
-      .update({ place_label: label })
+      .update(patch)
       .eq("meeting_id", meetingId);
 
     if (error) {
-      console.error("[geocode] failed to write place_label", {
+      console.error("[geocode] failed to write the geocoded labels", {
         meetingId,
         message: error.message,
       });

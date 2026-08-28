@@ -275,12 +275,25 @@ export interface PreviewSocialLink {
 }
 
 /**
- * The two bands DESIGN.md §3 says Profile draws — and it is two, not §3's three,
- * because Profile ships two: its "cities met people in" band has no data behind
- * it (`meeting_locations.place_label` is a venue or neighbourhood name, not a
- * city), and §3's implementation notes record the omission. The preview mirrors
- * what Profile actually renders; inventing a third band here would put a number
- * on an anonymous page that the owner's own screen refuses to show them.
+ * Two bands, where DESIGN.md §3 names three — AND THE REASON CHANGED ON
+ * 2026-08-28 WITHOUT THE ANSWER CHANGING, WHICH IS WHY THIS PARAGRAPH IS
+ * LONGER THAN IT WAS.
+ *
+ * It used to be two because Profile shipped two: §3's "cities met people in"
+ * band had no data behind it, since `meeting_locations.place_label` is a venue
+ * or neighbourhood name rather than a city. That is no longer true —
+ * `city_label` (20260828170000) and `own_cities_met_in()` (20260828180000)
+ * exist, and `/profile` now draws all three.
+ *
+ * This page still shows two, and that is now a DISCLOSURE decision rather than
+ * a data one. Everything on this surface is read by somebody with no account
+ * who is holding a card, and "this person has met people in 14 cities" is a
+ * new fact about them — a coarse travel history — that nothing here previously
+ * said. The owner asked for the cities band on the OWNER'S OWN profile; nobody
+ * has decided it belongs on an anonymous page, and widening what a permanent,
+ * forwardable URL discloses is the kind of change §4.7 threat 1's amendments
+ * exist to make deliberately rather than as a side effect of a different
+ * feature. Adding it here is a one-line change plus that decision.
  *
  * These are counts and nothing but counts. Neither is derived from a query that
  * returns a row, a name or an id — see `loadPreviewCounts`.
@@ -900,27 +913,43 @@ const PREVIEW_PHOTO_URL_TTL_SECONDS = 5 * 60;
 /**
  * The largest image, in bytes before base64, this will embed in a `.vcf`.
  *
- * WHY THERE IS A CAP AT ALL. Base64 inflates by a third, so the bucket's own
- * ceiling (5 MiB, 20260813180355) would permit a 6.8 MB contact file — sent to a
- * phone, over mobile data, from a page whose whole purpose is a courtesy to
- * somebody who just tapped a card. A contacts database is also somewhere these
- * bytes live forever once imported.
+ * WHY THIS NUMBER CHANGED (2026-08-28), AND WHY THE OLD REASONING WAS WRONG
+ * FOR DATA THAT NOW EXISTS
  *
- * WHY THIS NUMBER. Every photo in the bucket today came from the legacy backfill
- * — 148 files, 7,370,556 bytes, largest 170,214 — so 256 KiB sits above every
- * real photo with room to spare while still being an order of magnitude under
- * what the bucket would allow. It is a guard against the pathological case, not
- * a limit anybody's actual avatar will meet.
+ * This used to be 256 KiB, on the argument that "every photo in the bucket
+ * today came from the legacy backfill — 148 files, largest 170,214 [bytes]".
+ * That was true when it was written and stopped being true the moment JPEG/PNG/
+ * GIF uploads were allowed (20260826, "Allow JPEG, PNG, WEBP and GIF for
+ * profile photos, not just WEBP") on top of the pre-existing WEBP-only path: a
+ * phone camera JPEG with no client-side compression is routinely 2-3+ MB, and
+ * real uploads at exactly that size are in the bucket now. The 256 KiB cap
+ * silently dropped `PHOTO` for every one of them — no error, no fallback, just
+ * a vCard with no picture — which is indistinguishable from "this feature does
+ * not work" to whoever tapped "Save contact". Found by reading the live
+ * `storage.objects` table rather than assumed: real recent uploads at
+ * 365,349 and 3,098,426 bytes, both well past the old cap.
  *
- * WHY NOT DOWNSCALE INSTEAD, which would let the cap be much tighter. Node has
- * no image codec in its standard library, so downscaling means adding `sharp` (a
- * native binary, on a serverless build) or a WASM decoder, for one optional
- * property of one courtesy file. That is a disproportionate dependency, and the
- * failure it would prevent — a photo between 256 KiB and 5 MiB — cannot occur
- * with the data that exists. If user-uploaded photos ever get large, downscaling
- * is the right answer and this constant is where the decision to add it lives.
+ * THE NEW NUMBER is the bucket's own `file_size_limit`
+ * (`storage.buckets.file_size_limit`, 20260813180355) — read live and
+ * confirmed at 5,242,880 (5 MiB) rather than assumed to still match the
+ * comment that used to be here. Matching it exactly is deliberate: a photo the
+ * upload path already accepted has no principled reason to then be silently
+ * refused here. A cap strictly below the bucket's own limit would just move
+ * the same silent-drop bug to a different threshold instead of removing it.
+ *
+ * WHAT THIS COSTS. Base64 inflates by a third, so a full 5 MiB photo produces
+ * a ~6.8 MB `.vcf` — slow over cellular, and worth revisiting if it becomes a
+ * real complaint. THE RIGHT NEXT LEVER, if it does, is downscaling before
+ * embedding (`sharp` or similar), not shrinking this cap back down — that
+ * would reintroduce today's exact bug for a different set of real photos.
+ * `sharp` was rejected in the original version of this comment as "a
+ * disproportionate dependency... for one optional property of one courtesy
+ * file", written when no photo was known to need it; it is not in this app's
+ * dependency tree today (checked, not assumed) and adding one is a decision
+ * for whoever picks this up next, made deliberately rather than as a
+ * silent side effect of a serverless build.
  */
-const MAX_EMBEDDED_PHOTO_BYTES = 256 * 1024;
+const MAX_EMBEDDED_PHOTO_BYTES = 5 * 1024 * 1024;
 
 /**
  * Media types this will embed, and the vCard 3.0 `TYPE=` token for each.

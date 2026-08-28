@@ -11,6 +11,7 @@ import {
 } from "@/server/profile/profile-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 import { listOwnConnections } from "@/server/connections/connections-service";
+import { countCitiesMetIn } from "@/server/connections/cities-count";
 import { countEventsAttended } from "@/server/events/attendance-count";
 import { LinkTiles } from "@/components/link-tiles";
 import { RingCentre, RingDiagram, type RingBandData } from "@/components/ring-diagram";
@@ -62,17 +63,31 @@ import { EmailOptInToggle } from "./email-opt-in-toggle";
  * the rule and for why the fix is a shared function rather than a second correct
  * implementation.
  *
- * THE RING DIAGRAM HAS TWO BANDS, NOT §3's THREE — SEE DESIGN.md §3
+ * THE RING DIAGRAM DRAWS ALL THREE OF §3's BANDS AS OF 2026-08-28
  *
- * §3's outermost band is "cities met people in", and nothing in this schema
- * knows what city a meeting happened in. `meeting_locations` holds a lat/lng and
- * a `place_label`, and that label is a venue name ("Blue Bottle Coffee") or a
- * neighbourhood — `server/connect/geocode.ts` asks Mapbox for
- * `poi,neighborhood,place` and prefers the POI. Counting distinct labels and
- * calling the result "cities" would be a number the app cannot stand behind, and
- * §7's whole point is that a screen never implies more than it knows. The band is
- * omitted rather than approximated, and the deviation is recorded in DESIGN.md
- * §3 alongside the original decision, per CLAUDE.md's documentation standard.
+ * It shipped with two, and the reason is worth keeping rather than deleting,
+ * because it is the reason the third one can now be trusted. §3's outermost
+ * band is "cities met people in", and nothing in this schema knew what city a
+ * meeting happened in: `meeting_locations` held a lat/lng and a `place_label`,
+ * and that label is a venue name ("Blue Bottle Coffee") or a neighbourhood —
+ * `server/connect/geocode.ts` asks Mapbox for `poi,neighborhood,place` and
+ * prefers the POI. Counting distinct labels and calling the result "cities"
+ * would have been a number the app could not stand behind, so the band was
+ * omitted rather than approximated.
+ *
+ * What changed is the data, not the standard. `meeting_locations.city_label`
+ * (20260828170000) is written from the geocoder's own `place` feature — the
+ * city as Mapbox named it, never parsed back out of `place_label` — and
+ * `own_cities_met_in()` (20260828180000) counts distinct values of it over the
+ * caller's own meetings. The band is now a fact somebody asserted rather than
+ * one this screen inferred, which is what §7 was asking for all along.
+ *
+ * ONE HONEST LIMITATION, STATED HERE BECAUSE IT IS VISIBLE TO USERS: nothing
+ * was backfilled, so meetings recorded before 2026-08-28 have no city and are
+ * invisible to this count. An established member's band reads LOW until they
+ * meet somebody new. Low is the acceptable direction to be wrong in; the
+ * alternative, guessing a city for an old meeting from a venue name, is the
+ * approximation this band spent months not making.
  */
 export const dynamic = "force-dynamic";
 
@@ -85,11 +100,12 @@ export default async function ProfilePage() {
 
   const { supabase, userId } = context;
 
-  const [profile, socialLinks, connections, eventsAttended] = await Promise.all([
+  const [profile, socialLinks, connections, eventsAttended, citiesMetIn] = await Promise.all([
     getOwnProfile(supabase, userId),
     listOwnSocialLinks(supabase, userId),
     listOwnConnections(supabase, userId),
     eventsAttendedOrNull(supabase, userId),
+    citiesMetInOrNull(supabase),
   ]);
   const photoUrl = await signedProfilePhotoUrl(supabase, profile.photo_path);
 
@@ -113,6 +129,31 @@ export default async function ProfilePage() {
             noun: { one: "event attended", many: "events attended" },
           },
         ]),
+    /*
+     * §3's third band, drawn for the first time on 2026-08-28. It was omitted
+     * from this file's original build for a stated reason — `place_label` is a
+     * venue or neighbourhood name, so a count of distinct labels would not be
+     * a count of cities — and that reason is now gone rather than overruled:
+     * `own_cities_met_in()` counts `meeting_locations.city_label`, which the
+     * geocoder writes from its own `place` feature (20260828170000/180000).
+     *
+     * Omitted on a failed read, exactly like the events band above and for the
+     * identical reason: a fabricated zero would read "you have met people in
+     * no cities", which is a claim about somebody's life rather than an
+     * absence of data. `RING_PRESETS.profile` has had three band slots
+     * (r 62/88/112) since it was written, so this needs no geometry change —
+     * `ring-geometry.test.ts` already asserts every preset's clearance rule.
+     */
+    ...(citiesMetIn === null
+      ? []
+      : [
+          {
+            key: "cities",
+            count: citiesMetIn,
+            color: "var(--sc-accent-deep)",
+            noun: { one: "city", many: "cities" },
+          },
+        ]),
   ];
 
   const name = fullName(profile);
@@ -133,7 +174,7 @@ export default async function ProfilePage() {
       <RingDiagram
         preset="profile"
         bands={bands}
-        summary={ringSummary(name, connections.length, eventsAttended)}
+        summary={ringSummary(name, connections.length, eventsAttended, citiesMetIn)}
         centre={<RingCentre photoUrl={photoUrl} initials={initialsFor(profile)} />}
       />
 
@@ -384,20 +425,51 @@ async function eventsAttendedOrNull(
 }
 
 /**
+ * The cities band's number, or `null` if it could not be read.
+ *
+ * The exact shape of `eventsAttendedOrNull` above, for the exact reason its
+ * header gives: `countCitiesMetIn` throws rather than defaulting because zero
+ * is a claim, and this page is the caller that decides a failure means "draw
+ * one fewer band" — never a zero, and never a 500 over a decorative ring.
+ *
+ * Takes no `userId`: `own_cities_met_in()` has no parameter and reads the
+ * caller from the JWT, so there is no version of this that could ask about
+ * somebody else.
+ */
+async function citiesMetInOrNull(supabase: SupabaseClient): Promise<number | null> {
+  try {
+    return await countCitiesMetIn(supabase);
+  } catch (error) {
+    console.error("[profile] omitting the cities band after a failed count", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/**
  * The diagram's accessible description — §8, since the rings themselves are
  * decoration.
  *
- * A `null` events count drops the clause rather than reading "0 events
- * attended". The sentence has to say the same thing the chips do, and the chips
- * omit a band they could not compute.
+ * A `null` count drops its clause rather than reading "0 events attended" or
+ * "0 cities". The sentence has to say the same thing the chips do, and the
+ * chips omit a band they could not compute — so this is assembled from
+ * whichever clauses survived rather than from a fixed template.
  */
-function ringSummary(name: string, connections: number, events: number | null): string {
-  const c = `${connections} ${connections === 1 ? "connection" : "connections"}`;
-  if (events === null) {
-    return `${name}: ${c}.`;
+function ringSummary(
+  name: string,
+  connections: number,
+  events: number | null,
+  cities: number | null,
+): string {
+  const clauses = [`${connections} ${connections === 1 ? "connection" : "connections"}`];
+  if (events !== null) {
+    clauses.push(`${events} ${events === 1 ? "event attended" : "events attended"}`);
   }
-  const e = `${events} ${events === 1 ? "event attended" : "events attended"}`;
-  return `${name}: ${c}, ${e}.`;
+  if (cities !== null) {
+    clauses.push(`${cities} ${cities === 1 ? "city" : "cities"} met people in`);
+  }
+  return `${name}: ${clauses.join(", ")}.`;
 }
 
 function fullName(profile: OwnProfile): string {

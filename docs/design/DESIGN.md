@@ -150,13 +150,26 @@ with the arithmetic in `ring-geometry.ts` and `ring-geometry.test.ts`.
   bug, appearing for some users only. Each band now starts half that value past
   the one inside it, which is provably the furthest apart the arithmetic allows.
   A fixed 7° constant was written first and the exhaustive test rejected it.
-- **Profile ships two bands, not three.** The outermost band — "cities met
-  people in" — has no data behind it. `meeting_locations` stores a lat/lng and a
-  `place_label`, and that label is a venue name or a neighbourhood, not a city
-  (`server/connect/geocode.ts` requests `poi,neighborhood,place` and prefers the
-  POI). Counting distinct labels and captioning them "cities" would be a number
-  the app cannot stand behind, so the band is omitted rather than approximated.
-  Adding it needs a city recorded on the meeting, not a cleverer query.
+- **~~Profile ships two bands, not three.~~ Resolved 2026-08-28: it ships all
+  three.** The original note stands as the reason the third band can now be
+  trusted, so it is kept rather than deleted: the outermost band — "cities met
+  people in" — had no data behind it, because `meeting_locations` stored a
+  lat/lng and a `place_label`, and that label is a venue name or a
+  neighbourhood, not a city (`server/connect/geocode.ts` requests
+  `poi,neighborhood,place` and prefers the POI). Counting distinct labels and
+  captioning them "cities" would have been a number the app could not stand
+  behind, so the band was omitted rather than approximated, and the note ended
+  "adding it needs a city recorded on the meeting, not a cleverer query."
+
+  That is exactly what was added. `meeting_locations.city_label`
+  (`20260828170000`) is written from the geocoder's own `place` feature — never
+  parsed back out of `place_label`, which for any venue is a bare POI name with
+  no city in it at all — and `own_cities_met_in()` (`20260828180000`) counts
+  distinct values of it over the caller's own meetings, in SQL, returning one
+  integer and no rows. **Nothing was backfilled**, so meetings recorded before
+  2026-08-28 have no city and the band reads low for established members until
+  they meet somebody new. Low is the acceptable direction to be wrong in; a
+  guessed city would not be.
 - **Above 40 records a band compresses to a whole-number ratio** and the caption
   states it ("1 tick = 3 connections"), so the diagram never silently
   undercounts.
@@ -468,9 +481,17 @@ implementation), and the contact sheet.
   The service deliberately returns the same value whether the person genuinely
   has none or the read failed, so the page cannot become a way to tell those two
   apart.
-- **The visitor's ring has the same two bands as Profile's**, for the reason §3's
-  notes give. Not three. A "cities" band on a stranger-facing page would be a
-  number the owner's own profile refuses to show them.
+- **The visitor's ring has two bands. Profile now has three, and this one
+  deliberately did not follow it (2026-08-28).** The original reason — "a
+  'cities' band on a stranger-facing page would be a number the owner's own
+  profile refuses to show them" — expired the day Profile started showing it.
+  The band stays off this page on a different and stronger ground: this surface
+  is read by somebody with no account who is holding a card, and a coarse
+  travel history ("met people in 14 cities") is a new fact about the cardholder
+  on a permanent, forwardable URL. The owner asked for the band on their own
+  profile; nobody has decided it belongs to strangers, and widening what this
+  page discloses is a §4.7-threat-1 decision to make on purpose rather than
+  inherit from a different feature.
 
 ### Implementation notes — Auth, failures and Settings (2026-08-15)
 

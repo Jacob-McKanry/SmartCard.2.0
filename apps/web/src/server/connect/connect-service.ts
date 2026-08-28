@@ -434,6 +434,19 @@ export async function redeemNfc(
     return handleCommitFailure(deps.store, ctx, "nfc_card", outcome, error);
   }
 
+  // Added 2026-08-28, mirroring the identical call on the QR path above —
+  // same reasoning, same placement: AFTER the commit, awaited (not detached,
+  // for the Vercel-freeze reason `geocodeMeetingLocation`'s own header
+  // gives), and incapable of touching a connection that already committed.
+  // `outcome.location` is `undefined` on the vast majority of taps (no fix
+  // offered, denied, or the client's short best-effort window ran out) —
+  // exactly the "no meeting_locations row" outcome a tap always had, and
+  // nfc-verifier.ts's header is the place to read for why that absence is
+  // still the common case and always the safe default, never a gate.
+  if (outcome.location) {
+    await geocodeMeetingLocation(meetingId, outcome.location.latitude, outcome.location.longitude);
+  }
+
   // AFTER the commit, never inside it, and never able to affect it. §4.5's
   // amendment requires the notification to be enqueued server-side in the same
   // service function — never triggered by the scanner's client, which would let

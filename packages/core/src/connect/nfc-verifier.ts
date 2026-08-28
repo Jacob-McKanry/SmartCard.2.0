@@ -5,9 +5,37 @@
  * NFC's read range is a few centimetres. Physical range IS the proximity proof,
  * and it is a better one than GPS: it cannot be spoofed from another city by a
  * rooted phone, because the tap requires the card and the phone to be touching.
- * §4.5 is explicit that no GPS is collected here at all — which also means an
- * `nfc_card` meeting never gets a `meeting_locations` row, permanently. Absence
- * of location is represented by absence of the row (§2.4).
+ * This has not changed and must not: nothing below reads `input.location` for
+ * ANY decision this function makes — every branch that can fail (rate limits,
+ * card status, self-tap, blocked, already-connected) is evaluated exactly as
+ * it was before location existed on this path.
+ *
+ * WHAT DID CHANGE, 2026-08-28, AND WHY THE OLD VERSION OF THIS PARAGRAPH SAID
+ * MORE THAN IT SHOULD HAVE
+ *
+ * This used to say an `nfc_card` meeting "never gets a `meeting_locations`
+ * row, permanently," and the outcome literally omitted `location` with a
+ * comment reading "there must never be one." That was stronger than §4.5's
+ * actual security argument required — the argument is about NOT GATING on
+ * GPS, which is a claim about verification. It is not an argument against
+ * ever recording a self-reported position for display, the same way a QR
+ * meeting's `place_label` is display-only and never re-checked by anything.
+ * The owner asked for it explicitly (a tap should be able to show "met at
+ * ___" and count toward the profile's city history, same as a QR meeting
+ * does), and the two things — "connections require proximity" and "a
+ * connection MAY carry an unverified, cosmetic location" — do not conflict.
+ * `SuccessfulVerification.location` already existed as a method-agnostic,
+ * optional field before this file ever used it (`verification.ts`); nothing
+ * about its shape needed to change to carry one from here too.
+ *
+ * THE INVARIANT THAT MUST HOLD FOR THIS TO STAY SAFE: `location` is
+ * PASSED THROUGH, NEVER CONSULTED. It never appears on the left or right side
+ * of an `if` in this function, it is not compared to anything, and it cannot
+ * turn a `verify()` call that would otherwise fail into one that succeeds or
+ * vice versa. If a future edit ever makes this function branch on
+ * `input.location`, that is the exact regression this paragraph exists to
+ * flag — proximity is the tap, permanently, and location is decoration on
+ * top of a decision already made.
  *
  * THE CLIENT'S CLAIMED OWNER IS NEVER TRUSTED
  * The request carries one field: the code from the tapped URL. The owner is
@@ -180,8 +208,22 @@ export function createNfcVerifier(
         method: "nfc_card",
         // §4.5 step 5 fixes this at `full`.
         profileRichness: "full",
-        // No `location`: there is no GPS on this path and there must never be.
-        // Adding one would collect a position for a check that does not exist.
+        // Carried straight through from the request, untouched by anything
+        // above — see the file header's "passed through, never consulted".
+        // Built as a fresh literal, dropping `capturedAt`, matching the QR
+        // verifier's own shape for this field: nothing downstream of here
+        // reads when the device took the fix, only where it was.
+        // `undefined` (no fix offered, denied, or timed out client-side)
+        // produces the identical outcome shape a tap always had: no
+        // `meeting_locations` row, same as before this field existed.
+        location:
+          input.location === undefined
+            ? undefined
+            : {
+                latitude: input.location.latitude,
+                longitude: input.location.longitude,
+                accuracyM: input.location.accuracyM,
+              },
         evidence: {
           // Null: the atomic write creates the `connection_sessions` row itself,
           // in the same transaction, already `consumed`. §3.6's judgment call on
