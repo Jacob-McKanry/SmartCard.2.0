@@ -34,6 +34,8 @@
  */
 import {
   connectRedeemResponseSchema,
+  nfcLocationAttachRequestSchema,
+  nfcLocationAttachResponseSchema,
   nfcRedeemRequestSchema,
   qrHeartbeatRequestSchema,
   qrHeartbeatResponseSchema,
@@ -41,6 +43,8 @@ import {
   qrSessionCreateRequestSchema,
   qrSessionCreateResponseSchema,
   type ConnectRedeemResponse,
+  type NfcLocationAttachRequest,
+  type NfcLocationAttachResponse,
   type NfcRedeemRequest,
   type QrHeartbeatRequest,
   type QrHeartbeatResponse,
@@ -199,4 +203,29 @@ export async function redeemNfc(
 ): Promise<ConnectRedeemResponse> {
   const body = nfcRedeemRequestSchema.parse(input);
   return postConnect("/api/connect/nfc/redeem", body, (json) => connectRedeemResponseSchema.parse(json), opts);
+}
+
+/**
+ * `POST /api/connect/nfc/location` — attaches a location to a tap that has
+ * already connected (§4.5, amended 2026-08-28).
+ *
+ * THE ONE FUNCTION IN THIS FILE WHOSE FAILURE A CALLER SHOULD IGNORE. Every
+ * other call here is the connection itself: a refusal is something the person
+ * needs told. This one decorates a connection that already succeeded, so a
+ * refusal — and a thrown `ConnectApiError` — means only that a place name
+ * will be missing from a record. `card-redeem-flow.tsx` swallows both
+ * deliberately; see its header for why surfacing either would report a
+ * failure the user cannot act on about a tap that worked.
+ */
+export async function attachNfcLocation(
+  input: NfcLocationAttachRequest,
+  opts: ConnectApiOptions = {},
+): Promise<NfcLocationAttachResponse> {
+  const body = nfcLocationAttachRequestSchema.parse(input);
+  return postConnect(
+    "/api/connect/nfc/location",
+    body,
+    (json) => nfcLocationAttachResponseSchema.parse(json),
+    opts,
+  );
 }

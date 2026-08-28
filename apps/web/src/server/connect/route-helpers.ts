@@ -1,5 +1,7 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import { userFacingMessage, type RequestContext } from "@smartcard/core";
 
 import { getApiAuthenticatedContext } from "@/server/auth/api-context";
@@ -55,6 +57,20 @@ import { checkSameOrigin } from "@/server/connect/same-origin";
 export interface AuthenticatedConnectRequest {
   ctx: RequestContext;
   body: unknown;
+  /**
+   * The caller's own RLS-bound Supabase client, added 2026-08-28 for
+   * `/api/connect/nfc/location`.
+   *
+   * Every OTHER connect endpoint ignores this and goes through the
+   * service-role `ConnectStore`, because the verification path has to read
+   * rows (sessions, cards, blocks) that no caller may see. The location
+   * attach is the one connect write whose entire authorization is "this is
+   * the caller's own meeting", which `attach_nfc_meeting_location` re-derives
+   * from `private.current_user_id()` — so it needs a connection that carries
+   * a real identity, and the service role would resolve that to null and be
+   * refused. Additive: no existing caller's behaviour changes.
+   */
+  supabase: SupabaseClient;
 }
 
 export class HttpError extends Error {
@@ -123,6 +139,7 @@ export async function readAuthenticatedRequest(
   return {
     ctx: buildRequestContext({ callerUserId: auth.context.userId, headers: request.headers }),
     body,
+    supabase: auth.context.supabase,
   };
 }
 

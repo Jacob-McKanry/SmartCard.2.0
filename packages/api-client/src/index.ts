@@ -9,6 +9,7 @@ import { userStatusSchema } from "@smartcard/types";
 
 export {
   ConnectApiError,
+  attachNfcLocation,
   createQrSession,
   heartbeatQrSession,
   redeemNfc,
