@@ -152,6 +152,7 @@ function card(over: Partial<EventCardProps> = {}): EventCardProps {
     isPrivate: false,
     isHosting: false,
     isCancelled: false,
+    isDraft: false,
     coverUrl: null,
     counts: counts(),
     knowLine: null,

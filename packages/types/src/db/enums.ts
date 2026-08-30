@@ -92,18 +92,24 @@ export const eventVisibilitySchema = z.enum(["public", "private"]);
 export type EventVisibility = z.infer<typeof eventVisibilitySchema>;
 
 /**
- * `events.status` — added 20260815130100.
+ * `events.status` — `scheduled` | `cancelled` (20260815130100) |
+ * `draft` (20260830150000).
  *
- * Two values, and the second is never written by a client: `status` is
- * deliberately absent from the column-level UPDATE grant on `events`, so its
- * only writer is `public.soft_delete_own_account()` cancelling the events of a
- * host who has deleted their account. A cancelled event is never deleted — it
- * stays readable to its host and to everyone holding an RSVP or an invite, and
- * leaves only the "any authenticated user may see a public event" branch of
- * `private.can_see_event` — so an event somebody was counting on does not
- * silently vanish from under them.
+ * `scheduled` and `draft` are the only two values a client may write, and
+ * only at INSERT — the host's own choice of whether the event is live yet,
+ * the same kind of decision `visibility` already is via an ordinary column
+ * grant. `status` is deliberately absent from the column-level UPDATE grant
+ * on `events`, so neither value is ever set by an ordinary PATCH: the only
+ * writers after creation are `public.publish_event()` (draft -> scheduled,
+ * host-only) and `public.soft_delete_own_account()` (-> cancelled, cancelling
+ * the events of a host who has deleted their account). A cancelled event is
+ * never deleted — it stays readable to its host and to everyone holding an
+ * RSVP or an invite, and leaves only the "any authenticated user may see a
+ * public event" branch of `private.can_see_event`, exactly as a draft does —
+ * so an event somebody was counting on does not silently vanish from under
+ * them, and a draft stays invisible to everyone but its host until published.
  */
-export const eventStatusSchema = z.enum(["scheduled", "cancelled"]);
+export const eventStatusSchema = z.enum(["scheduled", "cancelled", "draft"]);
 export type EventStatus = z.infer<typeof eventStatusSchema>;
 
 /**

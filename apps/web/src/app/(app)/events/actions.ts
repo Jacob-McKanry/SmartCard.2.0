@@ -16,6 +16,7 @@ import {
   createEvent,
   decideRsvp,
   inviteToEvent,
+  publishEvent,
   requestRsvp,
   updateOwnEvent,
   withdrawRsvp,
@@ -172,6 +173,12 @@ export async function createEventAction(
     capacity: numberOrNull(formData, "capacity"),
     requires_approval: formData.get("requires_approval") === "on",
     cover_image_path: null,
+    // Which of the form's two submit buttons was clicked — see
+    // `create-event-form.tsx`'s header for why this is two buttons naming a
+    // value rather than a checkbox. Falls through to the schema's own
+    // `scheduled` default for any caller that predates drafts and never sends
+    // this field at all (a hand-built request, or a future non-web client).
+    status: formData.get("status") ?? undefined,
   });
 
   if (!parsed.success) {
@@ -257,6 +264,37 @@ export async function updateEventAction(
 
   revalidatePath("/events");
   revalidatePath(`/events/${eventId}`);
+  return { success: true };
+}
+
+/**
+ * Publishes a draft — the host panel's one-way "make this live" button.
+ *
+ * Deliberately not folded into `updateEventAction`: `status` is outside the
+ * UPDATE column grant on purpose (`eventUpdateSchema`'s own header), so this
+ * calls `publishEvent`, which goes through `public.publish_event` instead of
+ * an ordinary column update. There is nothing to validate from the form —
+ * publishing takes no field, only which event.
+ */
+export async function publishEventAction(
+  eventId: string,
+  _prevState: EventActionState,
+): Promise<EventActionState> {
+  const context = await requireContext();
+
+  const parsedEventId = uuidSchema.safeParse(eventId);
+  if (!parsedEventId.success) {
+    return { error: "That event isn't available." };
+  }
+
+  try {
+    await publishEvent(context.supabase, parsedEventId.data);
+  } catch (error) {
+    return { error: messageOf(error) };
+  }
+
+  revalidatePath("/events");
+  revalidatePath(`/events/${parsedEventId.data}`);
   return { success: true };
 }
 

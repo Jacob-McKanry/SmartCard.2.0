@@ -696,6 +696,32 @@ export async function createEvent(
 }
 
 /**
+ * Publishes a draft: the only path from `status = 'draft'` to `'scheduled'`
+ * (20260830150000). `status` is deliberately outside the column-level UPDATE
+ * grant on `events` — see `eventUpdateSchema`'s own header — so this cannot be
+ * an ordinary `updateOwnEvent` call and goes through `public.publish_event`
+ * instead.
+ *
+ * @throws {UserFacingError} If the caller does not host this event, the event
+ *   does not exist, or it is not currently a draft (already published). All
+ *   three refuse identically — the RPC's own comment explains why: a guessed
+ *   id must not be usable to learn which of the three is true.
+ */
+export async function publishEvent(supabase: SupabaseClient, eventId: string): Promise<void> {
+  const { error } = await supabase.rpc("publish_event", { p_event_id: eventId });
+
+  if (error) {
+    if (error.code === "42501") {
+      throw new UserFacingError(
+        "That event can't be published — it may already be live, or not yours to publish.",
+        { cause: error },
+      );
+    }
+    throw new Error(`Failed to publish the event: ${error.message}`, { cause: error });
+  }
+}
+
+/**
  * Edits an event the caller hosts. The `.eq("host_user_id", userId)` filter
  * duplicates what the UPDATE policy already enforces — the same belt-and-braces
  * posture the rest of this codebase's service layer takes, so a bug that lost
