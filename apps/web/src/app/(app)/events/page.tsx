@@ -5,6 +5,7 @@ import { CalendarRange, Plus } from "lucide-react";
 import type { CityRow, RsvpStatus } from "@smartcard/types";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
+import { isVerifiedHost } from "@/server/events/attendee-import-service";
 import {
   browseEvents,
   getConnectionsAttending,
@@ -16,8 +17,10 @@ import {
   type BrowseEventItem,
 } from "@/server/events/events-service";
 import { signedEventCoverUrl } from "@/server/events/cover-url";
+import { getOwnHostApplication } from "@/server/hosting/host-application-service";
 
 import { EventCard, type EventCardProps } from "./event-card";
+import { HostApplyBanner } from "./host-apply-banner";
 import { connectionsAttendingLine } from "./lib/access-rules";
 import { mergeBrowseList, type BrowseWhen } from "./lib/browse-list";
 import { NEUTRAL_BUTTON } from "./lib/surfaces";
@@ -107,11 +110,20 @@ export default async function EventsPage({
   const cities = await listActiveCities(supabase);
   const selectedCity = cities.find((city) => city.slug === citySlug) ?? null;
 
-  const [publicItems, hosted, attending, invited] = await Promise.all([
+  const [publicItems, hosted, attending, invited, verifiedHost, hostApplication] = await Promise.all([
     browseEvents(supabase, { cityId: selectedCity?.id, when }),
     listHostedEvents(supabase, userId),
     listAttendingEvents(supabase, userId),
     listInvitedEvents(supabase, userId),
+    isVerifiedHost(supabase),
+    // Soft-failed to `null` here, unlike `/host/apply`'s own read of the same
+    // function. That page throws on purpose (CLAUDE.md fail-closed: a caller
+    // who can't be told their real status must not be shown "you've never
+    // applied", which risks a second application). This banner is not that —
+    // the worst a stale `null` does here is show or hide one link, and taking
+    // the whole events browse page down over a peripheral banner would be a
+    // worse failure than the one it's guarding against.
+    getOwnHostApplication(supabase).catch(() => null),
   ]);
 
   const ownStatuses = new Map<string, RsvpStatus>(
@@ -150,6 +162,8 @@ export default async function EventsPage({
           Host
         </Link>
       </header>
+
+      <HostApplyBanner verified={verifiedHost} application={hostApplication} />
 
       <CityPills cities={cities} selectedSlug={selectedCity?.slug ?? null} when={when} />
       <WhenToggle when={when} citySlug={selectedCity?.slug ?? null} />

@@ -402,8 +402,10 @@ Recorded here because they are inputs to §3's security argument, even though th
 | The event-page "guest list" note (§4.3, C5) | `apps/web/src/app/(app)/events/[eventId]/page.tsx` (`AttendedNote`), `apps/web/src/server/events/attended-events-service.ts` | Built and verified 2026-08-28 |
 
 | `list_own_import_links` + the links screen (§11.5) | `20260829120000_fn_list_own_import_links.sql`, `apps/web/src/app/(app)/events/[eventId]/import/links/` | 12 scenarios verified live in a rolled-back transaction; applied and re-verified against the deployed function. **Interim, pending §5.** |
+| The host application form (§9.2) | `apps/web/src/app/(app)/host/apply/`, `apps/web/src/server/hosting/host-application-service.ts` | Built 2026-08-30, against the RPCs `20260827120000` already shipped. Linked from `import/page.tsx`'s `NotVerifiedYet` and from a new banner on `/events` — see §11.6. |
+| The admin review queue (§9.3) | `20260830120000_fn_admin_list_host_applications.sql`, `20260830130000_storage_admin_read_applicant_photos.sql`, `20260830140000_fn_is_admin_reader.sql`, `apps/web/src/app/(app)/admin/host-applications/` | Built 2026-08-30. Two new narrow reads (an applicant's name+photo, an applicant's photo object) rather than widening `users`' grant or policy — see §11.6. |
 
-Not built yet: the host application form and admin review screens (§9.2/§9.3), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+Not built yet: the roster's remaining pieces (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
 
 ### 11.5 Deviation: a host CAN now read back the claim links for guests they imported — 2026-08-29
 
@@ -425,6 +427,86 @@ Not built yet: the host application form and admin review screens (§9.2/§9.3),
 **Verified live** in a rolled-back transaction across 12 scenarios before applying: the importer's own live rows with correct tokens and email ordering; no field beyond the four; claimed and expired rows absent from both the list *and* the count; another importer's row in the same event invisible; no cross-event leak; **the successor-host case above**; a former host refused outright even for rows they imported; an unverified host refused; an unknown event id refused identically (no existence oracle); page-size clamping and coercion of negative arguments; non-overlapping paging; and the table itself still carrying zero policies, no SELECT grant to any role, and no `anon` grant on the new function.
 
 **What this does not change.** No connection is created by any of it, the roster amendment is untouched, and the attendee directory stays refused.
+
+### 11.6 §9.2/§9.3 built — the application form and the admin review queue — 2026-08-30
+
+The two screens §11.1's build log had listed as not built yet. Both RPCs
+(`submit_host_application`, `decide_host_application`) had existed since
+20260827120000 with no UI ever calling them; a host who wanted to become
+verified had no way to ask.
+
+**`/host/apply`** (`apps/web/src/app/(app)/host/apply/`). No gate beyond
+sign-in — anyone may apply, since §9.1 does not require already hosting
+anything first. Reads `isVerifiedHost` (not just the application's own
+`status`) because the two can disagree in both directions: §9.4's revocation
+can flip `is_verified_host` to `false` while a `status = 'approved'` row sits
+untouched, and the happier case (already verified) has no reason to see a
+form. A rejected applicant's fields prefill the form on re-application, with
+the rejection note shown as read-only context above it — never resubmitted,
+since `submit_host_application` clears it on any new submission regardless of
+what the form sends.
+
+**`/admin/host-applications`** (`apps/web/src/app/(app)/admin/host-applications/`).
+Same three-gate shape `/events/[eventId]/queue` already uses: the RPC is the
+real enforcement (refuses a non-admin outright), a page-level `isAdmin()`
+check decides routing (`notFound()` for anybody else), and nothing below that
+re-checks, because — unlike the RSVP queue — no second role reaches this
+route at all.
+
+**Two new narrow reads, not one widened grant, to make the queue show what
+§9.3 asks for ("the applicant's existing profile — name, photo").** Both
+follow the same shape §11.5 used for `list_own_import_links`: solve the
+specific disclosure the screen needs, in the database, rather than opening a
+grant that would let an admin read every user's phone number and bio from any
+future direct-PostgREST path.
+
+- `admin_list_host_applications` (20260830120000) — `host_applications`
+  already lets an admin `SELECT` every row (20260827120000's own policy), but
+  `users`' SELECT grant (20260814230000) has no admin branch, so the join
+  happens inside one `security definer` function instead. Fails closed to an
+  empty array for a non-admin, matching `private.is_admin()`'s own shape,
+  rather than an exception — there is no screen that shows this refusal to
+  anybody.
+- The storage policy in `20260830130000` — Storage enforces its own RLS at
+  signing time, so an admin's ordinary client could not mint a signed URL for
+  an applicant's photo even after the row-level join above. Rejected: routing
+  around it with the service role (`photo-url.ts`'s own header explains why
+  that "would silently bypass the exact check this module exists to
+  respect"). Instead, a second permissive SELECT policy on
+  `storage.objects` — Postgres combines same-command permissive policies with
+  OR, so the existing self-only policy is untouched — admits a path only when
+  the caller is an active admin AND the path's owner has a `host_applications`
+  row of any status (not narrowed to `pending`, so an admin reviewing
+  decision history still sees the photo).
+- `public.is_admin()` (20260830140000) — a thin public wrapper around
+  `private.is_admin()`, mirroring `is_verified_host()`'s own existing shape,
+  because `private.is_admin()` lives outside PostgREST's exposed schema and
+  cannot be called from the app at all. FOR DRAWING A SCREEN, NEVER FOR
+  DECIDING ONE, exactly as `is_verified_host()`'s own TypeScript wrapper
+  warns — every RPC the admin screens call re-derives admin status itself.
+
+**Also new: a "Apply to become a host" banner on `/events`** (`host-apply-banner.tsx`).
+`/host/apply` existed with no link to it visible before a host had already
+tried to import and hit the wall — this is the front door. Hidden for anyone
+already verified or with a pending application; shows a "reapply" variant for
+a rejected one. Reads `getOwnHostApplication` soft-failed to `null` on this
+page (`.catch(() => null)`), a deliberate departure from `/host/apply`'s own
+fail-closed contract for the same function: on `/host/apply`, masking a read
+failure risks a duplicate application, so it throws; on the browse page, the
+worst a stale `null` does is show or hide one banner, and failing the whole
+events list over that would be the worse outcome.
+
+**Verified live** in rolled-back transactions before each migration was
+applied: `admin_list_host_applications` across 5 scenarios (non-admin gets
+`[]`; admin sees pending oldest-first with the joined name/photo; a decided
+application drops out of the pending list and appears in its own status list;
+an unknown status filter is refused rather than silently empty; no field
+beyond the documented set is returned); the storage policy across 4 (admin
+reads an applicant's photo; admin is refused a non-applicant stranger's photo;
+a non-admin is refused the applicant's photo; the pre-existing self-read policy
+is unaffected); `is_admin()` across 3 (admin reads true, non-admin reads
+false, `anon` is refused execution outright). Two mutations of the new
+TypeScript service confirmed red before the tests were trusted.
 
 ### 11.1.7 C5 — `own_attended_events()` and the event-page note — built 2026-08-28
 

@@ -7,7 +7,7 @@ import { isVerifiedHost } from "@/server/events/attendee-import-service";
 import { getEventForViewer } from "@/server/events/events-service";
 
 import { viewerRole } from "../../lib/access-rules";
-import { GLASS } from "../../lib/surfaces";
+import { GLASS, PRIMARY_BUTTON } from "../../lib/surfaces";
 import { ImportWizard } from "./import-wizard";
 
 /**
@@ -139,16 +139,16 @@ export default async function EventImportPage({
 /**
  * What a host who is not verified sees.
  *
- * NO "APPLY" BUTTON, BECAUSE THE APPLICATION SCREEN IS NOT BUILT YET. §7's rule
- * against inventing a capability applies to a link as much as to a button: a
- * control that leads nowhere is worse than a sentence saying the door is not
- * open yet. `public.submit_host_application` exists (20260827120000) and the
- * form for it is a separate slice; when it lands, this becomes a link.
+ * NOW LINKS TO `/host/apply` — §9.2's form, built 2026-08-30. This component's
+ * header used to say there was no apply button because that screen did not
+ * exist; §7's rule against inventing a capability cuts the other way now that
+ * it does, and a sentence claiming applying "isn't open in the app yet" would
+ * itself be the stale claim.
  *
- * It also does not say *why* the caller is unverified — whether they have never
- * applied, are waiting on a decision, or were turned down. This screen has no
- * way to know (the application table is not read here) and guessing would be
- * worse than the plain statement.
+ * It still does not say *why* the caller is unverified — never applied, waiting
+ * on a decision, or turned down — because that screen has no way to know (the
+ * application table is not read here) and `/host/apply` itself is the one place
+ * that reads it and shows the real status.
  */
 function NotVerifiedYet() {
   return (
@@ -159,9 +159,15 @@ function NotVerifiedYet() {
         style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
       >
         A guest list is other people&rsquo;s contact details, so uploading one is limited to hosts
-        we&rsquo;ve checked by hand. Applying isn&rsquo;t open in the app yet — get in touch and
-        we&rsquo;ll sort it out with you.
+        we&rsquo;ve checked by hand.
       </p>
+      <Link
+        href="/host/apply"
+        className="flex min-h-11 w-fit items-center rounded-full px-[18px] text-[13px] leading-[17px] font-semibold"
+        style={PRIMARY_BUTTON}
+      >
+        Apply to become a host
+      </Link>
       <p className="text-[12px] leading-[17px]" style={{ color: "var(--sc-text-subtle)" }}>
         Everything else about hosting this event works as normal.
       </p>
