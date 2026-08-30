@@ -23,6 +23,7 @@ export * from "./events";
 export * from "./event-rsvps";
 export * from "./event-invites";
 export * from "./event-attendee-imports";
+export * from "./host-applications";
 export * from "./connection-sessions";
 export * from "./meetings";
 export * from "./meeting-locations";

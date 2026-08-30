@@ -22,10 +22,13 @@ import { GLASS, PRIMARY_BUTTON, SECONDARY_BUTTON } from "../../lib/surfaces";
  * about those people, not about the host's own file, and not one they gave the
  * host. The copy below says what the number means without offering a list.
  *
- * NO "WHO WAS IMPORTED" LINK. There is no read path to `event_attendee_imports`
- * anywhere in this app and this screen does not invent one. The host already
- * holds the CSV they uploaded; a second copy of other people's contact details
- * behind a second set of checks would be a liability with no purpose.
+ * STILL NO "WHO WAS IMPORTED" LINK, AND THE LINKS SCREEN IS NOT ONE. The
+ * "Send claim links" button below goes to a list of guests who have NOT
+ * claimed, holding a name, an email and a link and nothing else — see that
+ * route's own header, and §11.5 of the design doc, for why that one read path
+ * exists and what it deliberately still refuses to answer. A host cannot learn
+ * from it which of their guests hold SmartCard accounts, which is the question
+ * §3.9 keeps this screen's numbers aggregate to avoid.
  */
 export function ImportDone({
   eventId,
@@ -83,16 +86,32 @@ export function ImportDone({
         className="max-w-[54ch] text-[13px] leading-[19px]"
         style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
       >
-        Nobody has been emailed yet — that&rsquo;s a separate step still being built. Nobody has
-        been connected to anybody either: importing records that someone attended, and connections
-        still only happen in person.
+        Nobody has been emailed yet — we can&rsquo;t send mail for you yet, so their claim links
+        are on the next screen for you to send yourself. Nobody has been connected to anybody
+        either: importing records that someone attended, and connections still only happen in
+        person.
       </p>
 
       <div className="flex flex-wrap gap-2 pb-2">
+        {/*
+          The primary action AFTER an import is now sending the links, not
+          leaving — an import that nobody is told about does nothing at all
+          until the email phase (§5) exists. This link is why the copy above
+          could stop saying "that's a separate step still being built" and say
+          where the links actually are instead: §7's rule cuts both ways, and
+          naming a capability that DOES exist is the other half of it.
+        */}
+        <Link
+          href={`/events/${eventId}/import/links`}
+          className="flex min-h-11 items-center rounded-full px-[18px] text-[13px] leading-[17px] font-semibold"
+          style={PRIMARY_BUTTON}
+        >
+          Send claim links
+        </Link>
         <Link
           href={`/events/${eventId}`}
           className="flex min-h-11 items-center rounded-full px-[18px] text-[13px] leading-[17px] font-semibold"
-          style={PRIMARY_BUTTON}
+          style={SECONDARY_BUTTON}
         >
           Back to the event
         </Link>

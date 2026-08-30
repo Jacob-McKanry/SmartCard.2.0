@@ -298,3 +298,55 @@ export const ownAttendedEventSchema = z.object({
 export type OwnAttendedEvent = z.infer<typeof ownAttendedEventSchema>;
 
 export const ownAttendedEventsSchema = z.array(ownAttendedEventSchema);
+
+// ---------------------------------------------------------------------------
+// The interim hand-delivery surface: `list_own_import_links`
+// ---------------------------------------------------------------------------
+
+/**
+ * One pending claim link from `public.list_own_import_links` —
+ * 20260829120000, and §11.5 of the import design doc.
+ *
+ * THIS FILE'S HEADER SAYS "NOTHING IN THIS APP CAN SELECT THIS TABLE". That is
+ * still true of the table, and now has one narrow exception at the RPC layer,
+ * recorded as a deviation rather than a change of mind: §5's email phase does
+ * not exist, so without this the `lookup_token` a claim link is built from has
+ * no way out of the database and the whole claim flow cannot be exercised by a
+ * real person. It is a stopgap until mail is sent for the host.
+ *
+ * FOUR FIELDS, AND NO MORE, and each absence is deliberate:
+ *   - `phone_number`, `company_name`, `company_role`, `social_links` are in the
+ *     host's own CSV already and nothing about sending somebody a link needs
+ *     them, so returning them would be a second copy of contact details behind
+ *     a second set of checks.
+ *   - Nothing identifies who has CLAIMED. The RPC returns only unclaimed rows
+ *     precisely so this list cannot answer "which of my guests hold SmartCard
+ *     accounts" — a fact about those people, not about the host's file (§3.9).
+ *
+ * `email` IS here, and is the one field worth justifying rather than assuming:
+ * the host has to know where to send the link, and a guest list may carry
+ * nothing but an address, so a name is not a usable identifier on every row.
+ */
+export const importClaimLinkSchema = z.object({
+  first_name: z.string().nullable(),
+  last_name: z.string().nullable(),
+  email: citextSchema,
+  /** The 244-bit token a `/claim/[token]` URL carries. */
+  lookup_token: z.string(),
+});
+
+export type ImportClaimLink = z.infer<typeof importClaimLinkSchema>;
+
+/**
+ * A page of pending links, plus the aggregate §3.9 already permits.
+ *
+ * `unclaimed_total` counts every unclaimed unexpired row this caller imported
+ * into this event, not just the page — so the screen can page honestly. It is
+ * a count and stays one for the same reason `skipped_already_claimed` does.
+ */
+export const importClaimLinkPageSchema = z.object({
+  unclaimed_total: integerSchema.min(0),
+  links: z.array(importClaimLinkSchema),
+});
+
+export type ImportClaimLinkPage = z.infer<typeof importClaimLinkPageSchema>;
