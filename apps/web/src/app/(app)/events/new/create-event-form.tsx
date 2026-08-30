@@ -286,14 +286,40 @@ export function CreateEventForm({ cities }: { cities: readonly CityRow[] }) {
         </p>
       ) : null}
 
-      <div className="flex gap-2.5 pb-2">
+      {/*
+        TWO SUBMIT BUTTONS NAMING A VALUE, NOT A CHECKBOX. Owner request,
+        2026-08-30: a host may save an in-progress event without it being live
+        for anyone else yet. Same fields, same validation as publishing —
+        `status` is the only thing that differs, and each button says which
+        value it sends via `name="status" value="..."`, which is the ordinary
+        HTML way to submit different data for different submit actions and
+        needs no client-side state to track which button was pressed.
+
+        A draft skips the confirm-before-leaving concern entirely: it is
+        exactly as reversible as any other save, and `/events/[eventId]`'s
+        host panel is where it gets a "Publish" button of its own — see that
+        page for why publishing lives there and not here.
+      */}
+      <div className="flex flex-wrap gap-2.5 pb-2">
         <button
           type="submit"
+          name="status"
+          value="scheduled"
           disabled={pending || cityId === ""}
           className="min-h-[52px] flex-1 rounded-full px-4 text-[14px] leading-[18px] font-semibold disabled:opacity-60"
           style={PRIMARY_BUTTON}
         >
           {pending ? "Publishing…" : "Publish event"}
+        </button>
+        <button
+          type="submit"
+          name="status"
+          value="draft"
+          disabled={pending || cityId === ""}
+          className="flex min-h-[52px] items-center rounded-full px-[18px] text-[14px] leading-[18px] font-semibold disabled:opacity-60"
+          style={SECONDARY_BUTTON}
+        >
+          Save as draft
         </button>
         <Link
           href="/events"

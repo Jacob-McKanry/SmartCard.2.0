@@ -34,6 +34,7 @@ import { RsvpBlock } from "./rsvp-block";
 import { CoverUploader } from "./cover-uploader";
 import { HostTools } from "./host-tools";
 import { InviteLauncher, type InviteCandidate } from "./invite-launcher";
+import { PublishDraftButton } from "./publish-draft-button";
 
 /**
  * EVENT DETAIL — `docs/design/DESIGN.md` §6 ("Detail: immersive cover with a
@@ -144,6 +145,22 @@ export default async function EventDetailPage({
   const isCancelled = event.status === "cancelled";
 
   /*
+   * `events.status === 'draft'` (20260830150000). This branch only ever runs
+   * for the host: `private.can_see_event`'s public branch requires
+   * `status = 'scheduled'`, and this page's own `getEventForViewer` read is
+   * gated by exactly that function via the `events` SELECT policy — so a
+   * signed-in stranger's request for a draft 404s before this line ever
+   * executes (`getEventForViewer` returns null for "does not exist" and "you
+   * may not see it" identically, per that function's own header). The RSVP
+   * block and the invite controls are withheld below for the same reason
+   * `isCancelled` withholds them: `request_event_rsvp` would not refuse a
+   * host RSVPing to their own draft (nothing currently gates that), but
+   * offering the control here would invite a use nobody asked for on an event
+   * that is not live to anyone else yet.
+   */
+  const isDraft = event.status === "draft";
+
+  /*
    * WHO SEES AN INVITE CONTROL, AND WHY THE TEST HAS TWO HALVES.
    *
    * `host or going` mirrors the `event_invites` INSERT policy — a UI offering
@@ -158,6 +175,7 @@ export default async function EventDetailPage({
    */
   const canInvite =
     !isCancelled &&
+    !isDraft &&
     event.visibility === "private" &&
     (role === "host" || ownRsvp?.status === "going");
   const inviteCandidates = canInvite ? await buildInviteCandidates(supabase, event.id, userId) : [];
@@ -215,6 +233,7 @@ export default async function EventDetailPage({
       </div>
 
       {isCancelled ? <CancelledNotice ownStatus={ownRsvp?.status ?? null} /> : null}
+      {isDraft ? <DraftNotice eventId={event.id} /> : null}
 
       <HostRow
         name={host === null ? null : displayName(host)}
@@ -237,7 +256,7 @@ export default async function EventDetailPage({
         </p>
       ) : null}
 
-      {isCancelled ? null : (
+      {isCancelled || isDraft ? null : (
         <RsvpBlock
           eventId={event.id}
           storedStatus={ownRsvp?.status ?? null}
@@ -506,6 +525,37 @@ function CancelledNotice({ ownStatus }: { ownStatus: RsvpStatus | null }) {
             : "It is not going ahead. It stays here so you know, rather than disappearing from your list."}
         </span>
       </span>
+    </div>
+  );
+}
+
+/**
+ * The banner a draft carries, at the top of the page — same position as
+ * `CancelledNotice`, for the same reason: whether this event is live is the
+ * first thing worth knowing before the date, venue and stat row that
+ * otherwise read as an ordinary, already-public event.
+ *
+ * Only ever rendered for the host (see `isDraft`'s own comment on the page
+ * component), so there is no separate "you are the host" branch here the way
+ * `HostRow` has one — this whole component IS the host-only branch.
+ */
+function DraftNotice({ eventId }: { eventId: string }) {
+  return (
+    <div
+      className="flex items-start justify-between gap-[15px] rounded-[22px] p-[15px]"
+      style={{ background: "rgba(13,18,32,.04)", border: "1px solid rgba(13,18,32,.1)" }}
+    >
+      <span className="min-w-0">
+        <span className="block text-[13px] leading-[17px] font-semibold">This is a draft</span>
+        <span
+          className="mt-[3px] block text-[12px] leading-[17px]"
+          style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
+        >
+          Only you can see it. Publish when it&rsquo;s ready — nobody else finds a draft, however
+          it&rsquo;s set to who-can-find-it.
+        </span>
+      </span>
+      <PublishDraftButton eventId={eventId} />
     </div>
   );
 }

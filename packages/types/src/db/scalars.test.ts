@@ -2,7 +2,7 @@ import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
 import { withoutDefaults } from "./scalars";
-import { eventUpdateSchema } from "./events";
+import { eventInsertSchema, eventUpdateSchema } from "./events";
 import { socialLinkUpdateSchema } from "./social-links";
 
 /**
@@ -75,6 +75,47 @@ describe("eventUpdateSchema no longer resets unrelated columns", () => {
     // capacity must be positive per eventInsertSchema — withoutDefaults must
     // not have accidentally loosened that on the way to removing the default.
     expect(() => eventUpdateSchema.parse({ capacity: 0 })).toThrow();
+  });
+});
+
+describe("eventInsertSchema.status — draft support, 20260830150000", () => {
+  const base = {
+    city_id: "11111111-1111-4111-8111-111111111111",
+    title: "Rooftop supper club",
+    starts_at: "2026-09-01T18:00:00.000Z",
+  };
+
+  it("defaults to scheduled when omitted, so every caller that predates drafts is unaffected", () => {
+    expect(eventInsertSchema.parse(base).status).toBe("scheduled");
+  });
+
+  it("accepts an explicit draft", () => {
+    expect(eventInsertSchema.parse({ ...base, status: "draft" }).status).toBe("draft");
+  });
+
+  it("accepts an explicit scheduled", () => {
+    expect(eventInsertSchema.parse({ ...base, status: "scheduled" }).status).toBe("scheduled");
+  });
+
+  it("refuses cancelled at create time — the database has no writer for it here either", () => {
+    expect(() => eventInsertSchema.parse({ ...base, status: "cancelled" })).toThrow();
+  });
+
+  it("refuses a value that is not a real status at all", () => {
+    expect(() => eventInsertSchema.parse({ ...base, status: "published" })).toThrow();
+  });
+});
+
+describe("eventUpdateSchema — status is not an updatable field, 20260830150000", () => {
+  it("rejects a payload that tries to set status, matching the database's own UPDATE grant", () => {
+    // .strict() means an unrecognised key throws rather than being silently
+    // dropped — the property this test pins is that `status` IS unrecognised
+    // here, not merely absent from a normal payload.
+    expect(() => eventUpdateSchema.parse({ status: "scheduled" })).toThrow();
+  });
+
+  it("an ordinary update with no status field still works", () => {
+    expect(eventUpdateSchema.parse({ title: "New title" })).toEqual({ title: "New title" });
   });
 });
 

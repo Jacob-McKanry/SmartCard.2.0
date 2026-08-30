@@ -55,6 +55,17 @@ export interface EventCardProps {
    * from a date that has quietly stopped meaning anything.
    */
   isCancelled: boolean;
+  /**
+   * `events.status === 'draft'` (20260830150000). A card only ever renders
+   * this true for the host: `private.can_see_event`'s public branch requires
+   * `status = 'scheduled'`, so a draft is absent from `browseEvents` for
+   * everyone else and this prop only ever arrives `true` from
+   * `listHostedEvents`. Mutually exclusive with `isCancelled` in practice — a
+   * row cannot be both — but each is its own boolean rather than one
+   * three-way `status` prop, matching how `isCancelled` was already shaped
+   * before this field existed.
+   */
+  isDraft: boolean;
 }
 
 export function EventCard(props: EventCardProps) {
@@ -122,6 +133,20 @@ export function EventCard(props: EventCardProps) {
               Cancelled
             </span>
           ) : null}
+          {/*
+           * Not painted with --danger: a draft is not a problem, it is a
+           * normal in-progress state only the host can even see. Neutral
+           * dark, matching the tone `--sc-text` badges elsewhere already use
+           * for "true about this card, not alarming".
+           */}
+          {props.isDraft ? (
+            <span
+              className="flex items-center rounded-full px-2.5 py-[5px] text-[10px] leading-[13px] font-semibold text-white"
+              style={{ background: "var(--sc-text)", backdropFilter: "blur(10px)" }}
+            >
+              Draft
+            </span>
+          ) : null}
           {props.isHosting ? (
             <span
               className="flex items-center rounded-full px-2.5 py-[5px] text-[10px] leading-[13px] font-semibold text-white"
@@ -169,7 +194,7 @@ export function EventCard(props: EventCardProps) {
            * pill's is the false one: nobody can answer that request, because the
            * decision path refuses a cancelled event.
            */}
-          {props.ownStatus === null || props.isCancelled ? null : (
+          {props.ownStatus === null || props.isCancelled || props.isDraft ? null : (
             <RsvpPill status={props.ownStatus} />
           )}
         </span>

@@ -236,6 +236,7 @@ async function buildCard(
     isPrivate: item.event.visibility === "private",
     isHosting: item.event.host_user_id === userId,
     isCancelled: item.event.status === "cancelled",
+    isDraft: item.event.status === "draft",
     coverUrl,
     counts,
     // The ids in `connectionsAttending` stop here. See rule 3 in

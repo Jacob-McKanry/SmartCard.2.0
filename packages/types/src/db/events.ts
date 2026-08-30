@@ -175,6 +175,20 @@ export const eventInsertSchema = z.object({
   // Same constrained shape as the row schema — this is the half that actually
   // takes client input (see `eventCoverPathSchema`'s own comment).
   cover_image_path: eventCoverPathSchema.nullable().default(null),
+
+  /**
+   * `draft` | `scheduled` only, at creation time — never `cancelled`, which
+   * `eventStatusSchema` (this schema's own field, further down) technically
+   * still admits as a value but which the database's own CHECK constraint
+   * refuses to accept alongside a null `cancelled_at`/`cancelled_reason`, so
+   * a client cannot create an already-cancelled event by any route. Narrowed
+   * here to the two values that make sense at INSERT, rather than trusting
+   * the wider row schema, so a caller gets a validation error instead of a
+   * database CHECK violation for the one value that was never meant to reach
+   * this schema. Defaults to `scheduled` — the pre-existing behaviour for
+   * every caller that predates drafts and never mentions this field.
+   */
+  status: z.enum(["draft", "scheduled"]).default("scheduled"),
 })
   // `.strict()` so a key not listed here — `host_user_id` above all, which is
   // set server-side and must never come from a client — is rejected rather than
@@ -203,6 +217,15 @@ export type EventInsertInput = z.input<typeof eventInsertSchema>;
  * `eventInsertSchema` is deliberate and is the reason column-level grants exist
  * at all — RLS cannot say "this row but not that column".
  *
+ * `.omit({ status: true })` for the identical reason, added 20260830150000:
+ * `status` is client-settable at INSERT (`draft` | `scheduled`, the host's own
+ * choice) but was deliberately left OUT of the column-level UPDATE grant, so
+ * an ordinary PATCH can never flip it in either direction — publishing a draft
+ * goes through `public.publish_event()` instead. Without this `.omit`, this
+ * schema would silently accept `status` and `updateOwnEvent`'s
+ * `.update(parsed)` would send a column the database refuses, turning a
+ * client bug into an opaque permission error instead of a caught mismatch.
+ *
  * `withoutDefaults(...)` BEFORE `.partial()`, not `eventInsertSchema.partial()`
  * directly — see that function's header in `./scalars` for why the obvious
  * version silently resets `description`, `visibility`, `capacity`,
@@ -210,6 +233,9 @@ export type EventInsertInput = z.input<typeof eventInsertSchema>;
  * ANY update that does not resend all five, which is a bug this schema
  * actually had (2026-08-22).
  */
-export const eventUpdateSchema = withoutDefaults(eventInsertSchema).partial().strict();
+export const eventUpdateSchema = withoutDefaults(eventInsertSchema)
+  .omit({ status: true })
+  .partial()
+  .strict();
 
 export type EventUpdate = z.infer<typeof eventUpdateSchema>;
