@@ -201,11 +201,14 @@ Deny-all, no exceptions, including the host. All access is through `security def
 
 - `import_event_attendees(...)` — host-only, writes rows, records attestation
 - `event_import_summary(event_id)` — host-only, returns **counts only**
+- `list_own_import_links(event_id, …)` — **added 2026-08-29, and a deviation from the paragraph below.** Returns pending claim links for rows *this caller imported*. See §11.5.
 - `get_claimable_import(lookup_token)` — returns prefill only when §3.2/§3.2.1's conditions hold (verified email, or a pre-existing account), else null
 - `claim_event_import(lookup_token, approved_fields)` — writes, then destroys per §2.2
 - `own_attended_events()` — the caller's own claimed rows
 
 The host uploaded the CSV, so letting them read it back discloses nothing new *today* — but a direct grant means the PII travels with whoever holds the host role later, and survives any future change to event ownership. A counts-only function costs nothing and removes that.
+
+> **Partially deviated from, 2026-08-29 — see §11.5.** One read path now exists, and it is gated on `imported_by_user_id` rather than on holding the host role, which closes this paragraph's exact objection by construction. No grant on the table itself was added; RLS is still forced with zero policies.
 
 ### 3.9 What the host learns back
 
@@ -398,7 +401,30 @@ Recorded here because they are inputs to §3's security argument, even though th
 | `own_attended_events` (§3.8/§4.3, C5) | `20260828150000_fn_own_attended_events.sql` | Verified live in a rolled-back transaction (own rows only, ordering, another claimant's and an unclaimed row both absent, `anon` refused execution); applied |
 | The event-page "guest list" note (§4.3, C5) | `apps/web/src/app/(app)/events/[eventId]/page.tsx` (`AttendedNote`), `apps/web/src/server/events/attended-events-service.ts` | Built and verified 2026-08-28 |
 
+| `list_own_import_links` + the links screen (§11.5) | `20260829120000_fn_list_own_import_links.sql`, `apps/web/src/app/(app)/events/[eventId]/import/links/` | 12 scenarios verified live in a rolled-back transaction; applied and re-verified against the deployed function. **Interim, pending §5.** |
+
 Not built yet: the host application form and admin review screens (§9.2/§9.3), the roster (`docs/architecture/2026-08-27-event-attendee-roster.md`), email (§5), retroactive attendance history, and the purge job for expired unclaimed rows.
+
+### 11.5 Deviation: a host CAN now read back the claim links for guests they imported — 2026-08-29
+
+**This reverses §3.8's "nobody reads it directly, the host is not exempt", and §3.8's own paragraph has been annotated to point here.** Recorded as a deviation with its reasoning, per CLAUDE.md, rather than built quietly around.
+
+**Why.** §5's email phase is not built and was never scheduled against this work. The consequence had not been stated out loud until the owner asked what was left before testing: a `lookup_token` is written into a table with no read path, so **nothing can deliver a claim link to the guest it belongs to**, and the entire claim flow — C2 through C5, all built, all verified live — cannot be exercised by a real person at all. The only way to reach `/claim/[token]` today is to query the database by hand with the service role, outside the app. A feature that only its own developers can trigger is not a feature yet.
+
+**Owner decision, 2026-08-29:** build a narrow interim surface so a host can hand one guest their own link by whatever channel they already use, and build the email phase in parallel. Explicitly temporary — it is expected to be removed, not extended, once mail is sent for the host.
+
+**How §3.8's objection is answered rather than overruled.** The objection was never "the host must not see this data" — they uploaded it. It was precisely that a grant would make the PII **travel with the host role**, outliving the person who supplied it. So the gate is `imported_by_user_id = private.current_user_id()`, evaluated per row, not "are you the host of this event":
+
+- A host who inherits an event later reads **nothing** from an import somebody else ran — verified live, and it is the scenario the original paragraph describes.
+- Co-hosts, admins and the service role are equally shut out; there is no "but they are a host now" argument available.
+- `imported_by_user_id` is `on delete set null`, so if the importer's account is deleted the rows become unreadable to everybody, permanently.
+- Verified-host standing is re-derived on every call, so revoking verification for abuse also stops the tokens for lists already uploaded — not just future uploads.
+
+**What it still refuses, which is the part to check hardest in review.** Only **unclaimed, unexpired** rows, and only `first_name`, `last_name`, `email`, `lookup_token`. There is no per-person claim status and no way to derive one, so §3.9's line has not moved: the host still cannot learn which of their guests hold SmartCard accounts. Phone numbers, employers and social handles are not returned at all — they are in the host's own spreadsheet already and nothing about sending a link needs them, which is the half of §3.8's argument that still stands. Paging is clamped server-side, so a hand-written `p_limit` returns a page rather than the table, and the call is rate-limited per host.
+
+**Verified live** in a rolled-back transaction across 12 scenarios before applying: the importer's own live rows with correct tokens and email ordering; no field beyond the four; claimed and expired rows absent from both the list *and* the count; another importer's row in the same event invisible; no cross-event leak; **the successor-host case above**; a former host refused outright even for rows they imported; an unverified host refused; an unknown event id refused identically (no existence oracle); page-size clamping and coercion of negative arguments; non-overlapping paging; and the table itself still carrying zero policies, no SELECT grant to any role, and no `anon` grant on the new function.
+
+**What this does not change.** No connection is created by any of it, the roster amendment is untouched, and the attendee directory stays refused.
 
 ### 11.1.7 C5 — `own_attended_events()` and the event-page note — built 2026-08-28
 

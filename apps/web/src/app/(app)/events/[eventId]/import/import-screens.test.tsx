@@ -266,18 +266,41 @@ describe("the result screen", () => {
   });
 
   it("offers no way to see WHO already claimed", () => {
-    // The count is the host's business; the identities are not. A link here
-    // would be the first read path into `event_attendee_imports` anywhere in
-    // this app, and there is deliberately none.
+    // The count is the host's business; the identities are not.
+    //
+    // UPDATED 2026-08-29, AND THE PROPERTY IS NARROWER THAN IT LOOKS. This
+    // assertion used to pin the exact href list to `["/events/event-1"]`,
+    // standing in for "there is no read path into `event_attendee_imports`
+    // anywhere in this app". There is now exactly one — `/import/links`, the
+    // interim hand-delivery screen (§11.5 of the design doc) — so pinning the
+    // href list no longer expresses anything about disclosure, only about
+    // navigation. What actually has to hold is the §3.9 rule the test was
+    // named for, and it still does: that screen lists ONLY UNCLAIMED rows, so
+    // no route from here can tell the host which of their guests hold
+    // SmartCard accounts. The allowed set below is exhaustive on purpose — a
+    // third link appearing is a change worth failing on.
     const markup = renderToStaticMarkup(
       <ImportDone eventId="event-1" summary={SUMMARY} onImportAnother={() => {}} />,
     );
 
     expect(markup).toContain("9");
     expect(markup).not.toMatch(/see who|view (the )?list|who claimed|attendee list/i);
-    // The only link out is back to the event.
     const hrefs = [...markup.matchAll(/href="([^"]*)"/g)].map((m) => m[1]);
-    expect(hrefs).toStrictEqual(["/events/event-1"]);
+    expect(hrefs).toStrictEqual(["/events/event-1/import/links", "/events/event-1"]);
+  });
+
+  it("points the host at the links screen, because nothing else will send them", () => {
+    // The other half of §7's rule. It bans implying a capability that does not
+    // exist; it does not ban naming one that does. An import nobody is told
+    // about achieves nothing until the email phase lands, and a host who reads
+    // "that's a separate step still being built" and leaves has done exactly
+    // that — so the screen has to say where the links actually are.
+    const markup = renderToStaticMarkup(
+      <ImportDone eventId="event-1" summary={SUMMARY} onImportAnother={() => {}} />,
+    );
+
+    expect(markup).toContain("/events/event-1/import/links");
+    expect(markup).toMatch(/send/i);
   });
 
   it("does not claim anybody was emailed, because nothing was", () => {

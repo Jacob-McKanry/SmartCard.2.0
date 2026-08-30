@@ -4,7 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   attendeeImportPayloadSchema,
   attendeeImportSummarySchema,
+  importClaimLinkPageSchema,
   type AttendeeImportSummary,
+  type ImportClaimLinkPage,
 } from "@smartcard/types";
 
 import { UserFacingError } from "@/server/errors";
@@ -35,12 +37,27 @@ import { UserFacingError } from "@/server/errors";
  * role here would not be a shortcut past a policy; it would be the one thing
  * capable of turning a table nobody can read into a table somebody can.
  *
- * WHAT THIS FILE DELIBERATELY CANNOT DO: READ BACK. There is no `list` or `get`
- * below and there cannot be one, because no read path to that table exists
- * anywhere yet. The host already holds the CSV they uploaded, so reading it
- * back through us would add nothing except a second copy of the PII behind a
- * second set of checks. The status screen (§3.9) shows counts, which is what
- * the import itself answers with.
+ * WHAT READING BACK IS LIMITED TO, AND WHY THAT CHANGED ON 2026-08-29
+ *
+ * This file used to say there was no `list` or `get` here and there could not
+ * be one. `listOwnImportLinks` is that statement's one exception, and it is a
+ * recorded deviation (§11.5 of the design doc, and 20260829120000's own header)
+ * rather than a quiet loosening.
+ *
+ * The reason is that §5's email phase does not exist. A `lookup_token` is
+ * written into a table with no read path, so nothing can deliver a claim link
+ * to the guest it belongs to and the entire claim flow — C2 through C5, all
+ * built, all verified — cannot be exercised by a real person at all. The
+ * stopgap is to let the host who uploaded a row hand that one person their own
+ * link, by whatever channel they already use.
+ *
+ * The original objection (§3.8) was never "the host must not see this data" —
+ * they uploaded it. It was that a grant would make the PII travel with the host
+ * ROLE, outliving the person who supplied it. So the RPC is gated on
+ * `imported_by_user_id = the caller`, not on holding the host role: a host who
+ * inherits an event later reads nothing from somebody else's import. Everything
+ * else about the table is unchanged — still forced RLS, still zero policies,
+ * still no SELECT grant to any role.
  */
 
 /**
@@ -182,6 +199,84 @@ export async function importEventAttendees(
     });
   }
   return summary.data;
+}
+
+/** How many pending links one page of the guest-links screen shows. */
+export const IMPORT_LINKS_PAGE_SIZE = 25;
+
+/**
+ * One page of pending claim links for guests THIS CALLER imported.
+ *
+ * THROWS RATHER THAN FAILING TO AN EMPTY PAGE, which is the opposite of what
+ * `isVerifiedHost` above and `listOwnAttendedEventIds` both do, and the
+ * difference is which direction "wrong" points in each case. Those two decide
+ * whether to DRAW something, so an error that hides a control is safe. This one
+ * answers "who still needs a link" — and an empty page is a real, meaningful
+ * answer here (everybody has claimed, or nobody was imported). Silently
+ * returning it on a transport failure would tell a host their guests are all
+ * sorted when the truth is we could not ask, and they would stop sending links.
+ * A visible error is the fail-closed direction for a read whose empty state is
+ * itself a claim.
+ *
+ * @param offset Rows to skip. The RPC clamps its own page size regardless of
+ *   what is passed, so a caller cannot widen a page by asking; this side passes
+ *   `IMPORT_LINKS_PAGE_SIZE` for a consistent screen rather than for safety.
+ */
+export async function listOwnImportLinks(
+  supabase: SupabaseClient,
+  eventId: string,
+  offset = 0,
+): Promise<ImportClaimLinkPage> {
+  const { data, error } = await supabase.rpc("list_own_import_links", {
+    p_event_id: eventId,
+    p_limit: IMPORT_LINKS_PAGE_SIZE,
+    p_offset: offset,
+  });
+
+  if (error) {
+    throw linksRefusal(error);
+  }
+
+  // Parsed, not cast. This response carries claim tokens that get pasted into a
+  // URL and sent to a real person; a shape that quietly disagreed would render
+  // `/claim/undefined` and the host would send it before anybody noticed.
+  const page = importClaimLinkPageSchema.safeParse(data);
+  if (!page.success) {
+    throw new Error("list_own_import_links returned an unexpected shape", {
+      cause: page.error,
+    });
+  }
+  return page.data;
+}
+
+/**
+ * The links RPC's refusals. Fewer cases than the import's, and the same rule:
+ * `42501` stays merged across "not signed in", "not a verified host", "not the
+ * host of this event" and "no such event", because the RPC answers identically
+ * for all four so that a guessed event id cannot be used to discover whether it
+ * exists (§3.6).
+ */
+function linksRefusal(error: { code?: string; message: string }): Error {
+  switch (error.code) {
+    case "42501":
+      return new UserFacingError(
+        "You can't see claim links for this event. That needs a verified host account and an event you're hosting.",
+        { cause: error },
+      );
+
+    // 53400 — `rate_limit_import_links_per_host_hour`. No number, for the same
+    // reason as every other message in this file: `app_config` is unreadable to
+    // `authenticated`, so a figure written here would be a copy that goes stale
+    // the moment the real one is raised.
+    case "53400":
+      return new UserFacingError(
+        "You've opened this list a lot in the last hour. Give it a few minutes and try again.",
+        { cause: error },
+      );
+
+    default:
+      return new Error(`Failed to load the claim links: ${error.message}`, { cause: error });
+  }
 }
 
 /**

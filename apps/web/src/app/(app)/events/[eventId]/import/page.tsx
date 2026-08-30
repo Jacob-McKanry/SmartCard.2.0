@@ -105,7 +105,33 @@ export default async function EventImportPage({
         </p>
       </header>
 
-      {verified ? <ImportWizard eventId={eventId} /> : <NotVerifiedYet />}
+      {verified ? (
+        <>
+          <ImportWizard eventId={eventId} />
+          {/*
+            The way back to the links for an import the host ran days ago. The
+            wizard's own last step links there too, but that step is gone as
+            soon as they navigate away, and a host chasing the three guests who
+            never claimed should not have to re-upload the file to find it.
+
+            Shown to every verified host without asking whether this event has
+            any pending links, for the same reason the import door itself is
+            shown to every host (§11.1.1): counting first would mean this page
+            reading rows it has no reason to hold, and a link that vanishes
+            during an outage is worse than one that leads to an honest empty
+            state.
+          */}
+          <Link
+            href={`/events/${eventId}/import/links`}
+            className="self-start text-[13px] leading-[18px] font-medium underline underline-offset-4"
+            style={{ color: "var(--sc-text-muted)" }}
+          >
+            Claim links for guests who haven&rsquo;t claimed yet
+          </Link>
+        </>
+      ) : (
+        <NotVerifiedYet />
+      )}
     </main>
   );
 }
