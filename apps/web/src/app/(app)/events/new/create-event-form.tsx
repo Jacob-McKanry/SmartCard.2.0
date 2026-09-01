@@ -56,7 +56,20 @@ import { GLASS, PRIMARY_BUTTON, SECONDARY_BUTTON } from "../lib/surfaces";
  *    but nothing in this app geocodes a venue address for an event, and a
  *    map-pin control that stores nothing would be theatre.
  */
-export function CreateEventForm({ cities }: { cities: readonly CityRow[] }) {
+export function CreateEventForm({
+  cities,
+  verifiedHost,
+}: {
+  cities: readonly CityRow[];
+  /**
+   * `public.is_verified_host()`, read by the page. FOR DRAWING THIS FORM,
+   * NEVER FOR DECIDING ONE — the `events` INSERT policy re-derives the same
+   * fact itself (20260901130000) and refuses `status = 'scheduled'` from an
+   * unverified caller regardless of what this form ever sends. A stale or
+   * wrong read here would at worst show the wrong button, never open a door.
+   */
+  verifiedHost: boolean;
+}) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(createEventAction, initialEventActionState);
 
@@ -299,25 +312,38 @@ export function CreateEventForm({ cities }: { cities: readonly CityRow[] }) {
         exactly as reversible as any other save, and `/events/[eventId]`'s
         host panel is where it gets a "Publish" button of its own — see that
         page for why publishing lives there and not here.
+
+        "PUBLISH EVENT" IS ABSENT ENTIRELY FOR AN UNVERIFIED ACCOUNT, added
+        2026-09-01. Not shown-and-disabled: §7's rule against implying a
+        capability that does not exist applies to a greyed-out button as much
+        as a live one, and a disabled "Publish" invites the question "why" more
+        than its absence does. The verified case is unaffected — same two
+        buttons as before.
       */}
       <div className="flex flex-wrap gap-2.5 pb-2">
-        <button
-          type="submit"
-          name="status"
-          value="scheduled"
-          disabled={pending || cityId === ""}
-          className="min-h-[52px] flex-1 rounded-full px-4 text-[14px] leading-[18px] font-semibold disabled:opacity-60"
-          style={PRIMARY_BUTTON}
-        >
-          {pending ? "Publishing…" : "Publish event"}
-        </button>
+        {verifiedHost ? (
+          <button
+            type="submit"
+            name="status"
+            value="scheduled"
+            disabled={pending || cityId === ""}
+            className="min-h-[52px] flex-1 rounded-full px-4 text-[14px] leading-[18px] font-semibold disabled:opacity-60"
+            style={PRIMARY_BUTTON}
+          >
+            {pending ? "Publishing…" : "Publish event"}
+          </button>
+        ) : null}
         <button
           type="submit"
           name="status"
           value="draft"
           disabled={pending || cityId === ""}
-          className="flex min-h-[52px] items-center rounded-full px-[18px] text-[14px] leading-[18px] font-semibold disabled:opacity-60"
-          style={SECONDARY_BUTTON}
+          className={
+            verifiedHost
+              ? "flex min-h-[52px] items-center rounded-full px-[18px] text-[14px] leading-[18px] font-semibold disabled:opacity-60"
+              : "min-h-[52px] flex-1 rounded-full px-4 text-[14px] leading-[18px] font-semibold disabled:opacity-60"
+          }
+          style={verifiedHost ? SECONDARY_BUTTON : PRIMARY_BUTTON}
         >
           Save as draft
         </button>
@@ -329,6 +355,19 @@ export function CreateEventForm({ cities }: { cities: readonly CityRow[] }) {
           Cancel
         </Link>
       </div>
+
+      {verifiedHost ? null : (
+        <p
+          className="max-w-[54ch] pb-2 text-[12px] leading-[18px]"
+          style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
+        >
+          Publishing needs a verified host account.{" "}
+          <Link href="/host/apply" className="font-semibold underline underline-offset-2">
+            Apply to become a host
+          </Link>{" "}
+          — your draft is saved either way and waits for you once you&rsquo;re verified.
+        </p>
+      )}
     </form>
   );
 }

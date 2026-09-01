@@ -4,6 +4,7 @@ import { BadgeCheck, CalendarX2, ChevronLeft, Lock, Users } from "lucide-react";
 import type { RsvpStatus } from "@smartcard/types";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
+import { isVerifiedHost } from "@/server/events/attendee-import-service";
 import {
   getConnectionsAttending,
   getEventAttendanceCounts,
@@ -160,6 +161,12 @@ export default async function EventDetailPage({
    */
   const isDraft = event.status === "draft";
 
+  // Only asked when it matters: a draft is visible to nobody but its host
+  // (the SELECT policy's public branch requires `status = 'scheduled'`), so
+  // whenever `isDraft` is true here the viewer already IS the host — no
+  // separate role check needed before spending this RPC call.
+  const canPublish = isDraft ? await isVerifiedHost(supabase) : false;
+
   /*
    * WHO SEES AN INVITE CONTROL, AND WHY THE TEST HAS TWO HALVES.
    *
@@ -233,7 +240,7 @@ export default async function EventDetailPage({
       </div>
 
       {isCancelled ? <CancelledNotice ownStatus={ownRsvp?.status ?? null} /> : null}
-      {isDraft ? <DraftNotice eventId={event.id} /> : null}
+      {isDraft ? <DraftNotice eventId={event.id} canPublish={canPublish} /> : null}
 
       <HostRow
         name={host === null ? null : displayName(host)}
@@ -538,8 +545,17 @@ function CancelledNotice({ ownStatus }: { ownStatus: RsvpStatus | null }) {
  * Only ever rendered for the host (see `isDraft`'s own comment on the page
  * component), so there is no separate "you are the host" branch here the way
  * `HostRow` has one — this whole component IS the host-only branch.
+ *
+ * `canPublish` decides which control this banner offers, added 2026-09-01
+ * alongside publishing's own verified-host gate (20260901130000): a verified
+ * host gets the "Publish event" button exactly as before; an unverified one
+ * gets a prompt to apply instead of a button that would only be refused. Same
+ * §7 reasoning `CreateEventForm` already applies to hiding "Publish event"
+ * outright — a control that leads to a guaranteed refusal is worse than its
+ * absence, and the account's actual database-enforced standing is what
+ * decides which is shown, not a client-side guess.
  */
-function DraftNotice({ eventId }: { eventId: string }) {
+function DraftNotice({ eventId, canPublish }: { eventId: string; canPublish: boolean }) {
   return (
     <div
       className="flex items-start justify-between gap-[15px] rounded-[22px] p-[15px]"
@@ -555,7 +571,17 @@ function DraftNotice({ eventId }: { eventId: string }) {
           it&rsquo;s set to who-can-find-it.
         </span>
       </span>
-      <PublishDraftButton eventId={eventId} />
+      {canPublish ? (
+        <PublishDraftButton eventId={eventId} />
+      ) : (
+        <Link
+          href="/host/apply"
+          className="flex min-h-11 shrink-0 items-center rounded-full px-[16px] text-[12.5px] leading-[17px] font-semibold"
+          style={{ background: "var(--sc-text)", color: "#fff" }}
+        >
+          Apply to publish
+        </Link>
+      )}
     </div>
   );
 }

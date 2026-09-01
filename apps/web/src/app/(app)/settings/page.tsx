@@ -1,9 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogoutLink, PortalLink } from "@kinde-oss/kinde-auth-nextjs/components";
-import { ChevronRight, CreditCard, Mail, ShieldCheck, type LucideIcon } from "lucide-react";
+import {
+  ChevronRight,
+  CreditCard,
+  Mail,
+  ShieldCheck,
+  UserCheck,
+  type LucideIcon,
+} from "lucide-react";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
+import { isAdmin } from "@/server/hosting/host-application-service";
 import { getOwnProfile, type OwnProfile } from "@/server/profile/profile-service";
 import { signedProfilePhotoUrl } from "@/server/profile/photo-url";
 import { kindeSiteUrl } from "@/server/env";
@@ -94,6 +102,7 @@ export default async function SettingsPage() {
   const { supabase, userId } = context;
   const profile = await getOwnProfile(supabase, userId);
   const photoUrl = await signedProfilePhotoUrl(supabase, profile.photo_path);
+  const admin = await isAdmin(supabase);
 
   /*
    * The portal handler requires an ABSOLUTE return URL: it hands the value to
@@ -212,6 +221,37 @@ export default async function SettingsPage() {
           </RowShell>
         </Panel>
       </Group>
+
+      {/*
+       * ADMIN-ONLY, AND THE ONLY ROW ON THIS SCREEN THAT IS. Rendered only
+       * when `isAdmin` reads true — which itself is FOR DRAWING THIS ROW,
+       * NEVER FOR DECIDING ANYTHING: `/admin/host-applications` re-derives
+       * admin status from `private.is_admin()` on its own and 404s for
+       * anybody else, so a stale or wrong read here would at worst hide or
+       * show a link, never open a door.
+       *
+       * Exists because `/admin/host-applications` shipped 2026-08-30 with a
+       * working gate and no way to reach it — same gap `/host/apply` had
+       * before the "Apply to become a host" banner on `/events`. An admin
+       * account had no way to find its own review queue short of typing the
+       * URL by hand.
+       */}
+      {admin ? (
+        <Group label="ADMIN">
+          <Panel>
+            <RowShell last>
+              <Link href="/admin/host-applications" className={ROW_CLASS}>
+                <RowBody
+                  icon={UserCheck}
+                  title="Host applications"
+                  detail="Review and decide who may import a guest list."
+                />
+                <Chevron />
+              </Link>
+            </RowShell>
+          </Panel>
+        </Group>
+      ) : null}
 
       <Group label="ACCOUNT">
         <Panel>
