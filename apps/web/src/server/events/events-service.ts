@@ -722,6 +722,67 @@ export async function publishEvent(supabase: SupabaseClient, eventId: string): P
 }
 
 /**
+ * Cancels a live event the caller hosts. The host-facing counterpart to
+ * `soft_delete_own_account`'s bulk cancellation (20260815130100) — reuses the
+ * identical `status/cancelled_at/cancelled_reason` mechanism, so a
+ * host-cancelled event behaves everywhere else in the app exactly like an
+ * account-deletion-cancelled one: visible to the host and to anyone holding an
+ * RSVP or an invite, dropped from public browse, marked "Cancelled".
+ *
+ * Not available for a draft — the RPC refuses one on purpose. A draft has no
+ * RSVP/invite holders to preserve a record for, so `deleteDraftEvent` is the
+ * right call there, and it does something this function structurally cannot:
+ * remove the row.
+ *
+ * @throws {UserFacingError} If the caller does not host this event, the event
+ *   does not exist, or it is not currently `scheduled` (already cancelled, or
+ *   still a draft). All refuse identically — see `cancel_event`'s own comment
+ *   for why a guessed id must not be usable to learn which is true.
+ */
+export async function cancelEvent(supabase: SupabaseClient, eventId: string): Promise<void> {
+  const { error } = await supabase.rpc("cancel_event", { p_event_id: eventId });
+
+  if (error) {
+    if (error.code === "42501") {
+      throw new UserFacingError(
+        "That event can't be cancelled — it may already be cancelled, still a draft, or not yours to cancel.",
+        { cause: error },
+      );
+    }
+    throw new Error(`Failed to cancel the event: ${error.message}`, { cause: error });
+  }
+}
+
+/**
+ * Permanently deletes a draft event the caller hosts. A REAL delete, unlike
+ * `cancelEvent` — safe only because nothing else can have answered a draft
+ * (every write into `event_rsvps`/`event_invites`/`event_attendee_imports`
+ * already requires `status = 'scheduled'`), so there is nobody's record to
+ * lose.
+ *
+ * Not available for a live event — the RPC refuses one on purpose, and
+ * `cancelEvent` is the call for that case instead.
+ *
+ * @throws {UserFacingError} If the caller does not host this event, the event
+ *   does not exist, or it is not currently a draft (already published, or
+ *   already cancelled). All refuse identically, matching `cancel_event`'s
+ *   posture.
+ */
+export async function deleteDraftEvent(supabase: SupabaseClient, eventId: string): Promise<void> {
+  const { error } = await supabase.rpc("delete_draft_event", { p_event_id: eventId });
+
+  if (error) {
+    if (error.code === "42501") {
+      throw new UserFacingError(
+        "That draft can't be deleted — it may already be published or not yours to delete.",
+        { cause: error },
+      );
+    }
+    throw new Error(`Failed to delete the draft: ${error.message}`, { cause: error });
+  }
+}
+
+/**
  * Edits an event the caller hosts. The `.eq("host_user_id", userId)` filter
  * duplicates what the UPDATE policy already enforces — the same belt-and-braces
  * posture the rest of this codebase's service layer takes, so a bug that lost

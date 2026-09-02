@@ -70,6 +70,7 @@ export function HostTools({
   isPrivate,
   inviteSlot,
   coverSlot,
+  dangerSlot,
 }: {
   eventId: string;
   /** Host-only queue depth. `null` when the counts could not be read. */
@@ -79,6 +80,14 @@ export function HostTools({
   inviteSlot?: React.ReactNode;
   /** The cover-image control. Host-only, hence its place on this panel. */
   coverSlot?: React.ReactNode;
+  /**
+   * `CancelEventButton`, when this event is live (2026-09-02). A draft's own
+   * delete lives on `DraftNotice` instead — see that component's header —
+   * and an already-cancelled event has nothing left to offer here, so the
+   * caller passes `null` for both of those cases rather than this panel
+   * re-deriving status itself.
+   */
+  dangerSlot?: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-[11px] rounded-[26px] p-[17px]" style={HOST_PANEL}>
@@ -138,6 +147,15 @@ export function HostTools({
           This event is public, so there is nobody to invite — anyone signed in can already find it
           and answer.
         </p>
+      )}
+
+      {dangerSlot === undefined || dangerSlot === null ? null : (
+        <div
+          className="flex flex-col gap-2 border-t pt-[11px]"
+          style={{ borderTopColor: "rgba(255,255,255,.12)" }}
+        >
+          {dangerSlot}
+        </div>
       )}
     </section>
   );

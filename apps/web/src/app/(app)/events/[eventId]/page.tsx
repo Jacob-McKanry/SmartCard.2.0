@@ -32,7 +32,9 @@ import {
 import { displayName, hasEnded, initialsFor, whenLine, whereLine } from "../lib/format";
 import { COVER_PLACEHOLDER, GLASS, GLASS_LIQUID } from "../lib/surfaces";
 import { RsvpBlock } from "./rsvp-block";
+import { CancelEventButton } from "./cancel-event-button";
 import { CoverUploader } from "./cover-uploader";
+import { DeleteDraftButton } from "./delete-draft-button";
 import { HostTools } from "./host-tools";
 import { InviteLauncher, type InviteCandidate } from "./invite-launcher";
 import { PublishDraftButton } from "./publish-draft-button";
@@ -293,6 +295,21 @@ export default async function EventDetailPage({
            */
           coverSlot={
             <CoverUploader eventId={event.id} hasCover={event.cover_image_path !== null} />
+          }
+          /*
+           * Only for a LIVE event. A draft's own delete lives on
+           * `DraftNotice` instead (a real delete, not a cancel — see that
+           * component's header), and an already-cancelled event has nothing
+           * left to cancel.
+           */
+          dangerSlot={
+            !isCancelled && !isDraft ? (
+              <CancelEventButton
+                eventId={event.id}
+                going={counts?.going ?? 0}
+                pendingOrWaitlisted={(counts?.pending ?? 0) + (counts?.waitlist ?? 0)}
+              />
+            ) : null
           }
         />
       ) : null}
@@ -558,7 +575,7 @@ function CancelledNotice({ ownStatus }: { ownStatus: RsvpStatus | null }) {
 function DraftNotice({ eventId, canPublish }: { eventId: string; canPublish: boolean }) {
   return (
     <div
-      className="flex items-start justify-between gap-[15px] rounded-[22px] p-[15px]"
+      className="flex flex-col gap-[13px] rounded-[22px] p-[15px]"
       style={{ background: "rgba(13,18,32,.04)", border: "1px solid rgba(13,18,32,.1)" }}
     >
       <span className="min-w-0">
@@ -571,17 +588,27 @@ function DraftNotice({ eventId, canPublish }: { eventId: string; canPublish: boo
           it&rsquo;s set to who-can-find-it.
         </span>
       </span>
-      {canPublish ? (
-        <PublishDraftButton eventId={eventId} />
-      ) : (
-        <Link
-          href="/host/apply"
-          className="flex min-h-11 shrink-0 items-center rounded-full px-[16px] text-[12.5px] leading-[17px] font-semibold"
-          style={{ background: "var(--sc-text)", color: "#fff" }}
-        >
-          Apply to publish
-        </Link>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {canPublish ? (
+          <PublishDraftButton eventId={eventId} />
+        ) : (
+          <Link
+            href="/host/apply"
+            className="flex min-h-11 shrink-0 items-center rounded-full px-[16px] text-[12.5px] leading-[17px] font-semibold"
+            style={{ background: "var(--sc-text)", color: "#fff" }}
+          >
+            Apply to publish
+          </Link>
+        )}
+        {/*
+         * A real delete, not a cancel — see `delete-draft-button.tsx`'s own
+         * header. Sits beside Publish/Apply rather than on `HostTools`,
+         * because both buttons here answer the same question ("what happens
+         * to this draft") and splitting them across two panels would make a
+         * host hunt for the second one.
+         */}
+        <DeleteDraftButton eventId={eventId} />
+      </div>
     </div>
   );
 }
