@@ -115,14 +115,18 @@ export type EventStatus = z.infer<typeof eventStatusSchema>;
 /**
  * `events.cancelled_reason` — why a cancelled event was cancelled.
  *
- * One value today because there is one writer today: this product has no
- * host-facing "cancel my event" control. The column exists because it is what
- * makes a soft delete reversible with precision — `public.restore_deleted_user`
- * un-cancels only the events THAT deletion cancelled, so restoring an account
- * cannot resurrect an event its host had deliberately called off. A host-facing
- * cancel control adds its own value here and to the CHECK in 20260815130100.
+ * Two values as of 20260902120000. `host_account_deleted` is written only by
+ * `public.soft_delete_own_account()`, and is the ONLY value
+ * `public.restore_deleted_user` re-schedules — see that function's own header
+ * for why `cancelled_reason` (not just `status`) is what makes the restore
+ * precise: it un-cancels only the events THAT deletion cancelled, so restoring
+ * an account cannot resurrect an event its host had separately, deliberately
+ * called off. `host_cancelled` is the host-facing "cancel my event" control
+ * this comment used to say did not exist — written by `public.cancel_event`,
+ * and permanent: there is no un-cancel path for it, unlike the account-deletion
+ * case.
  */
-export const eventCancelReasonSchema = z.enum(["host_account_deleted"]);
+export const eventCancelReasonSchema = z.enum(["host_account_deleted", "host_cancelled"]);
 export type EventCancelReason = z.infer<typeof eventCancelReasonSchema>;
 
 /**

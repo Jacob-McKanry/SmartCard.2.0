@@ -97,6 +97,60 @@ export function revokeCardConsequences(cardCode: string): readonly string[] {
  * that will not come back on its own is the cards, because the database cannot
  * tell a card this revoked from one the owner revoked after losing it.
  */
+/**
+ * Fourth and fifth destructive actions, added 2026-09-02 with the host-facing
+ * cancel/delete controls on an event's own page. Live here for the same
+ * reason the three above do: this module is the app's shared
+ * destructive-confirmation copy, not connections-specific machinery.
+ *
+ * EVERY LINE CHECKED AGAINST `public.cancel_event` (20260902120000):
+ *  - `status -> 'cancelled'`, the identical mechanism
+ *    `soft_delete_own_account` already uses, so `private.can_see_event`
+ *    keeps the event in front of the host and everyone holding an RSVP or an
+ *    invite while dropping it from public browse — same behaviour
+ *    `deleteAccountConsequences` already describes for that path.
+ *  - `event_rsvps` and `event_invites` are not touched at all; only `events`'
+ *    own three columns change.
+ *  - No un-cancel RPC exists for `cancelled_reason = 'host_cancelled'` —
+ *    unlike the account-deletion path, this one really is permanent, so
+ *    unlike `deleteAccountConsequences` this DOES say so.
+ */
+export function cancelEventConsequences(counts: {
+  going: number;
+  pendingOrWaitlisted: number;
+}): readonly string[] {
+  const lines: string[] = [];
+  if (counts.going > 0) {
+    lines.push(
+      `${counts.going} ${counts.going === 1 ? "person who" : "people who"} answered going will see it marked cancelled instead of disappearing on them.`,
+    );
+  }
+  if (counts.pendingOrWaitlisted > 0) {
+    lines.push(
+      `${counts.pendingOrWaitlisted} ${counts.pendingOrWaitlisted === 1 ? "request" : "requests"} waiting on your decision will not be answered.`,
+    );
+  }
+  lines.push("It disappears from public browse immediately.");
+  lines.push("This is permanent — there is no un-cancel button in the app.");
+  return lines;
+}
+
+/**
+ * EVERY LINE CHECKED AGAINST `public.delete_draft_event` (20260902120000):
+ *  - a real `DELETE`, not a status change — the row is gone, not hidden.
+ *  - safe specifically BECAUSE a draft has no `event_rsvps`/`event_invites`
+ *    rows to lose: every write path into those tables already requires
+ *    `status = 'scheduled'`. That is also why this copy names no "people who
+ *    answered" line the way `cancelEventConsequences` does — there cannot be
+ *    any.
+ */
+export function deleteDraftConsequences(): readonly string[] {
+  return [
+    "The draft is gone completely — not cancelled, deleted. There is nothing to restore.",
+    "Nobody ever saw it but you, so nothing changes for anyone else.",
+  ];
+}
+
 export function deleteAccountConsequences(): readonly string[] {
   return [
     "Your profile stops being visible to everyone you have met. You disappear from their People list.",

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import type { ZodError } from "zod";
 import {
   eventInsertSchema,
@@ -13,8 +14,10 @@ import {
 import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/auth/current-user";
 import { safeActionErrorMessage, UserFacingError } from "@/server/errors";
 import {
+  cancelEvent,
   createEvent,
   decideRsvp,
+  deleteDraftEvent,
   inviteToEvent,
   publishEvent,
   requestRsvp,
@@ -296,6 +299,55 @@ export async function publishEventAction(
   revalidatePath("/events");
   revalidatePath(`/events/${parsedEventId.data}`);
   return { success: true };
+}
+
+/**
+ * Cancels a live event the caller hosts — the destructive-confirmation
+ * counterpart to `publishEventAction`, and NOT built on `useActionState`
+ * unlike every action above it in this file.
+ *
+ * WHY THIS ONE ACTION HAS A DIFFERENT SHAPE THAN THE REST OF THIS FILE
+ *
+ * `ConfirmPanel` (`../connections/lib/confirm-panel.tsx`) takes
+ * `action: () => void | Promise<void>` and drops it straight into
+ * `<form action={action}>` — no `prevState`, no returned `EventActionState`,
+ * because the panel closes itself and the surrounding page re-renders from
+ * `revalidatePath` either way. `revokeCardAction` and `deleteAccountAction`
+ * already establish this exact shape for the app's other two destructive
+ * confirmations; matching it here means `CancelEventButton` can use the same
+ * panel with no adapter.
+ *
+ * THROWS RATHER THAN RETURNING AN ERROR, ON PURPOSE. `revokeCardAction`'s own
+ * header explains why: catching the error and showing "something went wrong"
+ * inside a panel that has already closed is how somebody ends up unsure
+ * whether their event is actually still live.
+ */
+export async function cancelEventAction(eventId: string): Promise<void> {
+  const context = await requireContext();
+  await cancelEvent(context.supabase, eventId);
+  revalidatePath("/events");
+  revalidatePath(`/events/${eventId}`);
+}
+
+/**
+ * Permanently deletes a draft the caller hosts. Same shape as
+ * `cancelEventAction` and for the same reason — `ConfirmPanel` compatibility,
+ * matching `revokeCardAction`'s posture on throwing rather than swallowing.
+ *
+ * REDIRECTS RATHER THAN REVALIDATING THE EVENT'S OWN PAGE. Unlike cancelling
+ * (the row still exists afterward, just with a different status),
+ * `deleteDraftEvent` removes the row — there is nothing left at
+ * `/events/[eventId]` to revalidate, and a caller sitting on that page when
+ * the delete succeeds needs to be moved off it rather than left looking at a
+ * page for an event that no longer exists. `redirect()` inside a Server
+ * Action is the standard way to do that
+ * (`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/redirect.md`).
+ */
+export async function deleteDraftEventAction(eventId: string): Promise<void> {
+  const context = await requireContext();
+  await deleteDraftEvent(context.supabase, eventId);
+  revalidatePath("/events");
+  redirect("/events");
 }
 
 // -----------------------------------------------------------------------
