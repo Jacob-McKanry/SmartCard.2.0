@@ -325,3 +325,66 @@ export function expoAccessToken(): string | null {
   const value = process.env.EXPO_ACCESS_TOKEN?.trim();
   return value === undefined || value === "" ? null : value;
 }
+
+/**
+ * The Resend API key `apps/web/src/server/email/send.ts` sends with (§5 of
+ * the attendee-import design, `docs/architecture/2026-09-02-event-invite-email.md`).
+ *
+ * OPTIONAL, following `expoAccessToken()`'s own precedent and for the same
+ * reason: a claim link is written to `event_attendee_imports` the moment a
+ * host imports a guest, independent of whether anything can mail it. Missing
+ * mail must degrade to "nobody got emailed yet, use the copy-link screen",
+ * never to a failed import — the import already succeeded at the one thing
+ * it structurally cannot retry (writing the row), and email is a delivery
+ * mechanism for a link that already exists, not a precondition for it.
+ *
+ * Returns null when unset. The send module logs loudly and leaves every row
+ * unsent rather than throwing, which is the same "log and move on" posture
+ * `geocodingApiKey()`'s caller takes.
+ */
+export function resendApiKey(): string | null {
+  const value = process.env.RESEND_API_KEY?.trim();
+  return value === undefined || value === "" ? null : value;
+}
+
+/**
+ * The signing secret Resend hands out when a webhook endpoint is created in
+ * its dashboard, used to verify `/api/webhooks/resend` requests actually came
+ * from Resend (via Svix — see that route's own header).
+ *
+ * REQUIRED, unlike `resendApiKey()` above, and deliberately asymmetric: a
+ * missing API key degrades a feature (nobody gets emailed); a missing webhook
+ * secret would degrade a SECURITY CHECK (anybody could POST a fake "this
+ * address bounced" and nothing would catch it, or — the sharper case — a fake
+ * "delivered" that suppresses nothing while a real complaint sits unprocessed
+ * because the route never verifies anything and was written to no-op instead
+ * of failing closed). Reading this with `required()` means the route throws a
+ * loud 500 on every request until the secret is set, rather than silently
+ * accepting unverified bodies — the correct direction to fail before this
+ * pipeline is trusted with a domain's sending reputation.
+ */
+export function resendWebhookSecret(): string {
+  return required(
+    "RESEND_WEBHOOK_SECRET",
+    "Resend dashboard -> Webhooks -> the endpoint for this app -> Signing Secret (starts with whsec_).",
+  );
+}
+
+/**
+ * HMAC key for the unsubscribe link every invite email carries
+ * (`apps/web/src/server/email/unsubscribe-token.ts`).
+ *
+ * REQUIRED, and deliberately its own secret rather than reusing
+ * `qrSigningSecret()` or `connectIpHashSalt()` — `connectIpHashSalt()`'s own
+ * header gives the reason this pattern already follows: "reusing one salt
+ * across two datasets means one leak compromises both." A leaked unsubscribe
+ * key lets someone forge a link that unsubscribes an address they do not
+ * own; that blast radius has nothing to do with QR tokens or IP hashing and
+ * must not share a key with either.
+ */
+export function emailUnsubscribeSecret(): string {
+  return required(
+    "EMAIL_UNSUBSCRIBE_SECRET",
+    "Generate one: `openssl rand -base64 32`. Server-side only — anyone holding it can forge an unsubscribe link for any address.",
+  );
+}

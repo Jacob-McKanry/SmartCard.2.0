@@ -51,7 +51,17 @@
         // GEOCODING_API_KEY is cosmetic by comparison (a null place_label),
         // but it fails the same silent way, so it belongs here too.
         "GEOCODING_API_KEY",
-        "EXPO_ACCESS_TOKEN"
+        "EXPO_ACCESS_TOKEN",
+        // RESEND_API_KEY is optional (same silent-failure risk as the two
+        // above — stripped here, invite emails just stop sending with no
+        // build error). RESEND_WEBHOOK_SECRET and EMAIL_UNSUBSCRIBE_SECRET
+        // are REQUIRED, so stripping either fails the build loudly like
+        // KINDE_ISSUER_URL above rather than degrading silently — but they
+        // still have to be listed, or the loud failure happens on Vercel
+        // instead of being caught here.
+        "RESEND_API_KEY",
+        "RESEND_WEBHOOK_SECRET",
+        "EMAIL_UNSUBSCRIBE_SECRET"
       ]
     },
     "lint": {
