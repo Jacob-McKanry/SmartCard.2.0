@@ -11,16 +11,19 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * with a Supabase user session, so there is no `current_user_id()` to key a
  * policy on.
  *
- * WHY THIS TAKES A `SupabaseClient` RATHER THAN CALLING `serviceRoleClient()`
- * ITSELF, EVEN THOUGH EVERY REAL CALLER PASSES THE SAME ONE. Every other
- * service function in this codebase (`importEventAttendees`, `cancelEvent`,
- * `submitHostApplication`, …) takes its client as a parameter rather than
- * reaching for a singleton, and for the same reason here as there: a module
- * that constructs its own client is a module a Vitest run cannot hand a fake
- * to. The three real call sites (the Resend webhook, the unsubscribe route,
- * the send job) each pass `serviceRoleClient()` explicitly — see
- * `service-role-client.ts`'s own warning that adding a caller is a decision,
- * made once at each of those three sites rather than hidden inside this file.
+ * WHY THIS TAKES A `SupabaseClient` PARAMETER RATHER THAN CONSTRUCTING ITS
+ * OWN SERVICE-ROLE CLIENT, EVEN THOUGH EVERY REAL CALLER PASSES THE SAME
+ * ONE. Every other service function in this codebase (`importEventAttendees`,
+ * `cancelEvent`, `submitHostApplication`, …) takes its client as a parameter
+ * rather than reaching for a singleton, and for the same reason here as
+ * there: a module that constructs its own client is a module a Vitest run
+ * cannot hand a fake to. The three real call sites (the Resend webhook, the
+ * unsubscribe route, the send job) each construct and pass one explicitly —
+ * see `service-role-client.ts`'s own warning that adding a caller is a
+ * decision, made once at each of those three sites (each on
+ * `no-second-write-path.test.ts`'s own allowlist) rather than hidden inside
+ * this file, which is deliberately NOT on that allowlist: it never holds the
+ * service role itself.
  */
 export type SuppressionReason = "bounced" | "complained" | "unsubscribed";
 

@@ -164,6 +164,7 @@ export {
   detectColumnMapping,
   normaliseImportRows,
   normaliseSocialHandle,
+  splitFullName,
   summariseStatusValues,
   type ColumnAssignment,
   type ColumnMapping,

@@ -536,6 +536,62 @@ Not yet touched: `import_event_attendees`, `get_claimable_import`, or
 anything else this document already describes. The email phase's own
 document tracks what is and is not built from here.
 
+### 11.8 A combined name column had nowhere to map to at all — found live-testing, fixed 2026-09-03
+
+Not a §2.3.1 gap this document ever discussed — found by the owner testing a
+real import against production, using a real Luma-style export whose only
+name column is `Guest Name` (one combined value, no separate first/last
+columns at all). The mapping screen offered exactly one thing for it:
+"Don't import." There was no third option, because `full_name` did not
+exist as a mappable field — `ImportField` only ever had `first_name` and
+`last_name`, so a hand-kept spreadsheet or an export that never splits a
+name (several real platforms don't) had no path into this feature beyond
+losing the name entirely.
+
+**Fixed in `packages/core/src/events/attendee-import.ts`.** `full_name` is
+now a mappable `ImportField`, alongside `status`'s own precedent of being a
+field a host picks from the list without it being a literal `ImportRow`
+property. `splitFullName` splits on the first space only ("Maria Garcia
+Lopez" → first "Maria", last "Garcia Lopez") — a split, not a name parser;
+a title or a multi-word first name will land wrong, and that is an accepted
+cost matching every other guessed field in this pipeline (`company_name`'s
+loose header match, say): §4.2 step 4 already lets the person fix any
+prefilled field on their own claim screen.
+
+**Detection needed a genuinely separate second pass, not just a later entry
+in `HEADER_PATTERNS`.** A real Luma export's header order is `name,
+first_name, last_name, email, …` — the generic column comes FIRST. A single
+left-to-right pass would let `name` claim `full_name` before `first_name`/
+`last_name` ever got a turn, which is backwards: the specific pair is always
+the better answer when both exist. `detectColumnMapping` now runs
+`full_name` detection only after the main pass, and only when nothing in
+the WHOLE file already claimed `first_name` — whole-file precedence, not
+processing order. The existing test asserting Luma's own `name` column stays
+ignored (§2.3.1's original fixture) is what caught a version of this fix
+that got the ordering wrong, before it shipped.
+
+**Verified with tests, not a rolled-back transaction — no schema or RLS
+change.** New coverage in `attendee-import.test.ts` (11 tests):
+`detectColumnMapping` picking up "Guest Name"/"Name"/"Full Name"/"Attendee
+Name"/"Contact Name", still preferring an explicit first/last pair
+regardless of column order, and claiming only the first matching column like
+every other field; `splitFullName`'s split behaviour including the
+single-word and null cases; `normaliseImportRows` actually populating
+`first_name`/`last_name` from a mapped `full_name` column, and an explicit
+first/last column still winning when a hand-edited mapping somehow supplies
+both. Mutation-tested the whole-file-precedence guard specifically —
+removed, confirmed both the new test and the pre-existing Luma-fixture test
+failed, restored.
+
+**A pre-existing repository-wide test failure was surfaced and fixed in the
+same pass, unrelated to this bug but found while running the full suite:**
+`no-second-write-path.test.ts`'s service-role-caller allowlist
+(`packages/core/src/connect/__tests__/no-second-write-path.test.ts`) needed
+the three new Phase 1/4 callers from the email work added, each with the
+same "added by hand, reasoning written down" treatment its existing entries
+already get — see that test file directly rather than duplicating the
+reasoning here.
+
 ### 11.1.7 C5 — `own_attended_events()` and the event-page note — built 2026-08-28
 
 The last of §3.8's five RPCs, and the read that finally uses the fact §2.2
