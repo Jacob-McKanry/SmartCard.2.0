@@ -823,3 +823,63 @@ The empty list is the same argument one step along, and it is a real case rather
 `app_config` is unreadable to `authenticated` (§3.8), which is the right posture — but it means the row cap and the daily limit cannot be read on this side. The user-facing messages therefore say "too big to import in one go" and "today's import limit" without a number. A figure written into the TypeScript would be a copy that goes stale the moment the real one is raised, which is precisely what would happen on the night of a pilot event. Both messages stay actionable without one: split the file, or come back tomorrow.
 
 No message carries the database's own words. `42501` in particular stays merged across "not signed in", "not a verified host" and "not the host of this event", because the RPC answers identically for all three so that a guessed event id cannot be used to discover whether it exists (§3.6) — splitting it into three friendlier sentences would rebuild that probe one layer up. There is a test that fails if it ever does.
+
+### 11.9 An existing account is now auto-claimed on import — owner decision, flagged first, 2026-09-03
+
+`import_event_attendees` (20260903140000) now claims a row immediately, with
+no click and no emailed link, when its email matches an EXISTING, ACTIVE
+SmartCard account. This is a real narrowing of a principle this document
+and `2026-08-27-event-attendee-roster.md` both repeat — attendance and
+roster visibility require the person's own action, "nobody appears without
+their own explicit choice" — and it was put to the owner as an explicit
+tradeoff in chat before being built, not assumed or built around quietly.
+The owner was shown three options (keep requiring the click; a lower-
+friction in-app confirm instead of an email link; fully automatic with no
+confirmation at all) with the risk of the third stated plainly — a host
+could import any real member's email and have "you were on the guest list"
+appear on that member's own history with no confirmation from them,
+regardless of whether the host was telling the truth — and chose it anyway.
+
+**Why "fully automatic" is more defensible here than it sounds, and the
+reasoning the owner was given before deciding.** The two things that would
+read a claimed-by-auto-match row are both private-to-self:
+`own_attended_events()` (a caller sees only their own claimed rows) and the
+event page's own attendance note, rendered only to the person it is about.
+The roster — the one surface that would disclose this to a THIRD party —
+has its own, separate, still-unbuilt opt-in column and is untouched by this
+migration. So the actual exposure this feature can cause is confined to a
+person's own account, not to anyone else's view of them, which is a
+materially different risk than the roster amendment was weighing.
+
+**The scope stops at the attendance fact — never a profile field.** Unlike
+the ordinary claim flow's `coalesce(existing, csv_value)` fill-blanks
+behaviour, auto-match writes nothing to `users` at all. It sets exactly
+`claimed_by_user_id`/`claimed_at`, then destroys the row's PII the same way
+every claim does (§2.2). A host's guess at a real member's phone number
+landing on that member's profile without any confirmation would have been a
+materially larger overreach than recording attendance, and was never asked
+for — the owner's own framing was "so existing members can go see the
+roster and the event they attended," about visibility, not profile data.
+
+**`matched_existing_accounts` joins `skipped_already_claimed` as the second
+count on this table that says how many, never who** — same §3.9 reasoning,
+same shape of disclosure, extended to a new case rather than reargued from
+scratch.
+
+**What this does NOT do.** It only runs at import time, on the rows in that
+one call — not a standing sync that retroactively claims a pending row the
+moment someone signs up days later. Re-running the same import (harmless;
+the upsert is idempotent) is how a host would pick up a match that did not
+exist the first time.
+
+**Verified live** in a rolled-back transaction before applying: a row
+matching an existing ACTIVE account is claimed immediately, all PII nulled,
+and shows up in that account's own `own_attended_events()` with no claim
+call ever made; a row matching a DELETED account's email is left pending,
+exactly as before; the matched account's `phone_number` (standing in for
+every profile column the ordinary claim flow would otherwise fill) is never
+written; an unrelated stranger row is unaffected. The `status = 'active'`
+guard was separately mutation-tested — removed, confirmed a deleted
+account's row got incorrectly auto-claimed, and the real deployed function
+was re-checked to still carry the guard (the mutation ran in its own
+rolled-back transaction and never touched it).

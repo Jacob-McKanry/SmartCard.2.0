@@ -178,7 +178,8 @@ export const attendeeImportPayloadSchema = z.array(attendeeImportPayloadRowSchem
  * `skipped_already_claimed` is a count and has to stay one. A per-person list
  * of who has already claimed would tell the host which of their guests hold
  * SmartCard accounts, which is a fact about those people and not about the
- * host's own file.
+ * host's own file. `matched_existing_accounts` (20260903140000) is the same
+ * shape of disclosure for the same reason — it says how many, never who.
  */
 export const attendeeImportSummarySchema = z.object({
   /** Rows written for the first time. */
@@ -189,6 +190,12 @@ export const attendeeImportSummarySchema = z.object({
   skipped_no_email: integerSchema.min(0),
   /** Rows belonging to somebody who has already claimed; left untouched. */
   skipped_already_claimed: integerSchema.min(0),
+  /**
+   * Rows matching an existing, active SmartCard account — auto-claimed
+   * immediately with no click, per 20260903140000's owner decision. A subset
+   * of `imported`/`updated`, not additional to them.
+   */
+  matched_existing_accounts: integerSchema.min(0),
 });
 
 export type AttendeeImportSummary = z.infer<typeof attendeeImportSummarySchema>;
