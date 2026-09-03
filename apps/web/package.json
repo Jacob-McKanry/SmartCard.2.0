@@ -28,7 +28,9 @@
     "qrcode.react": "^4.2.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "resend": "^6.25.0",
     "server-only": "^0.0.1",
+    "svix": "^2.2.0",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
