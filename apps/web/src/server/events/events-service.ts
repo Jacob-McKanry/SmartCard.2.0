@@ -1025,8 +1025,13 @@ export async function decideRsvp(
  * some shapes, a one-element array). Normalising it here keeps every caller
  * from having to know which, and keeps `BrowseEventItem` a flat, predictable
  * shape for whoever builds the UI.
+ *
+ * Exported for `attended-events-service.ts`'s `listOwnAttendedEvents`, which
+ * needs the identical normalisation for the same embedded `cities!inner(...)`
+ * shape — still "Internal" in the sense that nothing outside this package's
+ * own event services should reach for it.
  */
-function splitEmbeddedCity(row: Record<string, unknown>): BrowseEventItem {
+export function splitEmbeddedCity(row: Record<string, unknown>): BrowseEventItem {
   const { cities, ...event } = row;
   const city = (Array.isArray(cities) ? cities[0] : cities) as BrowseEventItem["city"];
   return { event: event as unknown as EventRow, city };

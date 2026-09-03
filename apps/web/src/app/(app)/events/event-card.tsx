@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Lock } from "lucide-react";
+import { BadgeCheck, Lock } from "lucide-react";
 import type { RsvpStatus } from "@smartcard/types";
 
 import { BlurUpPhoto } from "@/components/blur-up-photo";
@@ -66,6 +66,17 @@ export interface EventCardProps {
    * before this field existed.
    */
   isDraft: boolean;
+  /**
+   * The caller holds a CLAIMED `event_attendee_imports` row for this event —
+   * the same fact `AttendedNote` on the event detail page renders as "You
+   * were on the guest list for this event", surfaced here for the "My
+   * events" → Attending list (`./mine/page.tsx`), which is the one place a
+   * claimed-but-not-RSVP'd event needs to say why it's in the list at all.
+   * Independent of `ownStatus`: a claimed guest can hold any RSVP status, or
+   * none, for the identical reason `AttendedNote` never reads `ownRsvp`
+   * (§2.4 of the import design — see that component's own header).
+   */
+  attendedViaGuestList: boolean;
 }
 
 export function EventCard(props: EventCardProps) {
@@ -166,6 +177,23 @@ export function EventCard(props: EventCardProps) {
             >
               <Lock size={10} strokeWidth={2.4} aria-hidden />
               Private
+            </span>
+          ) : null}
+          {/*
+           * Same accent used by `AttendedNote` on the detail page for the
+           * identical fact, so the two read as one claim rather than two.
+           * Never paired with `isHosting` in practice (a host's own event
+           * cannot also be a claimed guest-list row for them), but each stays
+           * its own boolean rather than folded into one enum, matching how
+           * `isCancelled`/`isDraft` are already shaped.
+           */}
+          {props.attendedViaGuestList ? (
+            <span
+              className="flex items-center gap-1 rounded-full px-[9px] py-[5px] text-[10px] leading-[13px] font-semibold text-white"
+              style={{ background: "var(--sc-accent-deep)", backdropFilter: "blur(10px)" }}
+            >
+              <BadgeCheck size={10} strokeWidth={2.4} aria-hidden />
+              Guest list
             </span>
           ) : null}
         </span>

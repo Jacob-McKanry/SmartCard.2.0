@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CalendarRange, Plus } from "lucide-react";
+import { CalendarRange, Plus, User } from "lucide-react";
 import type { CityRow, RsvpStatus } from "@smartcard/types";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
@@ -153,14 +153,28 @@ export default async function EventsPage({
             {countLine(cards.length, when, selectedCity)}
           </p>
         </div>
-        <Link
-          href="/events/new"
-          className="flex min-h-11 shrink-0 items-center gap-[7px] rounded-full px-[17px] text-[13px] leading-[17px] font-semibold"
-          style={NEUTRAL_BUTTON}
-        >
-          <Plus size={15} strokeWidth={2.2} aria-hidden />
-          Host
-        </Link>
+        <span className="flex shrink-0 items-center gap-2">
+          <Link
+            href="/events/mine"
+            className="flex min-h-11 items-center gap-[7px] rounded-full border px-[15px] text-[13px] leading-[17px] font-semibold"
+            style={{
+              background: "rgba(255,255,255,.65)",
+              borderColor: "rgba(13,18,32,.12)",
+              color: "var(--sc-text)",
+            }}
+          >
+            <User size={15} strokeWidth={2.2} aria-hidden />
+            My events
+          </Link>
+          <Link
+            href="/events/new"
+            className="flex min-h-11 items-center gap-[7px] rounded-full px-[17px] text-[13px] leading-[17px] font-semibold"
+            style={NEUTRAL_BUTTON}
+          >
+            <Plus size={15} strokeWidth={2.2} aria-hidden />
+            Host
+          </Link>
+        </span>
       </header>
 
       <HostApplyBanner verified={verifiedHost} application={hostApplication} />
@@ -237,6 +251,10 @@ async function buildCard(
     isHosting: item.event.host_user_id === userId,
     isCancelled: item.event.status === "cancelled",
     isDraft: item.event.status === "draft",
+    // Browse's own ownItems union never includes claimed-import rows (see
+    // this file's header) — that half of "my events" lives on
+    // `/events/mine` instead, so this is always false here.
+    attendedViaGuestList: false,
     coverUrl,
     counts,
     // The ids in `connectionsAttending` stop here. See rule 3 in
