@@ -65,7 +65,10 @@
         // Required (env.ts's emailMailingAddress()) — CAN-SPAM's physical
         // address requirement. Stripped here, the send module throws on
         // every attempt rather than shipping a compliance gap silently.
-        "EMAIL_MAILING_ADDRESS"
+        "EMAIL_MAILING_ADDRESS",
+        // Required (env.ts's cronSecret()) — stripped here, every Vercel
+        // Cron call to /api/cron/send-claim-emails 500s instead of running.
+        "CRON_SECRET"
       ]
     },
     "lint": {
