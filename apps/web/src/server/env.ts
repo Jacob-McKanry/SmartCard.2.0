@@ -388,3 +388,24 @@ export function emailUnsubscribeSecret(): string {
     "Generate one: `openssl rand -base64 32`. Server-side only — anyone holding it can forge an unsubscribe link for any address.",
   );
 }
+
+/**
+ * The physical mailing address CAN-SPAM requires in every commercial email
+ * (`apps/web/src/server/email/claim-email.ts`'s footer). A business address,
+ * a registered agent address, or a PO box all satisfy the requirement — this
+ * module has no opinion on which, only that ONE is present.
+ *
+ * REQUIRED, and deliberately not defaulted to a placeholder string. A
+ * plausible-looking fake address would make `pnpm build` pass while shipping
+ * a real legal violation the moment the send module (a later slice) sends
+ * its first message — the kind of failure `required()`'s own module header
+ * exists to convert into "a missing variable fails closed, immediately and
+ * legibly" instead.
+ */
+export function emailMailingAddress(): string {
+  return required(
+    "EMAIL_MAILING_ADDRESS",
+    "The physical address CAN-SPAM requires in every commercial email's footer — a business address, " +
+      "registered agent address, or PO box. One line, e.g. \"123 Main St, Suite 100, Springfield, ST 00000\".",
+  );
+}

@@ -61,7 +61,11 @@
         // instead of being caught here.
         "RESEND_API_KEY",
         "RESEND_WEBHOOK_SECRET",
-        "EMAIL_UNSUBSCRIBE_SECRET"
+        "EMAIL_UNSUBSCRIBE_SECRET",
+        // Required (env.ts's emailMailingAddress()) — CAN-SPAM's physical
+        // address requirement. Stripped here, the send module throws on
+        // every attempt rather than shipping a compliance gap silently.
+        "EMAIL_MAILING_ADDRESS"
       ]
     },
     "lint": {
