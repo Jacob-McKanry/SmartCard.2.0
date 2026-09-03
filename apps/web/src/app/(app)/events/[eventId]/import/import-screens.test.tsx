@@ -251,6 +251,7 @@ describe("the result screen", () => {
     updated: 5,
     skipped_no_email: 2,
     skipped_already_claimed: 9,
+    matched_existing_accounts: 0,
   };
 
   it("reports added and updated separately", () => {
@@ -263,6 +264,25 @@ describe("the result screen", () => {
     expect(markup).toContain("137");
     expect(markup).toContain("Updated");
     expect(markup).toContain("142 guests on the list");
+  });
+
+  it("shows how many already had accounts, as a count, when there are any", () => {
+    const markup = renderToStaticMarkup(
+      <ImportDone
+        eventId="event-1"
+        summary={{ ...SUMMARY, matched_existing_accounts: 4 }}
+        onImportAnother={() => {}}
+      />,
+    );
+    expect(markup).toContain("4");
+    expect(markup).toContain("Already had an account");
+  });
+
+  it("hides the already-had-an-account row entirely when nobody matched", () => {
+    const markup = renderToStaticMarkup(
+      <ImportDone eventId="event-1" summary={SUMMARY} onImportAnother={() => {}} />,
+    );
+    expect(markup).not.toContain("Already had an account");
   });
 
   it("offers no way to see WHO already claimed", () => {
@@ -303,14 +323,23 @@ describe("the result screen", () => {
     expect(markup).toMatch(/send/i);
   });
 
-  it("does not claim anybody was emailed, because nothing was", () => {
-    // §7: never imply a capability that does not exist. The email phase is not
-    // built, and a host who believes it ran will not send anything themselves.
+  it("neither claims certainty that emails were sent nor denies the capability exists", () => {
+    // §7 cuts both ways, and which side of it applies here changed on
+    // 2026-09-03: the email phase (`docs/architecture/2026-09-02-event-invite-email.md`)
+    // is now real, but this screen renders synchronously at the end of the
+    // import request, before any cron run or manual trigger has necessarily
+    // fired — so it cannot honestly claim either "nobody has been emailed"
+    // (the old assertion here, true only before Phase 1-4 existed) or
+    // "your guests have been emailed" (asserting a fact this screen has no
+    // way to know yet). It says "may", and still points at the manual links
+    // as the fallback for anyone who does not get one.
     const markup = renderToStaticMarkup(
       <ImportDone eventId="event-1" summary={SUMMARY} onImportAnother={() => {}} />,
     );
 
-    expect(markup).toMatch(/Nobody has been emailed yet/i);
+    expect(markup).not.toMatch(/nobody has been emailed/i);
+    expect(markup).not.toMatch(/we can'?t send mail/i);
+    expect(markup).toMatch(/may get an emailed claim link/i);
   });
 
   it("does not describe an import as making connections", () => {

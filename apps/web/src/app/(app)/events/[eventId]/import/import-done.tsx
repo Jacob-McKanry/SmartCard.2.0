@@ -21,6 +21,8 @@ import { GLASS, PRIMARY_BUTTON, SECONDARY_BUTTON } from "../../lib/surfaces";
  * would tell the host which of their guests hold SmartCard accounts — a fact
  * about those people, not about the host's own file, and not one they gave the
  * host. The copy below says what the number means without offering a list.
+ * `matched_existing_accounts` (20260903140000) is the same shape of
+ * disclosure for the same reason — a count, never a list of who.
  *
  * STILL NO "WHO WAS IMPORTED" LINK, AND THE LINKS SCREEN IS NOT ONE. The
  * "Send claim links" button below goes to a list of guests who have NOT
@@ -79,6 +81,13 @@ export function ImportDone({
               hint="Already claimed their profile, so it's theirs to edit now, not yours to overwrite."
             />
           ) : null}
+          {summary.matched_existing_accounts > 0 ? (
+            <Row
+              label="Already had an account"
+              value={summary.matched_existing_accounts}
+              hint="Recorded as attending automatically — no link to send them."
+            />
+          ) : null}
         </dl>
       </div>
 
@@ -86,9 +95,9 @@ export function ImportDone({
         className="max-w-[54ch] text-[13px] leading-[19px]"
         style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
       >
-        Nobody has been emailed yet — we can&rsquo;t send mail for you yet, so their claim links
-        are on the next screen for you to send yourself. Nobody has been connected to anybody
-        either: importing records that someone attended, and connections still only happen in
+        Guests may get an emailed claim link automatically; the links on the next screen are also
+        there for you to send yourself, for anyone who doesn&rsquo;t. Nobody has been connected to
+        anybody: importing records that someone attended, and connections still only happen in
         person.
       </p>
 

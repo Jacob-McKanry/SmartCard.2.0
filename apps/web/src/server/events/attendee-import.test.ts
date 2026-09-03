@@ -83,6 +83,7 @@ const SUMMARY = {
   updated: 1,
   skipped_no_email: 2,
   skipped_already_claimed: 1,
+  matched_existing_accounts: 0,
 };
 
 // ---------------------------------------------------------------------------
