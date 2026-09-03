@@ -883,3 +883,125 @@ guard was separately mutation-tested — removed, confirmed a deleted
 account's row got incorrectly auto-claimed, and the real deployed function
 was re-checked to still carry the guard (the mutation ran in its own
 rolled-back transaction and never touched it).
+
+### 11.10 A claimed guest could not actually see the event they claimed — pre-existing bug, found live testing §11.9, fixed 2026-09-03
+
+Testing §11.9 against a real account surfaced a 404: a caller auto-claimed
+into a PRIVATE event with no RSVP and no invite could not open that event's
+own page. Tracing it back, neither `private.can_see_event()` nor the
+`events` table's own SELECT policy (20260901120000) has ever had a branch
+for "you hold a CLAIMED `event_attendee_imports` row for this event" — only
+four branches existed: public+scheduled, host, RSVP'd, invited.
+
+**This bug predates §11.9 and auto-attach did not create it.** §4.2's last
+step for the ORDINARY, manual, click-the-emailed-link claim flow — built and
+verified 2026-08-28 (§11.1.6) — is "land on the event." Anyone who claimed a
+private event's guest-list row with no RSVP and no invite has been hitting
+this exact 404 since that date. Nothing at the time exposed it: every
+scenario verified in §11.1.6/§11.1.7 happened to also have, or not need, one
+of the four existing branches. Auto-attach is what surfaced it in
+practice — a claim with no click and no chance to RSVP first — not what
+introduced it.
+
+**The fix, `20260903150000_grant_event_visibility_to_claimed_import_attendees.sql`,
+adds a fifth branch in two places, both needed:**
+
+- The `events` policy gained a branch calling a new
+  `private.has_claimed_import_for_event(uuid)` helper, rather than a bare
+  `exists (select 1 from event_attendee_imports ...)` — that table has zero
+  grants to `authenticated` (20260827130000; RLS is forced with no policy at
+  all), so referencing it directly from the policy would fail with a
+  permission error for every ordinary caller. The helper is `security
+  definer` for the same reason every other RLS helper in this schema is.
+  It is a *new* helper rather than a call to `can_see_event()` itself
+  because `can_see_event()` queries `public.events` as its own outer FROM
+  clause — the exact self-reference shape 20260901120000 diagnosed: a
+  policy on `events` calling a function that re-queries `events` breaks
+  `INSERT ... RETURNING`, because the freshly-inserted row is invisible to
+  the nested function's own separate scan within the same command. The
+  `events` policy stays inlined, as 20260901120000 left it, and the new
+  branch calls the narrow helper instead.
+- `can_see_event()` itself also gained the identical branch (querying
+  `event_attendee_imports` directly — it is already `security definer`, so
+  it needs no separate helper). It gates three other things besides the
+  `events` policy: the RSVP write path, the event-cover storage policy, and
+  `event_attendance_counts`. Fixing only the table policy would have
+  stopped the 404 but left a claimed attendee looking at a page with a
+  missing cover image and refused attendance counts.
+
+**What this grants and what it still forbids.** A caller with a CLAIMED
+`event_attendee_imports` row for an event can now see that event, request
+its attendance counts, read its cover image, and RSVP to or withdraw from
+it — the same things a host, RSVP'd, or invited caller could already do for
+an event they can see. An UNCLAIMED (pending) row still grants nobody
+anything — there is no viewer to grant it to until the row is claimed. A
+stranger with none of the five relationships still cannot see the event.
+
+**Verified live** in a rolled-back transaction before applying, across six
+scenarios: a claimed attendee can SELECT a private event they were not
+invited to or RSVP'd for; a stranger with none of the five relationships
+still cannot; `can_see_event()` agrees in both directions; the attendance-
+counts RPC now succeeds for the claimed attendee instead of refusing; a
+fresh `INSERT ... RETURNING` on `events` still works (the identical
+self-reference regression check 20260901120000 used); an unclaimed pending
+row grants nobody visibility. Re-verified against the deployed function and
+policy after applying, including against the real account/event pair that
+surfaced the bug.
+
+### 11.11 "My events" — Hosting/Attending list screen, and `listOwnAttendedEvents` — 2026-09-03
+
+§11.1.7's `own_attended_events()` had exactly one reader before this: the
+per-event "you were on the guest list" note (`AttendedNote`), which answers
+"was I on the list for THIS event" for someone already on its page. Nothing
+answered "which events, across all of them, am I on the list for" —
+`event_attendee_imports.claimed_by_user_id` had no list screen at all,
+which is what made §11.10's bug hard for the owner to even describe ("I
+did not see any events marked as attended" — there was nowhere to look).
+
+`listOwnAttendedEvents` (`attended-events-service.ts`) is the full-row
+counterpart to `listOwnAttendedEventIds`: same RPC, same caller-scoped
+guarantee, but it returns the events themselves (for a list screen to
+render) rather than a decoration `Set`, and it **throws** on failure rather
+than failing closed to `[]` — the opposite posture from its sibling, and
+deliberately so. `listOwnAttendedEventIds` decorates one event page with a
+nice-to-have note, so swallowing an error into "show nothing" is the safe
+direction. `listOwnAttendedEvents` *is* the list a whole screen renders; an
+empty result there is a real, meaningful answer ("you haven't claimed
+anything"), and silently showing that same empty list on a transport
+failure would tell someone their attendance history is blank when the
+truth is that the read failed — the wrong direction to be wrong in for a
+list a person might actually check. `list_own_import_links`'s own service
+function draws the identical distinction for the identical reason.
+
+`apps/web/src/app/(app)/events/mine/page.tsx` is a new route, deliberately
+separate from `/events` rather than a third tab bolted onto it — that
+page's own header explains at length why its list stays "public + your own
+reachable-no-other-way" and nothing wider (§7 of this document). "My
+events" answers a different question — everything the caller has hosted or
+attended, any city, any time — from a source `/events` does not merge in.
+
+- **Hosting tab** is `listHostedEvents`, unchanged.
+- **Attending tab** is `listAttendingEvents` (RSVP'd) unioned with
+  `listOwnAttendedEvents` (claimed guest-list rows), deduped by event id in
+  a new pure helper, `lib/mine-list.ts`'s `mergeAttendingList` — the same
+  shape as `lib/browse-list.ts`'s `mergeBrowseList`, and tested the same
+  way (`mine-list.test.ts`, mirroring `browse-list.test.ts`). The two facts
+  are kept **separate, never collapsed into one status**: §2.4 of this
+  document is explicit that "events I attended" was kept out of the RSVP
+  status enum on purpose, and an event can legitimately carry both — an
+  RSVP'd row that is *also* a claimed guest-list row shows both the stored
+  RSVP pill and a "Guest list" badge, neither invented for the other.
+- `EventCard` gained one new required boolean, `attendedViaGuestList`,
+  rendering a small "Guest list" badge in the same accent used by
+  `AttendedNote` for the identical fact, so the two read as one claim
+  rather than two. It is `false` everywhere else this component is used
+  (`/events`'s own browse screen does not merge claimed-import rows into
+  its list at all — see that page's header — so the prop is always `false`
+  there).
+- A "My events" link was added to `/events`'s header as the entry point;
+  nothing else on that page changed.
+
+No new grant, policy, or RPC — both queries either function reuses
+(`listAttendingEvents`, `listHostedEvents`, `own_attended_events()`) already
+existed and were already scoped to the caller by RLS. This is a read and a
+merge, not a new access decision.
