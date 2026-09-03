@@ -77,7 +77,6 @@ All three (`RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`
 ## 3. What Phase 1 does NOT include yet
 
 - Domain verification of `invites.smartcard.tech` in Resend's dashboard, and the SPF/DKIM/DMARC DNS records that follow from it — this needs the owner's own Resend account and DNS access, tracked outside this repo.
-- `emailed_at`/`email_error` on `event_attendee_imports` (Phase 2).
 - The send module itself, and its trigger point inside `importEventAttendees` (Phase 3).
 - The queued-delivery job (Phase 4).
 - Any change to the interim `/events/[eventId]/import/links` screen — it stays the fallback for a failed send, per the original interim-screen decision (§11.5 of the import doc), not removed by this phase.
@@ -94,5 +93,12 @@ All three (`RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`
 | Resend bounce/complaint webhook | `apps/web/src/app/api/webhooks/resend/route.ts` | Built |
 | Public unsubscribe endpoint | `apps/web/src/app/api/unsubscribe/route.ts` | Built |
 | `RESEND_API_KEY` / `RESEND_WEBHOOK_SECRET` / `EMAIL_UNSUBSCRIBE_SECRET` | `env.ts`, `.env.example`, `turbo.json` | Built |
+| `emailed_at`/`email_error` on `event_attendee_imports`, `claim_event_import` widened | `20260902140000_event_attendee_imports_email_send_state.sql` | Applied and verified live — both columns persist a written value; claiming a row nulls both, re-read and confirmed after |
 
-Not yet done: Resend domain verification (owner action, outside this repo), Phases 2-5.
+Not yet done: Resend domain verification (owner action, outside this repo), Phases 3-5.
+
+### 4.1 Phase 2 — the schema, and why it changed nothing about §2.2's own logic
+
+Two nullable columns on `event_attendee_imports` (`emailed_at`, `email_error`) and one widened destruction list inside `claim_event_import` — see the migration's own header for what each column means and, as importantly, what it deliberately does not (`emailed_at` is not a delivery or open receipt; `email_error` is a send-attempt failure, never a bounce or complaint, which stay in `email_suppressions` instead). No RLS or grant changed: both columns are exactly as unreadable through any client role as the rest of this table already was, and the only future writer is the send job (Phase 3), using the service role.
+
+**Verified live** in a rolled-back transaction before applying: a row written with both columns set persists them on read-back; claiming that row (as the real matching, email-verified caller) nulls both alongside the rest of §2.2's list, confirmed by re-reading the row after the claim call returned `{claimed: true}`.
