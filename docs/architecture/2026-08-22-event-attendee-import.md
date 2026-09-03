@@ -73,6 +73,12 @@ expires_at            timestamptz not null       -- see 2.3
 unique (event_id, email)
 ```
 
+> **Extended 2026-09-02** (§11.7, full detail in
+> `2026-09-02-event-invite-email.md`): `emailed_at timestamptz` and
+> `email_error text`, both nullable, both nulled on claim alongside the rest
+> of §2.2's list below. Not shown in the block above to avoid restating a
+> schema this document did not originally define.
+
 ### 2.2 On claim, the personal data is destroyed
 
 When somebody claims their row, the fields they approved are copied into `users` / `social_links` — their own record, under their own control. The import row's copy is then **redundant**, and keeping redundant unconsented PII is the thing that turns a feature into a liability.
@@ -507,6 +513,28 @@ a non-admin is refused the applicant's photo; the pre-existing self-read policy
 is unaffected); `is_admin()` across 3 (admin reads true, non-admin reads
 false, `anon` is refused execution outright). Two mutations of the new
 TypeScript service confirmed red before the tests were trusted.
+
+### 11.7 §5 (email) begun — 2026-09-02, see its own document
+
+§5 said email was scoped as its own phase and did not block the import work.
+That phase now has its own document,
+`docs/architecture/2026-09-02-event-invite-email.md` — full reasoning lives
+there rather than duplicated here. Two changes so far touch THIS document's
+own schema and are recorded here for that reason:
+
+- `event_attendee_imports` gained `emailed_at`/`email_error`
+  (20260902140000) — when the send job hands a row's email to Resend, and its
+  last send-attempt failure. Neither is a bounce or complaint; those go to
+  the new `email_suppressions` table instead, keyed on the address rather
+  than on any one import.
+- `claim_event_import`'s §2.2 destruction list was widened to null both new
+  columns on claim, for the same reason the rest of that list exists:
+  `email_error` can echo the recipient's own address back inside a
+  provider's error text.
+
+Not yet touched: `import_event_attendees`, `get_claimable_import`, or
+anything else this document already describes. The email phase's own
+document tracks what is and is not built from here.
 
 ### 11.1.7 C5 — `own_attended_events()` and the event-page note — built 2026-08-28
 
