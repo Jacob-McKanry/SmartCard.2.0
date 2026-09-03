@@ -409,3 +409,22 @@ export function emailMailingAddress(): string {
       "registered agent address, or PO box. One line, e.g. \"123 Main St, Suite 100, Springfield, ST 00000\".",
   );
 }
+
+/**
+ * Shared secret proving a request to `/api/cron/send-claim-emails` actually
+ * came from Vercel Cron and not from anyone who found the route's path.
+ * Vercel sends `Authorization: Bearer <this value>` automatically once it is
+ * set as a project env var and the route is declared in `vercel.json`.
+ *
+ * REQUIRED. This route claims and sends real email on every successful call
+ * — an unauthenticated version of it would let anyone trigger sends (or, by
+ * calling it in a tight loop, exhaust the per-run batch on rows that would
+ * otherwise go to a legitimate scheduled run) merely by knowing the path.
+ */
+export function cronSecret(): string {
+  return required(
+    "CRON_SECRET",
+    "Generate one: `openssl rand -base64 24`. Set the SAME value as a Vercel project env var — Vercel Cron " +
+      "sends it back as `Authorization: Bearer <value>` on every scheduled request.",
+  );
+}

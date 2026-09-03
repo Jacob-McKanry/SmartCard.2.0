@@ -1,7 +1,7 @@
 # Event-invite email — Resend integration
 
 **Date:** 2026-09-02
-**Status:** Owner-approved plan (chat sign-off, 2026-09-02) for the three decisions §0 below records; Phases 1-3 built (§4), Resend domain verification done by the owner, Phase 4 (trigger + queue) next.
+**Status:** Owner-approved plan (chat sign-off, 2026-09-02) for the three decisions §0 below records; Phases 1-4 built (§4). Phase 5 (a real live send) next.
 **Scope:** `2026-08-22-event-attendee-import.md` §5 scoped email as its own phase and did not schedule it. This document is that phase: sending the claim-link email a CSV import writes a `lookup_token` for but currently has no way to deliver, per §11.5's "interim, pending §5" note on `list_own_import_links`.
 
 ---
@@ -21,7 +21,7 @@ Per CLAUDE.md's "Plan before building," these were put to the owner as multiple-
 1. **Deliverability foundation** (§4, done) — Resend account/API key, `invites.smartcard.tech` domain verification (SPF/DKIM/DMARC), a do-not-mail list, a bounce/complaint webhook, one-click unsubscribe. §5 of the import doc lists all of this as required *before* any bulk send, not optional hardening.
 2. **Schema** (§4, done) — `emailed_at`/`email_error` on `event_attendee_imports`, checked against the suppression list before a send.
 3. **Send module** (§4, done) — one function, send one claim email. Its content builder and Resend call are the reusable unit; see §4.2 for why the trigger itself moved to Phase 4 rather than being wired into `importEventAttendees` here as originally planned.
-4. **Queued delivery** — `event_import_max_rows` is 5,000 (`app_config`), so sending cannot happen synchronously inside the Server Action that imports a file. A "pending send" queue drained by a scheduled job, calling Phase 3's send function in a loop, rather than blocking the host's request on up to 5,000 individual sends with no resumability if it fails partway. This phase now also owns the trigger itself — see §4.2.
+4. **Queued delivery** (§4, done) — `event_import_max_rows` is 5,000 (`app_config`), so sending cannot happen synchronously inside the Server Action that imports a file. A "pending send" queue drained by a scheduled job, calling Phase 3's send function in concurrent chunks, rather than blocking the host's request on up to 5,000 individual sends with no resumability if it fails partway. This phase also owns the trigger itself — see §4.2. See §4.3 for a real constraint (the Vercel plan) found while building this, and what it means for actual send speed.
 5. **Live test** — a real send to an address under our control, confirming DKIM/SPF pass and inbox delivery, then a click-through of claim → signup → the attendance note.
 
 ---
@@ -74,13 +74,13 @@ All three (`RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`
 
 ---
 
-## 3. What is still NOT built after Phase 3
+## 3. What is still NOT built after Phase 4
 
-- The trigger and the queue that actually call `sendClaimEmail` — nothing in the app calls it yet. See §4.2 for why this moved into Phase 4 as one piece of work rather than being split across Phase 3 and Phase 4 as originally planned.
-- Phase 5's live send test.
+- Phase 5's live send test — nobody has yet confirmed a real email actually lands in a real inbox with DKIM/SPF passing.
 - Any change to the interim `/events/[eventId]/import/links` screen — it stays the fallback for a failed send, per the original interim-screen decision (§11.5 of the import doc), not removed by this phase.
+- A manual-trigger UI for the cron route — §4.3 notes the route is safely callable at any time with `CRON_SECRET`, but nothing in the app exposes that to a host yet; today it is an operator action (curl, or a request from wherever `CRON_SECRET` is available), not a button.
 
-Domain verification of `invites.smartcard.tech` (SPF/DKIM/DMARC) and setting `RESEND_API_KEY`/`RESEND_WEBHOOK_SECRET`/`EMAIL_UNSUBSCRIBE_SECRET` in Vercel are both owner-confirmed done as of this phase. `EMAIL_MAILING_ADDRESS` still needs to be set with the owner's real address before Phase 4 can send anything for real.
+Domain verification, `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, and `EMAIL_UNSUBSCRIBE_SECRET` are all owner-confirmed set. `EMAIL_MAILING_ADDRESS` and `CRON_SECRET` still need to be generated/set before anything in Phase 4 can run for real — see §4 for exactly which.
 
 ---
 
@@ -98,8 +98,13 @@ Domain verification of `invites.smartcard.tech` (SPF/DKIM/DMARC) and setting `RE
 | Claim-email content builder | `apps/web/src/server/email/claim-email.ts` | Built, tested — including a copy-rule test asserting "attended" never appears, matching `claim-review.test.tsx`'s own rule |
 | Per-row send + write-back | `apps/web/src/server/email/send-claim-email.ts` | Built, tested; suppression-skip path mutation-tested (confirmed red before restoring) |
 | `EMAIL_MAILING_ADDRESS` (CAN-SPAM) | `env.ts`, `.env.example`, `turbo.json` | Built — required, no placeholder default; owner still needs to set the real value in Vercel |
+| `claim_pending_claim_emails` (atomic batch claim) | `20260903120000_fn_claim_pending_claim_emails.sql` | Applied and verified live — 7 scenarios including FIFO ordering, lease-based reclaim after 10 minutes, a real `email_error` never reclaimed, `authenticated`/`anon` refused execution |
+| Batch runner (concurrent chunks) | `apps/web/src/server/email/pending-claim-emails.ts` | Built, tested; concurrency-bound mutation-tested (an unbounded-`Promise.all` mutation confirmed red before restoring) |
+| Cron route | `apps/web/src/app/api/cron/send-claim-emails/route.ts`, `apps/web/vercel.json` | Built — see §4.3 for the schedule and `maxDuration` choices |
+| `email_send_batch_size` correction + `email_send_concurrency` | `20260903130000_email_send_batch_size_hobby_correction.sql` | Applied and verified live |
+| `CRON_SECRET` | `env.ts`, `.env.example`, `turbo.json` | Built |
 
-Not yet done: Resend domain verification (owner-confirmed done, per chat), the trigger and queue that actually call `sendClaimEmail` at scale (Phase 4), Phase 5's live send test.
+Not yet done: Phase 5's live send test. Domain verification, `RESEND_API_KEY`/`RESEND_WEBHOOK_SECRET`/`EMAIL_UNSUBSCRIBE_SECRET`/`EMAIL_MAILING_ADDRESS` are all owner-confirmed set; `CRON_SECRET` still needs to be generated and set in Vercel before the cron route will authorize any request.
 
 ### 4.1 Phase 2 — the schema, and why it changed nothing about §2.2's own logic
 
@@ -116,3 +121,25 @@ Two nullable columns on `event_attendee_imports` (`emailed_at`, `email_error`) a
 **One new required secret: `EMAIL_MAILING_ADDRESS`.** CAN-SPAM requires a real physical address in every commercial email, and nothing in this codebase had one configured anywhere — not something to fabricate, so it was asked of the owner directly (in chat, not through `AskUserQuestion`, since a free-text address has no second meaningful choice to present). `env.ts`'s `emailMailingAddress()` follows the same `required()` shape as `resendWebhookSecret()`: no placeholder default, because a plausible-looking fake address would make the build pass while shipping a real legal violation the moment the send module sends its first message.
 
 **Verified with tests, not a rolled-back transaction — this phase touches no schema or RLS.** `claim-email.test.ts` asserts the subject line matches §2.3.1's own example phrasing exactly, that neither the subject nor either body ever contains "attended," and that an event title containing HTML is entity-escaped rather than injected into the message. `send-claim-email.test.ts` covers: a suppressed address never reaches Resend at all; a successful send records `emailed_at` and clears `email_error`; a Resend-side failure records the error message and returns `failed` rather than throwing; a write-back failure is logged and swallowed rather than thrown, because the send already happened by that point and aborting would be the wrong direction to fail; and the `List-Unsubscribe`/`List-Unsubscribe-Post` headers point at the same signed link the email body uses. The suppression-skip check was additionally mutation-tested — commented out, confirmed the test suite went red, restored — since it is the one line standing between this module and mailing an address that already asked to be left alone.
+
+### 4.3 Phase 4 — the trigger and the queue, and a real constraint found building it
+
+**What got built.** `claim_pending_claim_emails(p_limit)` (migration) atomically claims a batch of pending rows — `FOR UPDATE SKIP LOCKED` inside a CTE feeding an `UPDATE ... RETURNING`, so two overlapping cron runs can never claim the same row, matching the race-safety this codebase already applies to `claim_event_import` and `cancel_event`. `pending-claim-emails.ts`'s `runPendingClaimEmailBatch` claims a batch, loads each distinct event's title/host once, and calls Phase 3's `sendClaimEmail` in concurrent chunks. `/api/cron/send-claim-emails` is the thin HTTP shell: verify `Authorization: Bearer <CRON_SECRET>`, construct a Resend client if `resendApiKey()` is set, call the batch runner, report counts.
+
+**A real constraint, found wiring the cron route rather than assumed in §1's plan: this project's Vercel team is on the Hobby plan.** Confirmed via `list_teams` while building this phase, not something the original plan anticipated. Two Hobby limits mattered immediately:
+
+- **A function (cron included) is capped at 10 seconds**, full stop — `export const maxDuration` in the route cannot raise this on Hobby, it only documents the ceiling for when the plan changes.
+- **Cron frequency is capped at once per day**, and Hobby may fire anywhere within the scheduled hour rather than at the exact minute.
+
+The original Phase 3 write-up (and 20260903120000's own first draft of `email_send_batch_size`, seeded at 50) reasoned only about Resend's rate limit and never checked the actual time budget. Two changes followed directly from finding this:
+
+1. **`runPendingClaimEmailBatch` sends in concurrent chunks (`Promise.all`), not one row at a time.** Each row's send is I/O-bound — a suppression-check read, a Resend call, a write-back, three round trips — so sequential awaits would have blown through 10 seconds on network latency alone even for a modest batch. `email_send_concurrency` (new `app_config` row, 5) bounds the chunk size: enough to fit inside 10 seconds, low enough to stay clear of Resend's 10 req/sec team-wide limit even with the extra Supabase calls layered on top. Tested by tracking the actual number of concurrent `emails.send` calls in flight, not just the eventual totals — a test that only checked totals passed against a version with the concurrency bound removed entirely, which the mutation-testing pass caught and is why the stronger assertion exists.
+2. **`email_send_batch_size` was corrected from 50 to 15** (`20260903130000`), matching what 5-way concurrency can realistically clear inside 10 seconds (three sequential chunks), with the reasoning and the correction itself recorded in that migration's own header rather than silently overwriting the first number.
+
+**What this means for the product, stated plainly rather than left for someone to discover later.** At most `email_send_batch_size` sends per day, once per day, on the current plan — roughly 15/day at today's settings. §2.3.1 of the import design calls a real guest list "hundreds"; at 15/day, a 200-person list takes on the order of two weeks to fully email automatically. This is not something Phase 4 works around silently:
+
+- The cron route is safely callable manually at any time with `CRON_SECRET` (it is not restricted to Vercel's own scheduler), so a host who wants faster delivery right after an import can be given that as a manual trigger while the daily cron remains the automatic safety net.
+- The interim `/events/[eventId]/import/links` copy-link screen (§11.5 of the import doc) is still there and still works today, independent of any of this.
+- Moving the Vercel team to a paid plan raises both the 10-second ceiling and the once-a-day cron limit together, which is the actual fix if faster automatic delivery matters — an infrastructure/cost decision for the owner, not one this migration or this phase makes on their behalf.
+
+**Verified live** in a rolled-back transaction before applying `20260903120000`: `authenticated` and `anon` are both refused execution of `claim_pending_claim_emails` outright; claiming 2 of 3 pending rows returns the two oldest by `imported_at` and stamps `email_send_claimed_at` on exactly those two; an immediate second claim does not re-claim the freshly-leased rows and returns the one left; a third call with nothing pending returns zero rows; a lease manually backdated past 10 minutes becomes reclaimable; a row carrying a real `email_error` is never reclaimed regardless of lease state; `claim_event_import`'s own definition was confirmed to null `email_send_claimed_at` in its destruction UPDATE. Re-verified against the deployed function and grants after applying. `20260903130000`'s config correction was verified the same way before being applied for real.
