@@ -6,6 +6,7 @@ import {
   detectColumnMapping,
   normaliseImportRows,
   normaliseSocialHandle,
+  splitFullName,
   summariseStatusValues,
 } from "./attendee-import";
 
@@ -84,6 +85,55 @@ describe("detectColumnMapping", () => {
     const mapping = detectColumnMapping(["Dietary requirements", "T-shirt size"]);
     expect(mapping["Dietary requirements"]).toBe(IGNORE_COLUMN);
     expect(mapping["T-shirt size"]).toBe(IGNORE_COLUMN);
+  });
+
+  it("maps a combined name column to full_name when there is no separate first/last name", () => {
+    for (const header of ["Guest Name", "Name", "Full Name", "Attendee Name", "Contact Name"]) {
+      const mapping = detectColumnMapping(["Email", header]);
+      expect(mapping[header]).toBe("full_name");
+    }
+  });
+
+  it("still prefers first_name/last_name over a combined column, regardless of which comes first in the file", () => {
+    // Same real-world shape as the Luma fixture above (name, first_name,
+    // last_name, in that order) — the generic column comes FIRST in the
+    // file, which is exactly the case a single-pass detector would get
+    // wrong. See detectColumnMapping's own comment for why this needs a
+    // second, whole-file pass rather than just processing order.
+    const mapping = detectColumnMapping(["Guest Name", "First Name", "Last Name", "Email"]);
+    expect(mapping["Guest Name"]).toBe(IGNORE_COLUMN);
+    expect(mapping["First Name"]).toBe("first_name");
+    expect(mapping["Last Name"]).toBe("last_name");
+  });
+
+  it("only claims the FIRST matching combined-name column, like every other field", () => {
+    const mapping = detectColumnMapping(["Email", "Guest Name", "Attendee Name"]);
+    expect(mapping["Guest Name"]).toBe("full_name");
+    expect(mapping["Attendee Name"]).toBe(IGNORE_COLUMN);
+  });
+});
+
+describe("splitFullName", () => {
+  it("splits on the first space", () => {
+    expect(splitFullName("Alex Rivera")).toEqual({ first: "Alex", last: "Rivera" });
+  });
+
+  it("keeps a multi-word surname intact by splitting on the FIRST space only", () => {
+    expect(splitFullName("Maria Garcia Lopez")).toEqual({ first: "Maria", last: "Garcia Lopez" });
+  });
+
+  it("has no last name for a single-word name", () => {
+    expect(splitFullName("Cher")).toEqual({ first: "Cher", last: null });
+  });
+
+  it("returns nulls for null, empty, or whitespace-only input", () => {
+    expect(splitFullName(null)).toEqual({ first: null, last: null });
+    expect(splitFullName("")).toEqual({ first: null, last: null });
+    expect(splitFullName("   ")).toEqual({ first: null, last: null });
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(splitFullName("  Alex   Rivera  ")).toEqual({ first: "Alex", last: "Rivera" });
   });
 });
 
@@ -309,5 +359,51 @@ describe("normaliseImportRows", () => {
     const totalSkipped = Object.values(result.skipped).reduce((a, b) => a + b, 0);
 
     expect(result.rows.length + totalSkipped).toBe(rows.length);
+  });
+});
+
+describe("normaliseImportRows with a combined name column", () => {
+  it("splits a mapped full_name column into first_name and last_name", () => {
+    const mapping = detectColumnMapping(["email", "Guest Name"]);
+    const result = normaliseImportRows(
+      [{ email: "a@x.co", "Guest Name": "Alex Rivera" }],
+      mapping,
+    );
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({ email: "a@x.co", first_name: "Alex", last_name: "Rivera" }),
+    ]);
+  });
+
+  it("leaves last_name null for a single-word combined name", () => {
+    const mapping = detectColumnMapping(["email", "Guest Name"]);
+    const result = normaliseImportRows(
+      [{ email: "a@x.co", "Guest Name": "Cher" }],
+      mapping,
+    );
+
+    expect(result.rows[0]).toEqual(
+      expect.objectContaining({ first_name: "Cher", last_name: null }),
+    );
+  });
+
+  it("prefers an explicit first_name/last_name column over the full_name split when a file somehow has both", () => {
+    // detectColumnMapping itself would never auto-produce this (full_name only
+    // fires when first_name is unclaimed by anything), but a host can still
+    // hand-edit the mapping screen into this shape, so normaliseImportRows
+    // has to have an answer for it too.
+    const mapping: Record<string, "email" | "first_name" | "last_name" | "full_name"> = {
+      email: "email",
+      "Guest Name": "full_name",
+      "Real First Name": "first_name",
+    };
+    const result = normaliseImportRows(
+      [{ email: "a@x.co", "Guest Name": "Alex Rivera", "Real First Name": "Alexandra" }],
+      mapping,
+    );
+
+    expect(result.rows[0]).toEqual(
+      expect.objectContaining({ first_name: "Alexandra", last_name: "Rivera" }),
+    );
   });
 });

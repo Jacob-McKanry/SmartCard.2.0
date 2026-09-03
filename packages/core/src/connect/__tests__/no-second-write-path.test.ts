@@ -276,6 +276,38 @@ describe("there is exactly one path that writes the social graph", () => {
         // fields collected in the same flow are written by the ordinary
         // RLS-bound path (`updateOwnProfile`), not by this one.
         join("apps", "web", "src", "server", "onboarding", "onboarding-service.ts"),
+        // Added 2026-09-02/03 with the event-invite email work
+        // (`docs/architecture/2026-09-02-event-invite-email.md`), by hand and
+        // with the reasoning written down, exactly as the two entries above.
+        //
+        // All three of these — the Resend bounce/complaint webhook, the
+        // public unsubscribe link, and the send-email cron route — share one
+        // reason for holding the service role, distinct from every earlier
+        // entry in this list: none of them run with a Supabase user session
+        // AT ALL. The earlier entries each work around a *specific* policy
+        // gap for a caller who does have — or is becoming — a real identity
+        // (no reader identity yet, a writer deliberately forbidden by grant).
+        // These three have no caller identity to have a gap in: a webhook
+        // call from Resend's own servers, a link clicked by someone who may
+        // never have signed up, and a scheduled job with no request at all.
+        // There is no `auth.uid()` any policy in this schema could be
+        // written against for any of them.
+        //
+        // What keeps each one honest is written at length in its own file:
+        // `/api/webhooks/resend/route.ts` verifies a Svix signature before
+        // reading a single field of the body; `/api/unsubscribe/route.ts`
+        // requires an HMAC-signed token naming the one address it may
+        // suppress; `/api/cron/send-claim-emails/route.ts` requires a bearer
+        // secret Vercel alone is configured to send. `email_suppressions`
+        // itself (20260902130000) is forced RLS with zero policies and zero
+        // grants, matching every other table this project's service-role
+        // callers touch — the migration's own header records the same
+        // "no identity, so no policy could be written" reasoning for why
+        // that table has no `security definer` RPC either, which is why
+        // these three reach past RLS instead of through one.
+        join("apps", "web", "src", "app", "api", "webhooks", "resend", "route.ts"),
+        join("apps", "web", "src", "app", "api", "unsubscribe", "route.ts"),
+        join("apps", "web", "src", "app", "api", "cron", "send-claim-emails", "route.ts"),
       ].sort(),
     );
   });

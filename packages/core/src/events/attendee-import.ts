@@ -32,11 +32,22 @@
  * lines in a test rather than a file fixture.
  */
 
-/** The fields an import row can carry. `email` is the only one that matters. */
+/**
+ * The fields an import row can carry. `email` is the only one that matters.
+ *
+ * `full_name` and `status` are both here despite neither being a literal
+ * `ImportRow` property — `status` drives classification (below) and
+ * `full_name` drives the first/last split (`splitFullName`) rather than being
+ * stored as typed. Grouped with the fields that ARE stored because a host
+ * picks all of them from the same list on the mapping screen; splitting the
+ * type by "gets stored verbatim" vs "gets consumed" would be a distinction
+ * only this file's own internals care about.
+ */
 export type ImportField =
   | "email"
   | "first_name"
   | "last_name"
+  | "full_name"
   | "phone_number"
   | "company_name"
   | "company_role"
@@ -123,11 +134,37 @@ const HEADER_PATTERNS: readonly (readonly [ImportField, RegExp])[] = [
 ];
 
 /**
+ * A single combined-name column — Luma's own `name`, or a host's own
+ * "Guest Name" / "Attendee Name". Deliberately NOT in `HEADER_PATTERNS`
+ * above: it is tried in a second pass, and only when nothing in the whole
+ * file already claimed `first_name` — see `detectColumnMapping`'s own
+ * comment for why this needs whole-file precedence rather than just
+ * processing order within one pass. `name`, `first_name` and `last_name` are
+ * genuinely three different columns in a real Luma export (verified against
+ * the real file `attendee-import.test.ts` keeps as a fixture), and the more
+ * specific pair must always win over the generic one, regardless of which
+ * column comes first in the file.
+ */
+const FULL_NAME_PATTERN = /^(name|full[_\s-]?name|guest[_\s-]?name|attendee[_\s-]?name|contact[_\s-]?name)$/i;
+
+/**
  * Best-guess assignment for each header in an uploaded file.
  *
  * A field is never suggested twice: the first header that matches `email`
  * wins, and a second email-ish column is left `ignore`. Two columns mapped to
  * one field would make the last one silently overwrite the first.
+ *
+ * `full_name` runs as a genuinely separate, later pass — not just later in
+ * `HEADER_PATTERNS` — because "later in one pass" only controls order WITHIN
+ * a single header's own list of candidate fields, not precedence ACROSS
+ * different headers in the file. A Luma export's real header order is
+ * `name, first_name, last_name, email, ...`: if `full_name` were just another
+ * entry in `HEADER_PATTERNS`, the `name` column (processed first) would claim
+ * `full_name` before `first_name`/`last_name` ever got a turn, even though
+ * they are the better answer. Running `full_name` only after the main pass,
+ * and only when it finds `first_name` still unclaimed by anything in the
+ * file, makes the precedence whole-file rather than accidentally
+ * order-dependent.
  */
 export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
   const mapping: Record<string, ColumnAssignment> = {};
@@ -149,7 +186,43 @@ export function detectColumnMapping(headers: readonly string[]): ColumnMapping {
     mapping[header] = assigned;
   }
 
+  if (!taken.has("first_name")) {
+    for (const header of headers) {
+      const trimmed = header.trim();
+      if (trimmed === "" || mapping[header] !== IGNORE_COLUMN) continue;
+      if (FULL_NAME_PATTERN.test(trimmed)) {
+        mapping[header] = "full_name";
+        break;
+      }
+    }
+  }
+
   return mapping;
+}
+
+/**
+ * Splits "Alex Rivera" into `{ first: "Alex", last: "Rivera" }` on the FIRST
+ * space only, so "Maria Garcia Lopez" becomes `{ first: "Maria", last:
+ * "Garcia Lopez" }` rather than losing the second surname. This is a split,
+ * not a name parser: a title ("Dr. Maria Garcia") or a multi-word first name
+ * ("Mary Ann Smith") will land wrong. Real exports vary too much — titles,
+ * cultural naming orders, single names — for anything cleverer to be
+ * reliably right, and §4.2 step 4 already exists for exactly this: every
+ * prefilled field is individually keepable, so a wrong split is a one-time
+ * guess the person corrects on their own claim screen, the same cost every
+ * other guessed field in this pipeline (`company_name`'s loose header match,
+ * say) already carries.
+ */
+export function splitFullName(raw: string | null): { first: string | null; last: string | null } {
+  if (raw === null) return { first: null, last: null };
+  const trimmed = raw.trim();
+  if (trimmed === "") return { first: null, last: null };
+
+  const spaceIndex = trimmed.indexOf(" ");
+  if (spaceIndex === -1) return { first: trimmed, last: null };
+
+  const last = trimmed.slice(spaceIndex + 1).trim();
+  return { first: trimmed.slice(0, spaceIndex), last: last === "" ? null : last };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,6 +338,7 @@ export function normaliseImportRows(
   const headers = {
     first_name: headerFor(mapping, "first_name"),
     last_name: headerFor(mapping, "last_name"),
+    full_name: headerFor(mapping, "full_name"),
     phone_number: headerFor(mapping, "phone_number"),
     company_name: headerFor(mapping, "company_name"),
     company_role: headerFor(mapping, "company_role"),
@@ -310,14 +384,23 @@ export function normaliseImportRows(
       normaliseSocialHandle("linkedin", cell(row, headers.linkedin)),
     ].filter((link): link is { platform: string; url: string } => link !== null);
 
+    // An explicit first_name/last_name column always wins over the split —
+    // it is a stronger signal than a guessed split of a combined column, the
+    // same "the more specific source wins" rule detectColumnMapping's own
+    // full_name pass already applies at the column level, applied here at
+    // the value level for the (rare) file that maps both.
+    const fullNameSplit = splitFullName(cell(row, headers.full_name));
+    const first_name = cell(row, headers.first_name) ?? fullNameSplit.first;
+    const last_name = cell(row, headers.last_name) ?? fullNameSplit.last;
+
     const key = email.toLowerCase();
     const existing = byEmail.get(key);
 
     if (existing === undefined) {
       byEmail.set(key, {
         email,
-        first_name: cell(row, headers.first_name),
-        last_name: cell(row, headers.last_name),
+        first_name,
+        last_name,
         phone_number: cell(row, headers.phone_number),
         company_name: cell(row, headers.company_name),
         company_role: cell(row, headers.company_role),
@@ -329,8 +412,8 @@ export function normaliseImportRows(
     skipped.duplicate += 1;
     byEmail.set(key, {
       email: existing.email,
-      first_name: existing.first_name ?? cell(row, headers.first_name),
-      last_name: existing.last_name ?? cell(row, headers.last_name),
+      first_name: existing.first_name ?? first_name,
+      last_name: existing.last_name ?? last_name,
       phone_number: existing.phone_number ?? cell(row, headers.phone_number),
       company_name: existing.company_name ?? cell(row, headers.company_name),
       company_role: existing.company_role ?? cell(row, headers.company_role),
