@@ -1,7 +1,7 @@
 # Event-invite email — Resend integration
 
 **Date:** 2026-09-02
-**Status:** Owner-approved plan (chat sign-off, 2026-09-02) for the three decisions §0 below records; Phase 1 in progress.
+**Status:** Owner-approved plan (chat sign-off, 2026-09-02) for the three decisions §0 below records; Phases 1-3 built (§4), Resend domain verification done by the owner, Phase 4 (trigger + queue) next.
 **Scope:** `2026-08-22-event-attendee-import.md` §5 scoped email as its own phase and did not schedule it. This document is that phase: sending the claim-link email a CSV import writes a `lookup_token` for but currently has no way to deliver, per §11.5's "interim, pending §5" note on `list_own_import_links`.
 
 ---
@@ -18,10 +18,10 @@ Per CLAUDE.md's "Plan before building," these were put to the owner as multiple-
 
 ## 1. Phases
 
-1. **Deliverability foundation** (this document's build log, in progress) — Resend account/API key, `invites.smartcard.tech` domain verification (SPF/DKIM/DMARC), a do-not-mail list, a bounce/complaint webhook, one-click unsubscribe. §5 of the import doc lists all of this as required *before* any bulk send, not optional hardening.
-2. **Schema** — `emailed_at`/`email_error` on `event_attendee_imports`, checked against the suppression list before a send.
-3. **Send module** — one function, send one claim email, called from `importEventAttendees` right after attestation succeeds (decision 1 above).
-4. **Queued delivery** — `event_import_max_rows` is 5,000 (`app_config`), so sending cannot happen synchronously inside the Server Action that imports a file. A "pending send" queue drained by a scheduled job against Resend's batch endpoint, rather than blocking the host's request on up to 5,000 individual sends with no resumability if it fails partway.
+1. **Deliverability foundation** (§4, done) — Resend account/API key, `invites.smartcard.tech` domain verification (SPF/DKIM/DMARC), a do-not-mail list, a bounce/complaint webhook, one-click unsubscribe. §5 of the import doc lists all of this as required *before* any bulk send, not optional hardening.
+2. **Schema** (§4, done) — `emailed_at`/`email_error` on `event_attendee_imports`, checked against the suppression list before a send.
+3. **Send module** (§4, done) — one function, send one claim email. Its content builder and Resend call are the reusable unit; see §4.2 for why the trigger itself moved to Phase 4 rather than being wired into `importEventAttendees` here as originally planned.
+4. **Queued delivery** — `event_import_max_rows` is 5,000 (`app_config`), so sending cannot happen synchronously inside the Server Action that imports a file. A "pending send" queue drained by a scheduled job, calling Phase 3's send function in a loop, rather than blocking the host's request on up to 5,000 individual sends with no resumability if it fails partway. This phase now also owns the trigger itself — see §4.2.
 5. **Live test** — a real send to an address under our control, confirming DKIM/SPF pass and inbox delivery, then a click-through of claim → signup → the attendance note.
 
 ---
@@ -74,12 +74,13 @@ All three (`RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`
 
 ---
 
-## 3. What Phase 1 does NOT include yet
+## 3. What is still NOT built after Phase 3
 
-- Domain verification of `invites.smartcard.tech` in Resend's dashboard, and the SPF/DKIM/DMARC DNS records that follow from it — this needs the owner's own Resend account and DNS access, tracked outside this repo.
-- The send module itself, and its trigger point inside `importEventAttendees` (Phase 3).
-- The queued-delivery job (Phase 4).
+- The trigger and the queue that actually call `sendClaimEmail` — nothing in the app calls it yet. See §4.2 for why this moved into Phase 4 as one piece of work rather than being split across Phase 3 and Phase 4 as originally planned.
+- Phase 5's live send test.
 - Any change to the interim `/events/[eventId]/import/links` screen — it stays the fallback for a failed send, per the original interim-screen decision (§11.5 of the import doc), not removed by this phase.
+
+Domain verification of `invites.smartcard.tech` (SPF/DKIM/DMARC) and setting `RESEND_API_KEY`/`RESEND_WEBHOOK_SECRET`/`EMAIL_UNSUBSCRIBE_SECRET` in Vercel are both owner-confirmed done as of this phase. `EMAIL_MAILING_ADDRESS` still needs to be set with the owner's real address before Phase 4 can send anything for real.
 
 ---
 
@@ -94,11 +95,24 @@ All three (`RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, `EMAIL_UNSUBSCRIBE_SECRET`
 | Public unsubscribe endpoint | `apps/web/src/app/api/unsubscribe/route.ts` | Built |
 | `RESEND_API_KEY` / `RESEND_WEBHOOK_SECRET` / `EMAIL_UNSUBSCRIBE_SECRET` | `env.ts`, `.env.example`, `turbo.json` | Built |
 | `emailed_at`/`email_error` on `event_attendee_imports`, `claim_event_import` widened | `20260902140000_event_attendee_imports_email_send_state.sql` | Applied and verified live — both columns persist a written value; claiming a row nulls both, re-read and confirmed after |
+| Claim-email content builder | `apps/web/src/server/email/claim-email.ts` | Built, tested — including a copy-rule test asserting "attended" never appears, matching `claim-review.test.tsx`'s own rule |
+| Per-row send + write-back | `apps/web/src/server/email/send-claim-email.ts` | Built, tested; suppression-skip path mutation-tested (confirmed red before restoring) |
+| `EMAIL_MAILING_ADDRESS` (CAN-SPAM) | `env.ts`, `.env.example`, `turbo.json` | Built — required, no placeholder default; owner still needs to set the real value in Vercel |
 
-Not yet done: Resend domain verification (owner action, outside this repo), Phases 3-5.
+Not yet done: Resend domain verification (owner-confirmed done, per chat), the trigger and queue that actually call `sendClaimEmail` at scale (Phase 4), Phase 5's live send test.
 
 ### 4.1 Phase 2 — the schema, and why it changed nothing about §2.2's own logic
 
 Two nullable columns on `event_attendee_imports` (`emailed_at`, `email_error`) and one widened destruction list inside `claim_event_import` — see the migration's own header for what each column means and, as importantly, what it deliberately does not (`emailed_at` is not a delivery or open receipt; `email_error` is a send-attempt failure, never a bounce or complaint, which stay in `email_suppressions` instead). No RLS or grant changed: both columns are exactly as unreadable through any client role as the rest of this table already was, and the only future writer is the send job (Phase 3), using the service role.
 
 **Verified live** in a rolled-back transaction before applying: a row written with both columns set persists them on read-back; claiming that row (as the real matching, email-verified caller) nulls both alongside the rest of §2.2's list, confirmed by re-reading the row after the claim call returned `{claimed: true}`.
+
+### 4.2 Phase 3 — the send module, and why its trigger moved to Phase 4
+
+**What got built.** Two pieces, deliberately kept apart: `claim-email.ts` is a pure function (no I/O, no secrets) turning `{recipient, host, event, links}` into a subject/html/text triple, so its one real rule — §2.3.1's "never claim attendance, always say guest list" — can be asserted with a plain string test rather than a mocked Resend client. `send-claim-email.ts` is the one function §1's Phase 3 line promised: given a Resend client and one import row, check the suppression list, build the email, send it, and write `emailed_at`/`email_error` back — never throwing, because a batch of these run in a loop over hundreds of rows and one bad address must not abort the rest.
+
+**What did NOT get built here, despite §1's original Phase 3 wording ("called from `importEventAttendees` right after attestation succeeds"): the trigger.** Recorded as a deliberate deviation from the original phase split, per CLAUDE.md, rather than built quietly around. The reason surfaced while designing the wiring, not before: `event_import_max_rows` is 5,000, and there is no version of "call `sendClaimEmail` in a loop from inside the Server Action that just imported the file" that is both non-blocking (the host's request must return quickly) and resumable (a function killed at row 3,000 of 5,000 must not silently leave the remaining 2,000 rows never attempted and never retried, with nothing anywhere recording that). Building a half-considered version of that mechanism now, only to redesign it for Phase 4's queue anyway, would cost more than doing it once — Phase 4's own line already says this is a scheduled job draining a queue, which is one design problem, not two. So Phase 4 now owns both "how sending is queued" and "what actually calls `sendClaimEmail` and when" as a single piece of work, and this phase delivers the unit that work will call.
+
+**One new required secret: `EMAIL_MAILING_ADDRESS`.** CAN-SPAM requires a real physical address in every commercial email, and nothing in this codebase had one configured anywhere — not something to fabricate, so it was asked of the owner directly (in chat, not through `AskUserQuestion`, since a free-text address has no second meaningful choice to present). `env.ts`'s `emailMailingAddress()` follows the same `required()` shape as `resendWebhookSecret()`: no placeholder default, because a plausible-looking fake address would make the build pass while shipping a real legal violation the moment the send module sends its first message.
+
+**Verified with tests, not a rolled-back transaction — this phase touches no schema or RLS.** `claim-email.test.ts` asserts the subject line matches §2.3.1's own example phrasing exactly, that neither the subject nor either body ever contains "attended," and that an event title containing HTML is entity-escaped rather than injected into the message. `send-claim-email.test.ts` covers: a suppressed address never reaches Resend at all; a successful send records `emailed_at` and clears `email_error`; a Resend-side failure records the error message and returns `failed` rather than throwing; a write-back failure is logged and swallowed rather than thrown, because the send already happened by that point and aborting would be the wrong direction to fail; and the `List-Unsubscribe`/`List-Unsubscribe-Post` headers point at the same signed link the email body uses. The suppression-skip check was additionally mutation-tested — commented out, confirmed the test suite went red, restored — since it is the one line standing between this module and mailing an address that already asked to be left alone.
