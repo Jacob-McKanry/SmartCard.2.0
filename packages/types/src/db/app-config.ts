@@ -78,6 +78,12 @@ export const appConfigKeySchema = z.enum([
 
   "rate_limit_card_preview_per_ip_hour",
   "rate_limit_card_preview_per_card_hour",
+
+  // Added 20260904100000 for the event attendee roster (§3.6 of
+  // 2026-08-27-event-attendee-roster.md): the two budgets keyed on a
+  // (viewer, event) pair via the new `user_event` rate_limit_events kind.
+  "rate_limit_roster_profile_open_per_user_event_day",
+  "rate_limit_roster_contact_save_per_user_event_day",
 ]);
 export type AppConfigKey = z.infer<typeof appConfigKeySchema>;
 

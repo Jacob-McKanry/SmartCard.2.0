@@ -5,6 +5,7 @@ import type { RsvpStatus } from "@smartcard/types";
 import type { EventAttendanceCounts, HostQueueEntry } from "@/server/events/events-service";
 
 import {
+  canViewRoster,
   connectionsAttendingLine,
   decidableQueueEntries,
   hostPendingCount,
@@ -16,6 +17,8 @@ import { rsvpPillStyle } from "./rsvp-pill";
 import { EventCard, type EventCardProps } from "../event-card";
 import { HostTools } from "../[eventId]/host-tools";
 import { QueueView } from "../[eventId]/queue/queue-view";
+import { RosterView } from "../[eventId]/roster/roster-view";
+import type { EventRosterEntry } from "@smartcard/types";
 
 /**
  * THE ACCESS RULES OF THE EVENTS SCREENS, TESTED AS RULES.
@@ -418,5 +421,86 @@ describe("viewerRole", () => {
 
   it("treats an unanswered non-host as an onlooker", () => {
     expect(viewerRole("host-1", "user-2", null)).toBe("onlooker");
+  });
+});
+
+describe("canViewRoster — the roster is a bounded exception to rule 1, not a repeal", () => {
+  it("admits a host and an RSVP'd attendee", () => {
+    expect(canViewRoster("host", false)).toBe(true);
+    expect(canViewRoster("answered", false)).toBe(true);
+  });
+
+  it("admits an onlooker-by-RSVP who was actually a CSV-claimed guest", () => {
+    // `viewerRole` only reads `event_rsvps` — a claimed import row leaves it
+    // "onlooker" even though `private.is_event_roster_member` (the RPCs'
+    // own gate) admits this exact person. `wasClaimedGuest` is the fix.
+    expect(canViewRoster("onlooker", true)).toBe(true);
+  });
+
+  it("refuses a genuine stranger to the event", () => {
+    expect(canViewRoster("onlooker", false)).toBe(false);
+  });
+
+  function rosterEntry(over: Partial<EventRosterEntry> = {}): EventRosterEntry {
+    return {
+      user_id: "user-1",
+      first_name: "Rosterperson",
+      last_name: "One",
+      photo_path: null,
+      ...over,
+    };
+  }
+
+  it("renders no roster at all to a viewer with no business being there", () => {
+    const markup = renderToStaticMarkup(
+      <RosterView
+        role="onlooker"
+        wasClaimedGuest={false}
+        eventId="event-1"
+        eventTitle="Rooftop supper club"
+        isCancelled={false}
+        hasStarted={true}
+        entries={[rosterEntry({ first_name: "Rosterperson" })]}
+        photoUrls={{}}
+      />,
+    );
+
+    expect(markup).toBe("");
+    expect(markup).not.toContain("Rosterperson");
+  });
+
+  it("renders a claimed-but-unRSVP'd guest's own roster", () => {
+    const markup = renderToStaticMarkup(
+      <RosterView
+        role="onlooker"
+        wasClaimedGuest
+        eventId="event-1"
+        eventTitle="Rooftop supper club"
+        isCancelled={false}
+        hasStarted={true}
+        entries={[rosterEntry({ first_name: "Rosterperson" })]}
+        photoUrls={{}}
+      />,
+    );
+
+    expect(markup).toContain("Rosterperson");
+  });
+
+  it("explains rather than lists when the event has not started yet", () => {
+    const markup = renderToStaticMarkup(
+      <RosterView
+        role="answered"
+        wasClaimedGuest={false}
+        eventId="event-1"
+        eventTitle="Rooftop supper club"
+        isCancelled={false}
+        hasStarted={false}
+        entries={[rosterEntry({ first_name: "Rosterperson" })]}
+        photoUrls={{}}
+      />,
+    );
+
+    expect(markup).toContain("Opens once the event starts");
+    expect(markup).not.toContain("Rosterperson");
   });
 });

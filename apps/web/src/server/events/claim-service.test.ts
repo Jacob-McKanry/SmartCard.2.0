@@ -151,7 +151,26 @@ describe("claimEventImport", () => {
     const approved = { first_name: true, last_name: false, social_links: true };
     await claimEventImport(client, "raw-token", approved);
     expect(calls).toEqual([
-      { fn: "claim_event_import", args: { p_lookup_token: "raw-token", p_approved_fields: approved } },
+      {
+        fn: "claim_event_import",
+        args: { p_lookup_token: "raw-token", p_approved_fields: approved, p_roster_visibility: null },
+      },
+    ]);
+  });
+
+  // 20260904100000 — the claimant's own roster-visibility choice, made on the
+  // review screen (`claim-review.tsx`'s `RosterVisibilityChoice`), forwarded
+  // as its own parameter rather than folded into p_approved_fields because
+  // it is not CSV data. Omitted (undefined) forwards as null, matching the
+  // RPC's own "no choice made" reading.
+  it("forwards the roster-visibility choice as p_roster_visibility when given", async () => {
+    const { client, calls } = fakeClient({ data: { claimed: true } });
+    await claimEventImport(client, "raw-token", {}, "visible");
+    expect(calls).toEqual([
+      {
+        fn: "claim_event_import",
+        args: { p_lookup_token: "raw-token", p_approved_fields: {}, p_roster_visibility: "visible" },
+      },
     ]);
   });
 });

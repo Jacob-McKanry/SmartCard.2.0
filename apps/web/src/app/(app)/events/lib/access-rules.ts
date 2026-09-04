@@ -160,6 +160,31 @@ export function decidableQueueEntries(entries: readonly HostQueueEntry[]): HostQ
 }
 
 // ---------------------------------------------------------------------------
+// The event attendee roster — a bounded exception to rule 1, not a repeal
+// of it (`docs/architecture/2026-08-27-event-attendee-roster.md` §3.1-3.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether this viewer has any business landing on `/events/[eventId]/roster`
+ * at all — the page-and-component routing gate, mirroring `QueueView`'s own
+ * "the RPC refuses on its own; this is about not looking broken" reasoning.
+ *
+ * `role !== "onlooker"` alone is not enough: it is derived only from
+ * `event_rsvps`, and a CSV-claimed attendee (`claim_event_import` or the
+ * auto-attach path) has no RSVP row at all — `wasClaimedGuest` is the same
+ * `own_attended_events()`-backed fact the event detail page's own
+ * `AttendedNote` already reads. `public.event_roster` and
+ * `public.event_attendee_profile` re-derive the real population themselves
+ * via `private.is_event_roster_member` (host, going RSVP, OR claimed
+ * import) — this function exists only so a non-attendee sees the same
+ * `notFound()` a stranger to a private event does, rather than a page that
+ * renders and then sits empty.
+ */
+export function canViewRoster(role: ViewerRole, wasClaimedGuest: boolean): boolean {
+  return role !== "onlooker" || wasClaimedGuest;
+}
+
+// ---------------------------------------------------------------------------
 // Rule 3 — "you know N going" is a number
 // ---------------------------------------------------------------------------
 
