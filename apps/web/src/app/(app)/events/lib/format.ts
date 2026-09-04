@@ -131,6 +131,18 @@ export function hasEnded(startsAt: string, endsAt: string | null, nowMs: number)
   return new Date(endsAt ?? startsAt).getTime() < nowMs;
 }
 
+/**
+ * Whether an event has begun — the roster's own gate (§3.2 of
+ * `docs/architecture/2026-08-27-event-attendee-roster.md`), read live rather
+ * than cached, matching `event_roster`'s SQL exactly:
+ * `e.starts_at <= now()`. Pure in `nowMs` for the identical reason `hasEnded`
+ * is — a caller reads the clock once, at module scope, outside a render
+ * body, so `react-hooks/purity` has nothing to refuse.
+ */
+export function hasStarted(startsAt: string, nowMs: number): boolean {
+  return new Date(startsAt).getTime() <= nowMs;
+}
+
 export function displayName(person: {
   first_name: string | null;
   last_name: string | null;

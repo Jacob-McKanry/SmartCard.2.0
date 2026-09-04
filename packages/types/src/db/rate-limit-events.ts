@@ -15,11 +15,27 @@ import { z } from "zod";
 import { timestamptzSchema } from "./scalars";
 
 /**
- * A rate limit is levied against a user, an IP, a card or a session. Closed set,
- * matching the CHECK constraint, because a typo would silently create a second
- * empty counter — i.e. would silently switch the limit off.
+ * A rate limit is levied against a user, an IP, a card, a session, an import
+ * row, or a (viewer, event) pair. Closed set, matching the CHECK constraint,
+ * because a typo would silently create a second empty counter — i.e. would
+ * silently switch the limit off.
+ *
+ * `'import'` (20260828120000, the claim-flow rate limits) and `'user_event'`
+ * (20260904100000, the roster's opens/saves budgets) were both missing here
+ * for a time after their own migrations widened the CHECK constraint — this
+ * schema is TypeScript-side only and drifting from the database silently
+ * does not fail a build, only a future lookup typed against a stale set.
+ * Both are restored to keep this file's own header rule ("matching the
+ * CHECK constraint") actually true.
  */
-export const rateLimitSubjectKindSchema = z.enum(["user", "ip", "card", "session"]);
+export const rateLimitSubjectKindSchema = z.enum([
+  "user",
+  "ip",
+  "card",
+  "session",
+  "import",
+  "user_event",
+]);
 export type RateLimitSubjectKind = z.infer<typeof rateLimitSubjectKindSchema>;
 
 export const rateLimitEventRowSchema = z.object({

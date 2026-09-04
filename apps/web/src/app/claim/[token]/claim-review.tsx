@@ -123,6 +123,8 @@ export function ClaimReview({
           ) : null}
         </div>
 
+        <RosterVisibilityChoice />
+
         {state.error !== undefined ? (
           <p role="alert" className="text-[13px] leading-[19px]" style={{ color: "var(--sc-danger)" }}>
             {state.error}
@@ -147,6 +149,93 @@ export function ClaimReview({
         in-person NFC tap or QR scan.
       </p>
     </main>
+  );
+}
+
+/**
+ * The claimant's own roster opt-in choice — §3.3/§3.4 of the 2026-08-27
+ * roster design, wired through to `claim_event_import`'s new
+ * `p_roster_visibility` parameter (20260904100000).
+ *
+ * TWO EQUAL BUTTONS, NEITHER PRE-SELECTED — §8.4's still-open question,
+ * resolved this way: a pre-checked "show me" would be a dark pattern on a
+ * consent gate, and a pre-checked "keep me hidden" makes a feature nobody
+ * has explained yet look broken before it is even offered. `required` on
+ * both radios means the form cannot submit without an actual choice — this
+ * is the one point in the flow where the person is asked, so it asks for
+ * real, rather than quietly defaulting through an unanswered field the way
+ * an existing member's one-time prompt or a fresh signup's onboarding step
+ * would (both of which fail closed to hidden if skipped, because THEY are
+ * not the moment being asked here — this screen is).
+ *
+ * COPY NEVER SAYS "ATTENDED" OR IMPLIES A CONNECTION, MATCHING EVERY OTHER
+ * SENTENCE ON THIS SCREEN. "People at this event" is the roster's own
+ * population (host, going, or another claimed guest), and the fixed line
+ * beneath explains the one thing this can never become.
+ */
+function RosterVisibilityChoice() {
+  return (
+    <fieldset className="flex flex-col gap-3 rounded-[26px] p-[17px]" style={GLASS}>
+      <legend className="px-0 text-[13px] leading-[17px] font-semibold">
+        Let people at this event see your card?
+      </legend>
+      <p
+        className="text-[12px] leading-[17px]"
+        style={{ color: "var(--sc-text-subtle)", textWrap: "pretty" }}
+      >
+        Only other people on this event&rsquo;s own guest list who&rsquo;ve made the same choice can
+        see or save your details — nobody else, and never before the event starts.
+      </p>
+
+      <div className="flex flex-col gap-2">
+        <RosterVisibilityOption
+          value="visible"
+          label="Yes, show my card"
+          hint="Other attendees can view and save your contact card."
+        />
+        <RosterVisibilityOption
+          value="hidden"
+          label="No, keep me hidden"
+          hint="Nobody at this event can see your details."
+        />
+      </div>
+
+      <p className="text-[11.5px] leading-[16px]" style={{ color: "var(--sc-text-subtle)" }}>
+        This never creates a connection — that still only happens through an in-person tap or scan.
+        You can change this any time from your profile settings.
+      </p>
+    </fieldset>
+  );
+}
+
+function RosterVisibilityOption({
+  value,
+  label,
+  hint,
+}: {
+  value: "visible" | "hidden";
+  label: string;
+  hint: string;
+}) {
+  return (
+    <label
+      className="flex cursor-pointer items-start gap-2.5 rounded-[16px] border p-3"
+      style={{ borderColor: "rgba(13,18,32,.1)", background: "rgba(255,255,255,.5)" }}
+    >
+      <input
+        type="radio"
+        name="roster_visibility"
+        value={value}
+        required
+        className="mt-[3px] size-[18px] shrink-0 accent-[var(--sc-accent)]"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-[13px] leading-[18px] font-medium">{label}</span>
+        <span className="text-[12px] leading-[17px]" style={{ color: "var(--sc-text-subtle)" }}>
+          {hint}
+        </span>
+      </span>
+    </label>
   );
 }
 

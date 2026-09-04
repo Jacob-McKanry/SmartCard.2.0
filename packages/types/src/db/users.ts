@@ -64,6 +64,26 @@ export const userRowSchema = z.object({
   has_completed_signup: z.boolean(),
   email_opt_in: z.boolean(),
 
+  /**
+   * Opt-in choice for the event attendee roster
+   * (`docs/architecture/2026-08-27-event-attendee-roster.md`,
+   * 20260904100000). Null or `'hidden'` means invisible to co-attendees on
+   * every roster and through `private.shares_event_with`'s roster-gated
+   * branch; `'visible'` means opted in. Unlike `has_completed_signup`, this
+   * IS in the client's own UPDATE grant — it is the person's own choice
+   * about their own exposure — but only `updateRosterVisibilityAction`
+   * (the narrow single-column action, mirroring `updateEmailOptInAction`)
+   * ever actually sends it.
+   */
+  roster_visibility: z.enum(["visible", "hidden"]).nullable(),
+  /**
+   * When `roster_visibility` was last set — by the person's own action, or,
+   * for the recorded CSV-claim deviation (see that migration's header), by
+   * a claim on their behalf. Null means never chosen, which is what drives
+   * the one-time sign-in prompt.
+   */
+  roster_visibility_chosen_at: timestamptzSchema.nullable(),
+
   /** Migration traceability only (§6.2). */
   legacy_user_id: bigintSchema.nullable(),
 
@@ -100,6 +120,8 @@ export const userProfileUpdateSchema = userRowSchema
     company_role: true,
     photo_path: true,
     email_opt_in: true,
+    roster_visibility: true,
+    roster_visibility_chosen_at: true,
   })
   .partial()
   // `.strict()` so an unexpected property is a hard failure, not a silently

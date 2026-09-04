@@ -202,6 +202,41 @@ export async function updateEmailOptInAction(
   return { success: true };
 }
 
+/**
+ * Turns the event-roster opt-in on or off, and touches nothing else —
+ * `updateEmailOptInAction`'s own narrow-single-column shape, copied for the
+ * identical reason: posting to `updateProfileAction`'s eight-field form
+ * would blank everything else, and this control's whole point is to be
+ * changeable on its own, any time, from settings.
+ *
+ * `roster_visibility_chosen_at` IS SET HERE, SERVER-SIDE, NEVER FROM A
+ * CLIENT-SUPPLIED TIMESTAMP. The column is in the client's UPDATE grant
+ * (20260904100000 — unlike `has_completed_signup`, this really is the
+ * person's own choice about their own exposure), but a form field carrying
+ * "when I chose this" would be exactly the kind of client-asserted fact
+ * CLAUDE.md's fail-closed posture distrusts by default: nothing stops a
+ * forged request from claiming a choice made in the past. `new Date()` read
+ * here, inside server code, is the only clock this write ever consults.
+ */
+export async function updateRosterVisibilityAction(
+  visible: boolean,
+  _prevState: ActionState,
+): Promise<ActionState> {
+  const context = await requireContext();
+
+  try {
+    await updateOwnProfile(context.supabase, context.userId, {
+      roster_visibility: visible ? "visible" : "hidden",
+      roster_visibility_chosen_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    return { error: messageOf(error) };
+  }
+
+  revalidateProfileScreens();
+  return { success: true };
+}
+
 // -----------------------------------------------------------------------
 // Social links
 // -----------------------------------------------------------------------

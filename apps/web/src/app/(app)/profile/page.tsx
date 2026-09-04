@@ -16,6 +16,7 @@ import { countEventsAttended } from "@/server/events/attendance-count";
 import { LinkTiles } from "@/components/link-tiles";
 import { RingCentre, RingDiagram, type RingBandData } from "@/components/ring-diagram";
 import { EmailOptInToggle } from "./email-opt-in-toggle";
+import { RosterVisibilityToggle } from "./roster-visibility-toggle";
 
 /**
  * The Profile screen: the signed-in user's own identity, drawn to
@@ -284,6 +285,30 @@ function ContactSheet({ profile }: { profile: OwnProfile }) {
         </dt>
         <dd>
           <EmailOptInToggle optIn={profile.email_opt_in} labelledBy="email-opt-in-label" />
+        </dd>
+      </div>
+      {/*
+       * The event-roster opt-in (20260904100000) — same row shape as the
+       * email preference above, one more line in the same contact sheet
+       * rather than a separate settings screen, since both are "who can see
+       * what about me" questions a person is likely to check together.
+       * `roster_visibility === 'visible'` is the only state this switch ever
+       * shows "On" for; null (never chosen) reads as "Off", matching every
+       * gate that treats an unanswered choice as hidden.
+       */}
+      <div className="flex items-center gap-2.5 px-[15px] py-0.5">
+        <dt
+          id="roster-visibility-label"
+          className="flex-1 text-[12px] leading-[17px]"
+          style={{ color: "var(--sc-text-subtle)" }}
+        >
+          Visible on event guest lists
+        </dt>
+        <dd>
+          <RosterVisibilityToggle
+            visible={profile.roster_visibility === "visible"}
+            labelledBy="roster-visibility-label"
+          />
         </dd>
       </div>
     </dl>

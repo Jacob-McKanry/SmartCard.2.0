@@ -58,8 +58,22 @@ export async function claimEventImportAction(
     social_links: formData.get("social_links") === "on",
   });
 
+  // The claimant's own roster opt-in choice (20260904100000) — a radio pair
+  // with neither pre-selected (§8.4 of the roster design), so anything other
+  // than the two literal values is "no choice made", not an error. See
+  // `claimEventImport`'s own header for why this is a separate parameter
+  // rather than a seventh `approvedFields` boolean.
+  const rosterChoice = formData.get("roster_visibility");
+  const rosterVisibility =
+    rosterChoice === "visible" || rosterChoice === "hidden" ? rosterChoice : undefined;
+
   try {
-    const { claimed } = await claimEventImport(context.supabase, lookupToken, approvedFields);
+    const { claimed } = await claimEventImport(
+      context.supabase,
+      lookupToken,
+      approvedFields,
+      rosterVisibility,
+    );
 
     if (!claimed) {
       // §3.6: this is the identical shape for "wrong token", "already

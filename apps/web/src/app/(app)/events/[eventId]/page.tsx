@@ -23,13 +23,14 @@ import { BlurUpPhoto } from "@/components/blur-up-photo";
 import { AvatarDisc } from "../../connections/lib/avatar-disc";
 
 import {
+  canViewRoster,
   connectionsAttendingLine,
   hostPendingCount,
   publicStats,
   viewerRole,
   type EventStat,
 } from "../lib/access-rules";
-import { displayName, hasEnded, initialsFor, whenLine, whereLine } from "../lib/format";
+import { displayName, hasEnded, hasStarted, initialsFor, whenLine, whereLine } from "../lib/format";
 import { COVER_PLACEHOLDER, GLASS, GLASS_LIQUID } from "../lib/surfaces";
 import { RsvpBlock } from "./rsvp-block";
 import { CancelEventButton } from "./cancel-event-button";
@@ -96,6 +97,11 @@ function eventHasEndedNow(startsAt: string, endsAt: string | null): boolean {
   return hasEnded(startsAt, endsAt, Date.now());
 }
 
+/** Same module-scope-clock-read reasoning as `eventHasEndedNow` above. */
+function eventHasStartedNow(startsAt: string): boolean {
+  return hasStarted(startsAt, Date.now());
+}
+
 export default async function EventDetailPage({
   params,
 }: {
@@ -130,6 +136,7 @@ export default async function EventDetailPage({
   const knowLine = connectionsAttendingLine(connectionsAttending);
   const hostPhotoUrl = host ? await signedProfilePhotoUrl(supabase, host.photo_path) : null;
   const ended = eventHasEndedNow(event.starts_at, event.ends_at);
+  const started = eventHasStartedNow(event.starts_at);
 
   /*
    * A cancelled event is, today, one whose host deleted their account —
@@ -346,6 +353,33 @@ export default async function EventDetailPage({
       ) : null}
 
       {/*
+       * THE ROSTER'S ONE ENTRY POINT ON THIS SCREEN
+       * (`docs/architecture/2026-08-27-event-attendee-roster.md`). Gated the
+       * same way the roster page itself gates: `canViewRoster` (attendee via
+       * RSVP OR a claimed guest-list row — `wasClaimedGuest`, the same
+       * `own_attended_events()` fact `AttendedNote` below already reads),
+       * a live event, and not cancelled. Showing this link to someone the
+       * roster would refuse costs nothing security-wise — the RPC refuses on
+       * its own — but it is exactly the "looks broken" problem `queue/`'s own
+       * header warns about, so the gate is repeated here too.
+       */}
+      {!isCancelled && started && canViewRoster(role, wasClaimedGuest) ? (
+        <Link
+          href={`/events/${event.id}/roster`}
+          className="flex items-center justify-between gap-2 rounded-[22px] p-[15px]"
+          style={GLASS}
+        >
+          <span className="flex items-center gap-2.5">
+            <Users size={16} strokeWidth={2} aria-hidden style={{ color: "var(--sc-text-muted)" }} />
+            <span className="text-[14px] leading-[19px] font-semibold">See who&rsquo;s here</span>
+          </span>
+          <span className="text-[12px] leading-[17px]" style={{ color: "var(--sc-text-subtle)" }}>
+            Opted in only
+          </span>
+        </Link>
+      ) : null}
+
+      {/*
        * §8: text that states a rule sits at `--text-muted` or darker. The
        * prototype's `#a4abbb` is `--text-subtle`, which §2 reserves for
        * decoration.
@@ -354,8 +388,9 @@ export default async function EventDetailPage({
         className="max-w-[54ch] pb-2 text-[12px] leading-[17px]"
         style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
       >
-        No guest list, for anyone — not for attendees and not for the host. Counts say how many;
-        nothing here says who.
+        No guest list, for anyone, by default. The one exception: at a started event, attendees who
+        have each separately chosen to be visible can see and save each other&rsquo;s contact card —
+        never anyone who hasn&rsquo;t opted in, and never before the event begins.
       </p>
     </main>
   );

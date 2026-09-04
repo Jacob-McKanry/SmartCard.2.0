@@ -89,6 +89,15 @@ export async function getClaimableImport(
  * copying the fields named `true` in `approvedFields` into the caller's own
  * profile.
  *
+ * `rosterVisibility` (20260904100000) is the claimant's OWN roster opt-in
+ * choice from the review screen — not a CSV field, so it is its own
+ * parameter rather than another `approvedFields` boolean. `undefined` (the
+ * screen was skipped, or an older client) means "no choice made", exactly
+ * like omitting `p_roster_visibility` — `claim_event_import` treats that,
+ * and any value other than `'visible'`/`'hidden'`, identically: the column
+ * stays whatever it already was (null, i.e. hidden, for a first-time
+ * claimant).
+ *
  * Throws only on a transport or server failure — a REFUSED claim is a normal
  * outcome and comes back as `{ claimed: false }`, the same distinction
  * `claimUnassignedCard` draws for the identical reason.
@@ -97,10 +106,12 @@ export async function claimEventImport(
   supabase: SupabaseClient,
   lookupToken: string,
   approvedFields: ClaimApprovedFields,
+  rosterVisibility?: "visible" | "hidden",
 ): Promise<ClaimEventImportResult> {
   const { data, error } = await supabase.rpc("claim_event_import", {
     p_lookup_token: lookupToken,
     p_approved_fields: approvedFields,
+    p_roster_visibility: rosterVisibility ?? null,
   });
 
   if (error) {
