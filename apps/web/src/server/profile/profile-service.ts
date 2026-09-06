@@ -110,36 +110,6 @@ export async function updateOwnProfile(
   }
 }
 
-/**
- * Whether this account has ever answered the event-roster opt-in prompt —
- * `roster_visibility_chosen_at is not null`. Drives the one-time sign-in
- * gate in `(app)/layout.tsx` for accounts that predate the roster feature,
- * the same shape `hasCompletedSignup` uses for onboarding.
- *
- * Throws rather than defaulting, for the identical reason that function
- * gives: a `false` default on a transient read failure would loop someone
- * who already chose back into the prompt forever, and a `true` default
- * would silently skip asking someone who has never been asked. Read through
- * the caller's own RLS-bound client — `roster_visibility_chosen_at` is in
- * the same column-scoped SELECT grant as every other profile field, and the
- * gate that consumes this runs on every signed-in page, which is the wrong
- * place for an unpoliced read.
- */
-export async function hasChosenRosterVisibility(
-  supabase: SupabaseClient,
-  userId: string,
-): Promise<boolean> {
-  const { data, error } = await supabase
-    .from("users")
-    .select("roster_visibility_chosen_at")
-    .eq("id", userId)
-    .single<{ roster_visibility_chosen_at: string | null }>();
-
-  if (error) {
-    throw new Error(`Failed to read the roster visibility choice: ${error.message}`, { cause: error });
-  }
-  return data.roster_visibility_chosen_at !== null;
-}
 
 export async function listOwnSocialLinks(
   supabase: SupabaseClient,

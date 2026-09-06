@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { AuthFailureScreen, classifyAuthFailure } from "@/components/auth-failure-screen";
 import { hasCompletedSignup } from "@/server/onboarding/onboarding-service";
-import { hasChosenRosterVisibility } from "@/server/profile/profile-service";
 
 import { Nav } from "./nav";
 
@@ -75,36 +74,20 @@ import { Nav } from "./nav";
  *  It also means an existing member never sees this, because 20260815130000
  *  backfilled every row that existed to `true`. Nobody mid-pilot gets ambushed.
  *
- * A FIFTH JOB, ADDED WITH THE EVENT ATTENDEE ROSTER (20260904100000): THE
- * ROSTER-VISIBILITY GATE
+ * NO FIFTH JOB: THE EVENT ATTENDEE ROSTER HAS NO FORCED INTERSTITIAL
  *
- * `docs/architecture/2026-08-27-event-attendee-roster.md` §3.3 names three
- * choice surfaces: the claim-review screen for CSV claimants, the onboarding
- * flow for brand-new signups, and — this one — a one-time prompt for
- * everybody else, keyed on `roster_visibility_chosen_at is null`.
- *
- * WHY THIS GATE RUNS *AFTER* THE ONBOARDING GATE ABOVE, NOT BEFORE OR
- * ALONGSIDE IT
- *
- * A brand-new signup's own onboarding flow includes a roster-visibility
- * step, so by the time `hasCompletedSignup` turns true for that account,
- * `roster_visibility_chosen_at` is already set too (or was skipped
- * alongside the rest of onboarding — see that flow's own header on why
- * skipping still counts as answering). Running this check strictly after
- * the redirect above means it only ever fires for an account that finished
- * onboarding WITHOUT the column being set — which in practice is exactly
- * the population §3.3 means by "everybody else": every account that
- * predates this feature, backfilled to `has_completed_signup = true` by
- * 20260815130000 and therefore never touched by the roster step at all.
- * No separate "already onboarded" condition needs writing by hand; the
- * ordering produces it for free.
- *
- * `/roster-visibility` sits outside this route group for the identical
- * reason `/onboarding` does — see that note above. Skipping the prompt
- * still counts as answering it (`roster_visibility_chosen_at` gets set
- * either way), the same "skip IS finish" rule onboarding uses, because the
- * alternative is an unconditional gate with no way out for someone who
- * simply does not want to decide right now.
+ * A one-time full-screen "show up on event guest lists?" prompt used to sit
+ * here, gated on `roster_visibility_chosen_at is null`, and fired for every
+ * signed-in account that had never answered — in practice every account,
+ * since the roster feature was new. Removed 2026-09-06: an unconditional
+ * interstitial in front of every screen in the app, for a feature most
+ * people would never otherwise touch on a given day, was worse than just
+ * leaving the choice where `docs/architecture/2026-08-27-event-attendee-roster.md`
+ * §3.3 already puts it for everyone else — the claim-review screen for CSV
+ * claimants, and the settings toggle on `/profile` for anyone who wants to
+ * opt in without being asked. `roster_visibility` still defaults to null
+ * (hidden) for an account that never visits either surface, which is the
+ * correct fail-closed default this gate's removal does not change.
  */
 export const dynamic = "force-dynamic";
 
@@ -132,10 +115,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
    */
   if (!(await hasCompletedSignup(context.supabase, context.userId))) {
     redirect("/onboarding");
-  }
-
-  if (!(await hasChosenRosterVisibility(context.supabase, context.userId))) {
-    redirect("/roster-visibility");
   }
 
   return (
