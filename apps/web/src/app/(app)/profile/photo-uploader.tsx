@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { compressImageForUpload } from "@/components/compress-image";
 
 import { removePhotoAction, uploadPhotoAction } from "./actions";
 import { initialActionState } from "./action-state";
@@ -22,6 +23,15 @@ import { initialActionState } from "./action-state";
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_BYTES = 4 * 1024 * 1024;
 
+/**
+ * A generous pre-compression sanity ceiling — not the real limit, which is
+ * `MAX_BYTES` applied AFTER `compressImageForUpload` runs (see below for why
+ * the order flipped). This one exists only to refuse decoding something
+ * absurd (a mislabelled video, a raw camera file) before it ties up the
+ * browser doing so; ordinary phone photos are nowhere near it.
+ */
+const MAX_SOURCE_BYTES = 25 * 1024 * 1024;
+
 export function PhotoUploader({
   photoUrl,
   initials,
@@ -36,10 +46,28 @@ export function PhotoUploader({
     initialActionState,
   );
   const [clientError, setClientError] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
-  function handleFileChosen() {
+  /**
+   * WHY THE SIZE CHECK RUNS *AFTER* COMPRESSION, NOT BEFORE
+   *
+   * The old order rejected anything over `MAX_BYTES` outright — which is
+   * exactly backwards for the common real case, a large-but-ordinary phone
+   * photo that `compressImageForUpload` would happily shrink under the
+   * limit. Checking size on the COMPRESSED result instead means the limit
+   * only ever turns away something that is still too big after the browser
+   * has already tried to shrink it (a GIF, which is never compressed here,
+   * or a pathological image that doesn't compress well) — see
+   * `compress-image.ts`'s own header for why GIF is excluded.
+   *
+   * `MAX_SOURCE_BYTES` above is the one check that still runs on the
+   * ORIGINAL file, and for an unrelated reason: refusing to even attempt
+   * decoding something absurdly large, before compression gets a chance to
+   * help.
+   */
+  async function handleFileChosen() {
     setClientError(null);
     const file = inputRef.current?.files?.[0];
     if (!file) return;
@@ -49,16 +77,44 @@ export function PhotoUploader({
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
-    if (file.size > MAX_BYTES) {
+    if (file.size > MAX_SOURCE_BYTES) {
+      setClientError("That file is too large to process.");
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
+
+    setCompressing(true);
+    const uploadable = await compressImageForUpload(file);
+    setCompressing(false);
+
+    if (uploadable.size > MAX_BYTES) {
       setClientError("That file is too large — the limit is 4MB.");
       if (inputRef.current) inputRef.current.value = "";
       return;
+    }
+
+    // Swap the compressed file into the native input's own FileList before
+    // submitting, via the standard `DataTransfer` trick — `requestSubmit()`
+    // reads whatever `<input type="file">` currently holds, and an
+    // `HTMLInputElement.files` can only be assigned a `FileList`, not a
+    // plain array or a single `File`.
+    if (uploadable !== file && inputRef.current) {
+      const transfer = new DataTransfer();
+      transfer.items.add(uploadable);
+      inputRef.current.files = transfer.files;
     }
 
     formRef.current?.requestSubmit();
   }
 
   const error = clientError ?? uploadState.error;
+  const buttonLabel = compressing
+    ? "Preparing…"
+    : uploadPending
+      ? "Uploading…"
+      : hasPhoto
+        ? "Replace photo"
+        : "Upload photo";
 
   return (
     <div className="flex items-center gap-4">
@@ -76,16 +132,16 @@ export function PhotoUploader({
               name="photo"
               accept={ALLOWED_MIME_TYPES.join(",")}
               className="hidden"
-              onChange={handleFileChosen}
+              onChange={() => void handleFileChosen()}
             />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={uploadPending}
+              disabled={compressing || uploadPending}
               onClick={() => inputRef.current?.click()}
             >
-              {uploadPending ? "Uploading…" : hasPhoto ? "Replace photo" : "Upload photo"}
+              {buttonLabel}
             </Button>
           </form>
 
@@ -102,7 +158,7 @@ export function PhotoUploader({
           {error ? (
             <span className="text-destructive">{error}</span>
           ) : (
-            "JPEG, PNG, WEBP or GIF, up to 4MB."
+            "JPEG, PNG, WEBP or GIF. Large photos are resized automatically."
           )}
         </p>
       </div>
