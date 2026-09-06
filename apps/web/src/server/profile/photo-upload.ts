@@ -82,6 +82,13 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
  * bucket's own `file_size_limit`
  * (20260906120000_profile_photos_shrink_size_limit.sql), leaves real margin
  * under that ceiling instead of sitting just above it.
+ *
+ * THE ACTUAL FIX, ADDED THE SAME DAY: `compress-image.ts`'s client-side
+ * downscale-before-upload, wired into `PhotoUploader`. This constant is
+ * still the real, server-side backstop — it has to be, per this file's own
+ * header on what the client can't be trusted to enforce — but the
+ * compressor is what should keep a real phone photo from ever bumping into
+ * it in practice, the same way it never bumps into Instagram's.
  */
 const MAX_BYTES = 4 * 1024 * 1024;
 

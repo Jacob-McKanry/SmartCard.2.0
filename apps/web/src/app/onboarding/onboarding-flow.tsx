@@ -37,10 +37,12 @@ import { completeOnboardingAction, skipOnboardingAction } from "./actions";
  * The prototype's photo step has "Take a photo" and "Choose from library" as two
  * buttons. Those are one control on the web — a file input with `capture` is a
  * platform decision the browser makes — and the shipped uploader already
- * enforces the bucket's real limits (WEBP, 4MB), already states them, and is
- * already backstopped by the Storage policy in 20260813191041. A second uploader
- * here would be a second place for those rules to drift, on the one screen where
- * a person's first impression of the product is formed by whether it works.
+ * downscales and recompresses a large phone photo before it ever uploads
+ * (`compress-image.ts`), enforces the bucket's real limits (4MB post-compression),
+ * states them, and is already backstopped by the Storage policy in
+ * 20260813191041. A second uploader here would be a second place for those
+ * rules to drift, on the one screen where a person's first impression of the
+ * product is formed by whether it works.
  *
  * WHAT THE COPY MAY NOT SAY (§7)
  *
