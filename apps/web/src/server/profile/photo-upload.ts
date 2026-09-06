@@ -63,8 +63,27 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   "image/gif": "gif",
 };
 
-/** Mirrors `file_size_limit` on the bucket exactly: 5 * 1024 * 1024. */
-const MAX_BYTES = 5 * 1024 * 1024;
+/**
+ * Mirrors `file_size_limit` on the bucket exactly: 4 * 1024 * 1024.
+ *
+ * WAS 5 MiB UNTIL 2026-09-06. Shrunk after a real claim-flow signup got
+ * stuck on "Uploading…" and then crashed, on the first actual click-through
+ * this feature ever got. Root cause never got a live-reproduced confirmation
+ * (no browser in the environment that found it), but the strongest candidate
+ * — and the one this change closes regardless of whether it was the whole
+ * story — is Vercel's platform-level request body ceiling for a Serverless
+ * Function (historically 4.5 MB, independent of and stricter than either
+ * this app's own `next.config.ts` `bodySizeLimit` or this bucket's own
+ * `file_size_limit`, neither of which anyone had reasoned about against that
+ * specific number before now). A phone-camera JPEG comfortably clears 4.5 MB
+ * often enough that the old 5 MB ceiling let real uploads through the
+ * application's own checks only to be silently killed one layer further out,
+ * with no clean error for `uploadPhotoAction` to catch. 4 MiB, matching the
+ * bucket's own `file_size_limit`
+ * (20260906120000_profile_photos_shrink_size_limit.sql), leaves real margin
+ * under that ceiling instead of sitting just above it.
+ */
+const MAX_BYTES = 4 * 1024 * 1024;
 
 /**
  * Extends `UserFacingError` because every message it carries was written for

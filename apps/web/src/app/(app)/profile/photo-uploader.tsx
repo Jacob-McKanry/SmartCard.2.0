@@ -10,7 +10,8 @@ import { initialActionState } from "./action-state";
 
 /**
  * Mirrors the bucket's own limits
- * (20260817120000_profile_photos_allow_common_image_types.sql) for UX only —
+ * (20260817120000_profile_photos_allow_common_image_types.sql,
+ * 20260906120000_profile_photos_shrink_size_limit.sql) for UX only —
  * this is not the enforcement. See the header comment in
  * `apps/web/src/server/profile/photo-upload.ts` for what actually enforces
  * type and size: the bucket's `allowed_mime_types`/`file_size_limit` and the
@@ -19,7 +20,7 @@ import { initialActionState } from "./action-state";
  * still hits those same two backstops.
  */
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
-const MAX_BYTES = 5 * 1024 * 1024;
+const MAX_BYTES = 4 * 1024 * 1024;
 
 export function PhotoUploader({
   photoUrl,
@@ -49,7 +50,7 @@ export function PhotoUploader({
       return;
     }
     if (file.size > MAX_BYTES) {
-      setClientError("That file is too large — the limit is 5MB.");
+      setClientError("That file is too large — the limit is 4MB.");
       if (inputRef.current) inputRef.current.value = "";
       return;
     }
@@ -101,7 +102,7 @@ export function PhotoUploader({
           {error ? (
             <span className="text-destructive">{error}</span>
           ) : (
-            "JPEG, PNG, WEBP or GIF, up to 5MB."
+            "JPEG, PNG, WEBP or GIF, up to 4MB."
           )}
         </p>
       </div>

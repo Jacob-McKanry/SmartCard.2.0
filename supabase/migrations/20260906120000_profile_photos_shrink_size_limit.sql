@@ -1,0 +1,59 @@
+-- =============================================================================
+-- 20260906120000_profile_photos_shrink_size_limit.sql
+--
+-- WHAT THIS CHANGES
+--   Shrinks `storage.buckets.file_size_limit` for `profile-photos` from
+--   5,242,880 bytes (5 MiB, set at creation, 20260813180355) to 4,194,304
+--   bytes (4 MiB). Nothing else about the bucket changes: still private
+--   (`public = false`), still the same four allowed MIME types
+--   (20260817120000).
+--
+-- WHY, STATED PLAINLY
+--   The owner's first real click-through of the claim → onboarding flow (no
+--   browser was available in the environment that built it) hit a photo
+--   upload that got stuck on "Uploading…" and then crashed. The upload code
+--   path itself (`photo-upload.ts`, `uploadPhotoAction`) was re-read start to
+--   finish and is sound — it is the exact same, already-tested path
+--   Profile's own photo editor uses, and every failure it can produce is
+--   caught and returned as a normal inline error, never a hang.
+--
+--   That points outside the application code, to the one layer nothing here
+--   had reasoned about: Vercel's own platform-level request-body ceiling for
+--   a Serverless Function, historically ~4.5 MB — independent of, and
+--   stricter than, both this app's own `next.config.ts` `bodySizeLimit`
+--   (6 MB) and this bucket's own `file_size_limit` (5 MiB until now). A
+--   photo between roughly 4.5 MB and the old 5 MiB ceiling would pass this
+--   app's own client and server checks and then be rejected by Vercel's
+--   infrastructure before the Server Action ever ran — a failure mode with
+--   no clean response for the client's `useActionState` to parse, which
+--   fits a hang followed by a crash better than anything found by reading
+--   the application code. This was NOT reproduced live (no browser or real
+--   large upload was available to confirm it against Vercel directly) — it
+--   is the strongest candidate identified, not a confirmed root cause, and
+--   is recorded as such rather than overstated.
+--
+--   4 MiB was chosen to leave real margin under that ~4.5 MB ceiling rather
+--   than sitting just above it, the way 5 MiB did. `MAX_BYTES` in both
+--   `apps/web/src/server/profile/photo-upload.ts` (server-side check) and
+--   `apps/web/src/app/(app)/profile/photo-uploader.tsx` (client-side check,
+--   UX only) are lowered to match in the same change, along with
+--   `MAX_EMBEDDED_PHOTO_BYTES` in `card-preview-service.ts` and
+--   `roster-service.ts` (the vCard photo-embed ceiling, which has always
+--   tracked this bucket's own limit rather than being independently chosen —
+--   see that constant's own header).
+--
+-- ACCESS GRANTED / FORBIDDEN BY THIS MIGRATION
+--   Grants: nothing. Forbids: an object between 4 MiB and 5 MiB, previously
+--     accepted by the bucket, is now rejected at upload time by the Storage
+--     API itself — the real enforcement layer, per `photo-upload.ts`'s own
+--     header. No existing object already stored above 4 MiB is affected
+--     retroactively; `file_size_limit` gates writes, not reads, of objects
+--     already in the bucket.
+--
+-- VERIFIED LIVE before applying: confirmed the bucket's `file_size_limit` was
+--   5,242,880 immediately beforehand, and 4,194,304 immediately after.
+-- =============================================================================
+
+update storage.buckets
+set file_size_limit = 4194304
+where id = 'profile-photos';
