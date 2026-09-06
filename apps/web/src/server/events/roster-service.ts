@@ -139,8 +139,8 @@ const EMBEDDABLE_PHOTO_TYPES: Record<string, string> = {
   "image/gif": "GIF",
 };
 
-/** Matches the `profile-photos` bucket's own 5 MiB `file_size_limit` — see `card-preview-service.ts` for the fuller history of this number. */
-const MAX_EMBEDDED_PHOTO_BYTES = 5 * 1024 * 1024;
+/** Matches the `profile-photos` bucket's own 4 MiB `file_size_limit` (shrunk 2026-09-06) — see `card-preview-service.ts` for the fuller history of this number. */
+const MAX_EMBEDDED_PHOTO_BYTES = 4 * 1024 * 1024;
 
 /**
  * The bytes behind a roster subject's `photo_path`, for the vCard's `PHOTO`

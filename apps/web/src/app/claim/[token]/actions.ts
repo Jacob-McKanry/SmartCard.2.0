@@ -5,6 +5,7 @@ import { claimApprovedFieldsSchema } from "@smartcard/types";
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { safeActionErrorMessage, UserFacingError } from "@/server/errors";
 import { claimEventImport } from "@/server/events/claim-service";
+import { setPostSignupRedirect } from "@/server/onboarding/post-signup-redirect";
 import type { ClaimActionState } from "./action-state";
 
 /**
@@ -39,6 +40,7 @@ import type { ClaimActionState } from "./action-state";
  */
 export async function claimEventImportAction(
   lookupToken: string,
+  eventId: string,
   _prevState: ClaimActionState,
   formData: FormData,
 ): Promise<ClaimActionState> {
@@ -83,6 +85,14 @@ export async function claimEventImportAction(
         "This link couldn't be used to claim a profile. It may have expired, already been used, or not apply to this account.",
       );
     }
+
+    // A brand-new account is about to be detoured through the mandatory
+    // onboarding gate ((app)/layout.tsx) before it can reach anything else —
+    // an already-onboarded existing member claiming a guest-list slot skips
+    // that detour entirely and this cookie simply goes unread until it
+    // expires. See post-signup-redirect.ts for why this has to be a cookie
+    // rather than a query parameter on /onboarding.
+    await setPostSignupRedirect(`/events/${eventId}/roster`);
 
     return { claimed: true };
   } catch (error) {

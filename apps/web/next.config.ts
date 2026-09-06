@@ -157,15 +157,19 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@smartcard/core", "@smartcard/types", "@smartcard/api-client"],
   experimental: {
     serverActions: {
-      // The `profile-photos` Storage bucket caps objects at 5MB
-      // (20260813180355_create_profile_photos_bucket.sql) and
-      // `uploadPhotoAction` (apps/web/src/app/profile/actions.ts) posts the
-      // file straight through as multipart form data — the default 1MB
+      // The `profile-photos` Storage bucket caps objects at 4MB (shrunk from
+      // 5MB 2026-09-06, see 20260906120000_profile_photos_shrink_size_limit.sql
+      // — a real upload got stuck and crashed, and the leading suspect is
+      // Vercel's own platform-level request-body ceiling for a Serverless
+      // Function, ~4.5MB, independent of and stricter than this setting) and
+      // `uploadPhotoAction` (apps/web/src/app/(app)/profile/actions.ts) posts
+      // the file straight through as multipart form data — the default 1MB
       // Server Action body limit would reject a legitimately-sized photo
-      // before it ever reached that check. 6MB leaves room for multipart
-      // boundary/header overhead on top of the 5MB payload (see this
-      // option's own doc: "an additional 10-20KB is a reasonable rule of
-      // thumb" — 6MB is deliberately generous rather than cutting it close).
+      // before it ever reached that check. This value is intentionally left
+      // ABOVE both the bucket's cap and Vercel's own ceiling: it only needs
+      // to not be the thing that rejects a request first, so a real, tighter
+      // limit is enforced by the two layers that actually matter (the
+      // bucket, and the platform) rather than by a number tuned here.
       bodySizeLimit: "6mb",
     },
   },

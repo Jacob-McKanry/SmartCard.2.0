@@ -54,7 +54,7 @@ export function ClaimReview({
 }) {
   const [state, formAction, pending] = useActionState(
     (prev: typeof initialClaimActionState, formData: FormData) =>
-      claimEventImportAction(lookupToken, prev, formData),
+      claimEventImportAction(lookupToken, eventId, prev, formData),
     initialClaimActionState,
   );
 
@@ -266,11 +266,23 @@ function FieldCheckbox({ name, label, value }: { name: string; label: string; va
 }
 
 /**
- * §4.2 step 5, "land on the event" — a link rather than an automatic
+ * §4.2 step 5, "land on the roster" — a link rather than an automatic
  * redirect, the same choice `ImportDone` makes for the host side: this
  * screen is also the one confirmation that the claim actually went through,
  * and navigating away from it instantly would remove that confirmation
  * before anyone could read it.
+ *
+ * POINTS AT THE ROSTER, NOT THE EVENT PAGE — for an already-onboarded
+ * existing member this link is the whole journey, so it goes straight to
+ * the payoff (seeing who else opted in) rather than a detail page they would
+ * have to tap through again. A brand-new account sees this exact same
+ * screen and link too, but tapping it hits `(app)/layout.tsx`'s onboarding
+ * gate first (that account has never been through onboarding, claim or not)
+ * and gets detoured to `/onboarding`; `setPostSignupRedirect` — called by
+ * the action above, the moment the claim succeeded — is what brings them
+ * back to this same `/events/{eventId}/roster` destination once onboarding
+ * finishes, instead of the generic home screen `finishAndGoHome()` would
+ * otherwise send them to.
  */
 function ClaimDone({ eventId, eventName }: { eventId: string; eventName: string }) {
   return (
@@ -292,11 +304,11 @@ function ClaimDone({ eventId, eventName }: { eventId: string; eventName: string 
         profile.
       </p>
       <Link
-        href={`/events/${eventId}`}
+        href={`/events/${eventId}/roster`}
         className="mt-1 flex min-h-11 items-center justify-center rounded-full px-5 text-[15px] font-semibold"
         style={SECONDARY_BUTTON}
       >
-        Go to the event
+        See who else is here
       </Link>
     </main>
   );

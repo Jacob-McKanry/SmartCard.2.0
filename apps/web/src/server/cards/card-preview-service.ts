@@ -929,19 +929,27 @@ const PREVIEW_PHOTO_URL_TTL_SECONDS = 5 * 60;
  * `storage.objects` table rather than assumed: real recent uploads at
  * 365,349 and 3,098,426 bytes, both well past the old cap.
  *
- * THE NEW NUMBER is the bucket's own `file_size_limit`
+ * THE NUMBER is the bucket's own `file_size_limit`
  * (`storage.buckets.file_size_limit`, 20260813180355) — read live and
- * confirmed at 5,242,880 (5 MiB) rather than assumed to still match the
- * comment that used to be here. Matching it exactly is deliberate: a photo the
- * upload path already accepted has no principled reason to then be silently
- * refused here. A cap strictly below the bucket's own limit would just move
- * the same silent-drop bug to a different threshold instead of removing it.
+ * confirmed rather than assumed to still match the comment that used to be
+ * here. Matching it exactly is deliberate: a photo the upload path already
+ * accepted has no principled reason to then be silently refused here. A cap
+ * strictly below the bucket's own limit would just move the same silent-drop
+ * bug to a different threshold instead of removing it.
  *
- * WHAT THIS COSTS. Base64 inflates by a third, so a full 5 MiB photo produces
- * a ~6.8 MB `.vcf` — slow over cellular, and worth revisiting if it becomes a
+ * SHRUNK FROM 5 MiB TO 4 MiB ON 2026-09-06, following the bucket's own
+ * `file_size_limit` down (`20260906120000_profile_photos_shrink_size_limit.sql`
+ * — that migration's header has the reasoning: a real upload got stuck and
+ * crashed, and the strongest candidate is Vercel's ~4.5 MB platform ceiling
+ * for a Serverless Function's request body, independent of and stricter than
+ * anything this app's own config reasoned about. This constant follows the
+ * bucket down rather than being left to drift above it.
+ *
+ * WHAT THIS COSTS. Base64 inflates by a third, so a full 4 MiB photo produces
+ * a ~5.5 MB `.vcf` — slow over cellular, and worth revisiting if it becomes a
  * real complaint. THE RIGHT NEXT LEVER, if it does, is downscaling before
- * embedding (`sharp` or similar), not shrinking this cap back down — that
- * would reintroduce today's exact bug for a different set of real photos.
+ * embedding (`sharp` or similar), not raising this cap back up — that would
+ * reintroduce the exact upload-side bug this shrink exists to avoid.
  * `sharp` was rejected in the original version of this comment as "a
  * disproportionate dependency... for one optional property of one courtesy
  * file", written when no photo was known to need it; it is not in this app's
@@ -949,7 +957,7 @@ const PREVIEW_PHOTO_URL_TTL_SECONDS = 5 * 60;
  * for whoever picks this up next, made deliberately rather than as a
  * silent side effect of a serverless build.
  */
-const MAX_EMBEDDED_PHOTO_BYTES = 5 * 1024 * 1024;
+const MAX_EMBEDDED_PHOTO_BYTES = 4 * 1024 * 1024;
 
 /**
  * Media types this will embed, and the vCard 3.0 `TYPE=` token for each.

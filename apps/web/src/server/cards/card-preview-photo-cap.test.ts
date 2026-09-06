@@ -21,9 +21,15 @@ import { supabaseCardPreviewStore } from "./card-preview-service";
  * `supabaseCardPreviewStore` — the production wiring — directly. This file
  * is the first test of that function, scoped to the one behaviour that
  * regressed.
+ *
+ * SHRUNK FROM 5 MiB TO 4 MiB ON 2026-09-06, following
+ * `MAX_EMBEDDED_PHOTO_BYTES` and the bucket's own `file_size_limit` down
+ * together — see `card-preview-service.ts`'s header for why. The ceiling
+ * this test pins moved; the property it protects (the cap tracks the
+ * bucket, whatever the bucket's number is) did not.
  */
 
-const FIVE_MIB = 5 * 1024 * 1024;
+const FOUR_MIB = 4 * 1024 * 1024;
 
 function fakeStorageClient(photoBytes: Uint8Array, mimetype: string): SupabaseClient {
   return {
@@ -47,8 +53,8 @@ function fakeStorageClient(photoBytes: Uint8Array, mimetype: string): SupabaseCl
 }
 
 describe("supabaseCardPreviewStore().loadPhotoBytes — the size cap", () => {
-  it("embeds a photo at the bucket's own 5 MiB ceiling", async () => {
-    const bytes = new Uint8Array(FIVE_MIB);
+  it("embeds a photo at the bucket's own 4 MiB ceiling", async () => {
+    const bytes = new Uint8Array(FOUR_MIB);
     const store = supabaseCardPreviewStore(fakeStorageClient(bytes, "image/jpeg"));
 
     const result = await store.loadPhotoBytes("someone/photo.jpg");
@@ -58,7 +64,7 @@ describe("supabaseCardPreviewStore().loadPhotoBytes — the size cap", () => {
   });
 
   it("still refuses something larger than the bucket could ever hold", async () => {
-    const bytes = new Uint8Array(FIVE_MIB + 1);
+    const bytes = new Uint8Array(FOUR_MIB + 1);
     const store = supabaseCardPreviewStore(fakeStorageClient(bytes, "image/jpeg"));
 
     const result = await store.loadPhotoBytes("someone/photo.jpg");

@@ -8,6 +8,7 @@ import { getAuthenticatedContext, type AuthenticatedContext } from "@/server/aut
 import { safeActionErrorMessage, UserFacingError } from "@/server/errors";
 import { updateOwnProfile } from "@/server/profile/profile-service";
 import { assertSignupCompleted } from "@/server/onboarding/onboarding-service";
+import { consumePostSignupRedirect } from "@/server/onboarding/post-signup-redirect";
 
 import type { ActionState } from "@/app/(app)/profile/action-state";
 
@@ -106,7 +107,7 @@ export async function completeOnboardingAction(
     return { error: safeActionErrorMessage(error, "onboarding") };
   }
 
-  finishAndGoHome();
+  return await finishOnboarding();
 }
 
 /**
@@ -120,7 +121,7 @@ export async function completeOnboardingAction(
 export async function skipOnboardingAction(): Promise<void> {
   const context = await requireContext();
   await assertSignupCompleted(context.userId);
-  finishAndGoHome();
+  await finishOnboarding();
 }
 
 /**
@@ -129,11 +130,29 @@ export async function skipOnboardingAction(): Promise<void> {
  * person on a finished form.
  *
  * Both screens the flag changes the behaviour of are revalidated: Home, which
- * the person is about to see, and Profile, whose photo/details may have just
- * been written.
+ * the person may be about to see, and Profile, whose photo/details may have
+ * just been written.
+ *
+ * WHERE "DONE" ACTUALLY LANDS — NOT ALWAYS HOME
+ *
+ * `consumePostSignupRedirect()` reads and clears the one-time destination a
+ * claim-link signup recorded before being detoured here
+ * (`claim/[token]/actions.ts`'s `claimEventImportAction`, via
+ * `post-signup-redirect.ts` — see that module's header for why this has to
+ * be a cookie and not a query parameter on this route). For everybody else —
+ * the ordinary sign-up path, which never sets that cookie — this is `null`
+ * and the destination is Home, unchanged from before this existed.
+ *
+ * Awaited by both callers above, not fired and forgotten: this function is
+ * `async` now (it wasn't before) purely to read that cookie, and `redirect()`
+ * throwing inside an async function produces a rejected promise rather than a
+ * synchronous throw — the caller has to `await` it for Next's own redirect
+ * mechanism to see that throw and act on it, the same as it would for any
+ * other awaited call that throws.
  */
-function finishAndGoHome(): never {
+async function finishOnboarding(): Promise<never> {
   revalidatePath("/");
   revalidatePath("/profile");
-  redirect("/");
+  const destination = await consumePostSignupRedirect();
+  redirect(destination ?? "/");
 }
