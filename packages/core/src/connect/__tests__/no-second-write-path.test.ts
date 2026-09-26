@@ -231,6 +231,23 @@ describe("there is exactly one path that writes the social graph", () => {
         join("apps", "web", "src", "server", "auth", "ensure-user.ts"),
         join("apps", "web", "src", "server", "connect", "connect-service.ts"),
         join("apps", "web", "src", "server", "connect", "geocode.ts"),
+        // Added 2026-09-26 for the unverified "add a contact" flow
+        // (docs/architecture/2026-09-26-unverified-connections.md). This is
+        // `manual-connect-service.ts`'s ONLY caller of the service role, and
+        // it exists for the same reason `connect-service.ts` above it does:
+        // `create_manual_connection` (like `create_verified_connection`) is
+        // granted to `service_role` alone, deliberately, so that no client
+        // role can call it directly — this file is the one server-side
+        // caller that holds the credential the grant requires. It is a
+        // genuinely NEW second write path into the social graph, added on
+        // purpose per the owner's explicit, repeatedly-confirmed decision to
+        // remove the in-person-verification requirement — not an accidental
+        // one this list failed to catch. See the architecture doc for what
+        // that decision actually is and the header of
+        // `create_manual_connection`'s own migration for why it is a
+        // separate function rather than a change to
+        // `create_verified_connection`.
+        join("apps", "web", "src", "server", "connect", "manual-connect-service.ts"),
         join("apps", "web", "src", "server", "connect", "push.ts"),
         join("apps", "web", "src", "server", "connect", "supabase-connect-store.ts"),
         // Added 2026-08-15 with the non-user card preview, by hand and with the

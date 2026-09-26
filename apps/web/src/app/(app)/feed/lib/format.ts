@@ -32,13 +32,26 @@ export function initialsFor(person: { first_name: string | null; last_name: stri
   return combined !== "" ? combined : "•";
 }
 
-/** The plain-language label for `meetings.verification_method` (§2.4). */
+/**
+ * The plain-language label for `meetings.verification_method` (§2.4).
+ * `card_scan_ocr`/`badge_qr`/`badge_nfc`/`manual_entry` added 2026-09-26 —
+ * see the sibling copy of this function in `connections/lib/format.ts` for
+ * why these four say what happened rather than claiming to be "verified".
+ */
 export function verificationMethodLabel(method: VerificationMethod): string {
   switch (method) {
     case "qr_gps":
       return "QR code, verified by location";
     case "nfc_card":
       return "NFC card tap";
+    case "card_scan_ocr":
+      return "Scanned business card";
+    case "badge_qr":
+      return "Scanned badge code";
+    case "badge_nfc":
+      return "Tapped badge";
+    case "manual_entry":
+      return "Added manually";
   }
 }
 

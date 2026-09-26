@@ -17,8 +17,17 @@ nodeLinker: hoisted
 # approval pnpm skips it and `vitest` fails to start, which would leave the
 # adversarial security tests unrunnable — the one class of failure this project
 # can least afford to have go quiet.
+#
+# tesseract.js (added 2026-09-26 for the "scan a business card" OCR path,
+# docs/architecture/2026-09-26-unverified-connections.md) has one postinstall
+# script, and it is `opencollective-postinstall || true` — read directly
+# before approving: it only ever reads the package's own package.json and
+# prints a one-time "please donate" message to stdout, gated behind
+# `DISABLE_OPENCOLLECTIVE`/`CI`/log-level checks. No filesystem write, no
+# network call, no side effect beyond console output.
 allowBuilds:
   esbuild: true
+  tesseract.js: true
   unrs-resolver: true
 
 # Security overrides, from the 2026-08-14 audit. Lives here rather than under a

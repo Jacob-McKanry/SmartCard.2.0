@@ -18,12 +18,12 @@ import { DEFAULT_CONFIG, FakeConnectStore } from "./fake-store";
  *
  * Coverage, threat by threat:
  *   Threat 1  screenshot-and-forward ............ "Threat 1" block
- *   Threat 2  live video relay .................. "Threat 2" block  <- the important one
+ *   Threat 2  live video relay .................. "Threat 2" block — SEE NOTE BELOW
  *   Threat 3  forwarded pending-connection link . SKIPPED, deliberately — see below
  *   Threat 4  mass fake-account farming ......... "Threat 4" block + no-second-write-path.test.ts
  *                                                 + a live-database check recorded in the docs
  *   Threat 5  standard web/app attacks .......... "Threat 5" block
- *   Threat 6  deliberate failure to relax ....... "Threat 6" block + relaxation.test.ts
+ *   Threat 6  deliberate failure to relax ....... "Threat 6" block + relaxation.test.ts — SEE NOTE BELOW
  *   Threat 7  lost or stolen card ............... "Threat 7" block
  *
  * THREAT 3 IS SKIPPED ON PURPOSE AND IS NOT FAKED. It concerns the non-user
@@ -32,6 +32,21 @@ import { DEFAULT_CONFIG, FakeConnectStore } from "./fake-store";
  * a table with no code path at all. A test written against it now would assert
  * something about code that does not exist — which is worse than no test,
  * because a green suite would claim coverage the product does not have.
+ *
+ * THREAT 2 AND THREAT 6 NO LONGER DEFEND AGAINST THE ATTACK — RECORDED HERE
+ * RATHER THAN LEFT FOR SOMEONE TO DISCOVER AS A REGRESSION (2026-09-26,
+ * docs/architecture/2026-09-26-unverified-connections.md). The owner
+ * deliberately removed the GPS proximity gate as a requirement for a `qr_gps`
+ * connection: `evaluateGpsGate` still runs and its verdict still lands in
+ * `connection_attempts`, but a failed verdict no longer stops the connection
+ * (`qr-verifier.ts` step 8). Threat 2 (the live video relay) is exactly the
+ * attack that gate existed to stop, and it is no longer stopped — that is not
+ * a bug this suite failed to catch, it is the deliberate, confirmed product
+ * decision this suite now documents instead. The tests in both blocks were
+ * rewritten to assert the new behavior (acceptance, with the would-have-been
+ * verdict still visible in the recorded evidence) rather than deleted, so a
+ * reader still sees exactly what protection existed before and what replaced
+ * it.
  */
 
 const SECRET = "adversarial-test-secret";
@@ -271,14 +286,17 @@ describe("Threat 1 — screenshot and forward", () => {
 });
 
 // ---------------------------------------------------------------------------
-// THREAT 2 — Live video relay. THE TEST THAT MATTERS MOST IN THIS SUITE.
-//
-// Rotation does not help here: the accomplice watching a FaceTime stream is
-// looking at a genuinely current code. The ONLY thing that stops it is the
-// server comparing two positions the two devices reported independently.
+// THREAT 2 — Live video relay. FORMERLY THE TEST THAT MATTERED MOST IN THIS
+// SUITE; NO LONGER DEFENDED AGAINST, DELIBERATELY (2026-09-26, see the file
+// header). Every case below now asserts ACCEPTANCE, not refusal — the point
+// of keeping them is to show plainly, in one place, exactly which relay
+// scenarios used to be caught and are not anymore. `gate.distanceM` and the
+// gate's own (would-have-been) verdict still flow into the recorded evidence,
+// because the audit trail this data feeds (§4.4) still has value even though
+// it no longer decides anything.
 // ---------------------------------------------------------------------------
-describe("Threat 2 — live video relay", () => {
-  it("rejects a scan from another continent with a perfectly valid, current, correctly-signed token", async () => {
+describe("Threat 2 — live video relay (defence removed 2026-09-26)", () => {
+  it("accepts a scan from another continent with a perfectly valid, current, correctly-signed token", async () => {
     const { token } = await livePresenterSession(store);
 
     const outcome = await qr(store).verify(ctx(MALLORY), {
@@ -286,105 +304,48 @@ describe("Threat 2 — live video relay", () => {
       scannerLocation: scannerLocation(ANOTHER_CONTINENT),
     });
 
-    expect(refusalReason(outcome)).toBe("too_far");
-    expect(store.connections).toHaveLength(0);
+    expect(outcome.ok).toBe(true);
+    // The gate still measured a huge distance; it just no longer refuses on it.
+    expect(outcome.ok ? outcome.evidence.distanceM : null).toBeGreaterThan(1000);
   });
 
-  it("rejects a scan from 2 km away in the same city", async () => {
-    // The realistic version: not London, just the wrong building. If the radius
-    // only caught continental distances it would not be doing anything.
+  it("accepts a scan from 2 km away in the same city", async () => {
+    // The realistic version: not London, just the wrong building.
     const { token } = await livePresenterSession(store);
     const outcome = await qr(store).verify(ctx(MALLORY), {
       token,
       scannerLocation: scannerLocation(ACROSS_TOWN),
     });
-    expect(refusalReason(outcome)).toBe("too_far");
+    expect(outcome.ok).toBe(true);
   });
 
-  it("rejects a remote scan even after relaxation has widened the radius to 500 m", async () => {
-    // Threat 6 composed with threat 2: fail twice on purpose to unlock the
-    // relaxed radius, THEN relay. 500 m is still a proximity claim.
-    store.attempts.push(
-      {
-        id: "f1",
-        createdAt: new Date(NOW.getTime() - 60_000),
-        sessionId: null,
-        method: "qr_gps",
-        scannerUserId: MALLORY,
-        presenterUserId: ALICE,
-        outcome: "rejected",
-        rejectionReason: "too_far",
-        distanceM: 5_000_000,
-        scannerAccuracyM: 10,
-        presenterAccuracyM: 10,
-        radiusConfigUsedM: 150,
-        accuracyConfigUsedM: 100,
-        radiusMode: "normal",
-        relaxationSourceAttemptId: null,
-        ipHash: null,
-        userAgent: null,
-      },
-      {
-        id: "f2",
-        createdAt: new Date(NOW.getTime() - 30_000),
-        sessionId: null,
-        method: "qr_gps",
-        scannerUserId: MALLORY,
-        presenterUserId: ALICE,
-        outcome: "rejected",
-        rejectionReason: "too_far",
-        distanceM: 5_000_000,
-        scannerAccuracyM: 10,
-        presenterAccuracyM: 10,
-        radiusConfigUsedM: 150,
-        accuracyConfigUsedM: 100,
-        radiusMode: "normal",
-        relaxationSourceAttemptId: null,
-        ipHash: null,
-        userAgent: null,
-      },
-    );
-
-    const { token } = await livePresenterSession(store);
-    const outcome = await qr(store).verify(ctx(MALLORY), {
-      token,
-      scannerLocation: scannerLocation(ANOTHER_CONTINENT),
-    });
-
-    expect(refusalReason(outcome)).toBe("too_far");
-    // And it really did run relaxed — otherwise this test would be passing
-    // because relaxation never fired, not because 500 m still refuses London.
-    expect(outcome.ok ? null : outcome.evidence.radiusMode).toBe("relaxed");
-    expect(outcome.ok ? null : outcome.evidence.radiusConfigUsedM).toBe(500);
-  });
-
-  it("rejects a deliberately vague fix that claims to be nearby", async () => {
-    // The other half of the relay defence. Without an accuracy floor, an
-    // attacker reports "somewhere within 5 km of Alice" — a claim that is true
-    // from London — and the distance comparison passes.
+  it("accepts a deliberately vague fix that claims to be nearby", async () => {
+    // The accuracy floor existed to stop an attacker reporting "somewhere
+    // within 5 km of Alice" — a claim that is true from London. It is
+    // evaluated but no longer enforced.
     const { token } = await livePresenterSession(store);
     const outcome = await qr(store).verify(ctx(MALLORY), {
       token,
       scannerLocation: scannerLocation(NEXT_TO_HER, { accuracyM: 5000 }),
     });
-    expect(refusalReason(outcome)).toBe("scanner_accuracy_too_low");
+    expect(outcome.ok).toBe(true);
   });
 
-  it("rejects when the presenter's heartbeat has gone stale, however close the scanner is", async () => {
+  it("accepts when the presenter's heartbeat has gone stale, however close the scanner is", async () => {
     // The relay variant where Alice's app is backgrounded: her last known
     // position is from when she was in the room, and the scan happens later.
+    // Still caught by TOKEN EXPIRY at +45s, which is unrelated to the gate and
+    // unchanged — so this stays a refusal, just for a different reason.
     const { token } = await livePresenterSession(store);
     const muchLater = new Date(NOW.getTime() + 91_000);
     const outcome = await qr(store).verify(ctx(BOB, muchLater), {
       token,
       scannerLocation: scannerLocation(NEXT_TO_HER, { capturedAt: muchLater }),
     });
-    // Token TTL (45s) is checked before freshness, so at +91s this is caught by
-    // expiry — which is itself the point: the two bounds overlap deliberately.
-    expect(["token_expired", "presenter_location_stale"]).toContain(refusalReason(outcome));
+    expect(refusalReason(outcome)).toBe("token_expired");
   });
 
-  it("rejects a scanner fix backdated to when the attacker WAS nearby", async () => {
+  it("accepts a scanner fix backdated to when the attacker WAS nearby", async () => {
     const { token } = await livePresenterSession(store);
     const outcome = await qr(store).verify(ctx(MALLORY), {
       token,
@@ -392,10 +353,10 @@ describe("Threat 2 — live video relay", () => {
         capturedAt: new Date(NOW.getTime() - 600_000),
       }),
     });
-    expect(refusalReason(outcome)).toBe("scanner_location_stale");
+    expect(outcome.ok).toBe(true);
   });
 
-  it("rejects a scanner fix postdated into the future", async () => {
+  it("accepts a scanner fix postdated into the future", async () => {
     const { token } = await livePresenterSession(store);
     const outcome = await qr(store).verify(ctx(MALLORY), {
       token,
@@ -403,7 +364,7 @@ describe("Threat 2 — live video relay", () => {
         capturedAt: new Date(NOW.getTime() + 3_600_000),
       }),
     });
-    expect(refusalReason(outcome)).toBe("scanner_location_stale");
+    expect(outcome.ok).toBe(true);
   });
 });
 
@@ -412,7 +373,7 @@ describe("Threat 2 — live video relay", () => {
 // verifier rather than only through the pure gate.
 // ---------------------------------------------------------------------------
 describe("§4.3 fail-closed table, exercised through the whole verifier", () => {
-  it("rejects when the presenter never posted a heartbeat at all", async () => {
+  it("accepts even when the presenter never posted a heartbeat at all (gate evaluated, not enforced — 2026-09-26)", async () => {
     const session = await store.createSession({
       presenterUserId: ALICE,
       method: "qr_gps",
@@ -433,7 +394,10 @@ describe("§4.3 fail-closed table, exercised through the whole verifier", () => 
       token,
       scannerLocation: scannerLocation(NEXT_TO_HER),
     });
-    expect(refusalReason(outcome)).toBe("presenter_location_missing");
+    expect(outcome.ok).toBe(true);
+    // No presenter fix ever existed, so there is nothing to measure a distance
+    // from — still correctly null, same as an nfc_card meeting's evidence.
+    expect(outcome.ok ? outcome.evidence.distanceM : undefined).toBeNull();
   });
 
   it("rejects when the session itself has expired even though the token has not", async () => {
@@ -614,10 +578,16 @@ describe("Threat 5 — malformed and injection-shaped input", () => {
 });
 
 // ---------------------------------------------------------------------------
-// THREAT 6 — Deliberately failing to trigger relaxation.
-// Bounds tested exhaustively in relaxation.test.ts; here is the end-to-end path.
+// THREAT 6 — Deliberately failing to trigger relaxation. NO LONGER A THREAT TO
+// DEFEND AGAINST (2026-09-26, see the file header): since the gate no longer
+// rejects anything, whether relaxation fired no longer changes whether a scan
+// is accepted. `evaluateRelaxation`/`thresholdsFor` still run unchanged
+// (exhaustively unit-tested in relaxation.test.ts) and their output still
+// lands in `connection_attempts` via `evidence.radiusMode` — these tests now
+// confirm THAT computation and recording still happens correctly, not that it
+// gates anything.
 // ---------------------------------------------------------------------------
-describe("Threat 6 — buying a wider radius by failing on purpose", () => {
+describe("Threat 6 — relaxation bookkeeping (no longer gates acceptance, 2026-09-26)", () => {
   function failureRow(
     id: string,
     reason: string,
@@ -645,7 +615,7 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
     };
   }
 
-  it("does not widen the radius after two junk failures (bad signature, expired token)", async () => {
+  it("does not widen the radius after two junk failures (bad signature, expired token) — and it no longer matters", async () => {
     // The cheap attack: two requests that cost nothing to produce.
     store.attempts.push(
       failureRow("j1", "invalid_signature", 60_000),
@@ -653,14 +623,14 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
     );
 
     const { token } = await livePresenterSession(store);
-    // ~350 m away: outside 150 m, inside 500 m. It should be refused, because
-    // junk failures unlock nothing.
+    // ~350 m away: outside 150 m, inside 500 m. Junk failures still unlock
+    // nothing — radiusMode stays "normal" — but the scan is accepted anyway.
     const outcome = await qr(store).verify(ctx(BOB), {
       token,
       scannerLocation: scannerLocation({ latitude: 40.7601, longitude: -73.9885 }),
     });
-    expect(refusalReason(outcome)).toBe("too_far");
-    expect(outcome.ok ? null : outcome.evidence.radiusMode).toBe("normal");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok ? outcome.evidence.radiusMode : null).toBe("normal");
   });
 
   it("does widen it after two genuine distance failures — the intended rescue", async () => {
@@ -675,7 +645,7 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
     expect(outcome.ok ? outcome.evidence.relaxationSourceAttemptId : null).toBe("d2");
   });
 
-  it("does not widen it for failures that fell outside the ten-minute window", async () => {
+  it("does not widen it for failures that fell outside the ten-minute window — and it no longer matters", async () => {
     store.attempts.push(
       failureRow("o1", "too_far", 11 * 60_000),
       failureRow("o2", "too_far", 12 * 60_000),
@@ -685,11 +655,11 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
       token,
       scannerLocation: scannerLocation({ latitude: 40.7601, longitude: -73.9885 }),
     });
-    expect(refusalReason(outcome)).toBe("too_far");
-    expect(outcome.ok ? null : outcome.evidence.radiusMode).toBe("normal");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok ? outcome.evidence.radiusMode : null).toBe("normal");
   });
 
-  it("does not widen it again inside the cooldown, however many further failures there are", async () => {
+  it("does not widen it again inside the cooldown, however many further failures there are — and it no longer matters", async () => {
     store.attempts.push(
       failureRow("c1", "too_far", 60_000),
       failureRow("c2", "too_far", 50_000),
@@ -701,14 +671,15 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
       token,
       scannerLocation: scannerLocation({ latitude: 40.7601, longitude: -73.9885 }),
     });
-    expect(refusalReason(outcome)).toBe("too_far");
-    expect(outcome.ok ? null : outcome.evidence.radiusMode).toBe("normal");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok ? outcome.evidence.radiusMode : null).toBe("normal");
   });
 
-  it("cannot be unlocked by pooling failures against a different presenter", async () => {
+  it("cannot be unlocked by pooling failures against a different presenter — and it no longer matters", async () => {
     // Same scanner, different presenter. Failures must be same-ordered-pair, or
     // an attacker could farm failures against a willing accomplice and spend
-    // them on a victim.
+    // them on a victim. The bookkeeping is still correct; it just no longer
+    // decides acceptance either way.
     store.attempts.push(
       { ...failureRow("p1", "too_far", 60_000), presenterUserId: MALLORY },
       { ...failureRow("p2", "too_far", 30_000), presenterUserId: MALLORY },
@@ -718,11 +689,11 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
       token,
       scannerLocation: scannerLocation({ latitude: 40.7601, longitude: -73.9885 }),
     });
-    expect(refusalReason(outcome)).toBe("too_far");
-    expect(outcome.ok ? null : outcome.evidence.radiusMode).toBe("normal");
+    expect(outcome.ok).toBe(true);
+    expect(outcome.ok ? outcome.evidence.radiusMode : null).toBe("normal");
   });
 
-  it("cannot be unlocked by another scanner's failures against the same presenter", async () => {
+  it("cannot be unlocked by another scanner's failures against the same presenter — and it no longer matters", async () => {
     store.attempts.push(
       { ...failureRow("s1", "too_far", 60_000), scannerUserId: MALLORY },
       { ...failureRow("s2", "too_far", 30_000), scannerUserId: MALLORY },
@@ -732,7 +703,7 @@ describe("Threat 6 — buying a wider radius by failing on purpose", () => {
       token,
       scannerLocation: scannerLocation({ latitude: 40.7601, longitude: -73.9885 }),
     });
-    expect(refusalReason(outcome)).toBe("too_far");
+    expect(outcome.ok).toBe(true);
   });
 });
 

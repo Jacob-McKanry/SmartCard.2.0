@@ -76,6 +76,10 @@ export {
 // deciding a meeting's event.
 export { selectAutoTaggedEvent, type AutoTagInput } from "./connect/event-tagging";
 
+// --- 2026-09-26: shared contact-field guessing for the unverified
+// "add a contact" flow (OCR, badge QR/barcode, badge NFC) ---
+export { extractContactGuess, type ContactGuess } from "./connect/contact-guess";
+
 export {
   evaluateRelaxation,
   thresholdsFor,

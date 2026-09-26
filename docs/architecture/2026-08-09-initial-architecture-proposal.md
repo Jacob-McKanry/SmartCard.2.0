@@ -697,6 +697,8 @@ Recorded here rather than left implicit in a diff, per the documentation standar
 
 ## 4. Connection verification design
 
+> **Amended 2026-09-26 — read `docs/architecture/2026-09-26-unverified-connections.md` before treating anything below as still enforced.** The GPS gate described in §4.3 is still computed but no longer blocks a `qr_gps` connection (only the calling service's *reaction* to it changed — nothing in this section's design was rewritten). A second, deliberately unverified path, `create_manual_connection`, now also writes the same graph tables this section describes as having exactly one writer. That amendment document is the place the reasoning and the owner's confirmation live; this section is left as-written below as the historical record of what was originally designed and why.
+
 ### 4.1 The abstraction
 
 ```ts

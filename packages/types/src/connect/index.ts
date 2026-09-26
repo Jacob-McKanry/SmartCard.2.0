@@ -316,3 +316,17 @@ export const nfcLocationAttachResponseSchema = z
   .strict();
 
 export type NfcLocationAttachResponse = z.infer<typeof nfcLocationAttachResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// The unverified "add a contact" flow (2026-09-26) — see ./manual.ts.
+//
+// Kept in its own file rather than inline above: everything above this line
+// is shape for the VERIFIED qr_gps/nfc_card endpoints, and the file header's
+// own "what is deliberately absent" section is a claim about THOSE shapes
+// specifically. `./manual.ts` is a different flow with a different, opposite
+// design point (naming or describing the other party IS the request), so
+// giving it its own file keeps this one's header claim true by inspection
+// rather than by a reader having to notice which schemas below the fold are
+// exceptions to it.
+// ---------------------------------------------------------------------------
+export * from "./manual";

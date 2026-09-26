@@ -14,8 +14,18 @@
  */
 import { z } from "zod";
 
-/** `users.status` */
-export const userStatusSchema = z.enum(["active", "suspended", "deleted"]);
+/**
+ * `users.status`.
+ *
+ * `placeholder` added 20260926120000: a row created by
+ * `create_manual_connection` for someone scanned/manually added who had no
+ * SmartCard account yet — see
+ * docs/architecture/2026-09-26-unverified-connections.md.
+ * `ensureUser()`/`assertActive()` already refuse to mint a session for any
+ * value other than `'active'`, so a placeholder is unreachable at login with
+ * no separate check needed for this fourth value.
+ */
+export const userStatusSchema = z.enum(["active", "suspended", "deleted", "placeholder"]);
 export type UserStatus = z.infer<typeof userStatusSchema>;
 
 /**
@@ -41,11 +51,38 @@ export type ConnectionStatus = z.infer<typeof connectionStatusSchema>;
  * `meetings.verification_method`, `connection_sessions.method`,
  * `connection_attempts.method`.
  *
- * The two ways proximity can be proven: a GPS-gated QR scan, or a physical card
- * tap where NFC's few-centimetre range is itself the proof (§4.5).
+ * `qr_gps`/`nfc_card` are the two originally-verified methods: a GPS-gated QR
+ * scan, or a physical card tap where NFC's few-centimetre range is itself the
+ * proof (§4.5) — though as of 2026-09-26 the GPS gate is evaluated but no
+ * longer enforced (`qr-verifier.ts` step 8); see
+ * docs/architecture/2026-09-26-unverified-connections.md.
+ * `card_scan_ocr`/`badge_qr`/`badge_nfc`/`manual_entry` were added
+ * 20260926120000 for `create_manual_connection` — none of them carry any
+ * proximity or identity verification at all. See `manualConnectionMethodSchema`
+ * below for the narrower set that RPC actually accepts.
  */
-export const verificationMethodSchema = z.enum(["qr_gps", "nfc_card"]);
+export const verificationMethodSchema = z.enum([
+  "qr_gps",
+  "nfc_card",
+  "card_scan_ocr",
+  "badge_qr",
+  "badge_nfc",
+  "manual_entry",
+]);
 export type VerificationMethod = z.infer<typeof verificationMethodSchema>;
+
+/**
+ * The subset of `verificationMethodSchema` that `create_manual_connection`
+ * (20260926130000) accepts as `p_method` — deliberately excludes `qr_gps` and
+ * `nfc_card`, which stay on `create_verified_connection` alone.
+ */
+export const manualConnectionMethodSchema = z.enum([
+  "card_scan_ocr",
+  "badge_qr",
+  "badge_nfc",
+  "manual_entry",
+]);
+export type ManualConnectionMethod = z.infer<typeof manualConnectionMethodSchema>;
 
 /**
  * The same union under a name that does not collide with §4.1's

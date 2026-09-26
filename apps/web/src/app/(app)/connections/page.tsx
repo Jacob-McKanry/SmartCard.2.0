@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import { QrCode, Users } from "lucide-react";
+import { QrCode, UserPlus, Users } from "lucide-react";
 
 import { getAuthenticatedContext } from "@/server/auth/current-user";
 import { listOwnConnections, type ConnectionListItem } from "@/server/connections/connections-service";
@@ -49,9 +49,12 @@ import { AvatarDisc } from "./lib/avatar-disc";
  *     only signal, so the chip reads "NFC" or "QR" in words on a neutral
  *     plate — it never becomes a green/amber "trust level".
  *
- *  3. **Nothing here links anywhere except a record the viewer is party to.**
- *     No avatar-to-profile link, no mutual-connection browsing, no share
- *     affordance. The only destination is `/connections/[id]`.
+ *  3. **Every row links only to a record the viewer is party to.** No
+ *     avatar-to-profile link, no mutual-connection browsing, no share
+ *     affordance. The only per-row destination is `/connections/[id]`.
+ *     (Updated 2026-09-26: the header now also links to `/connections/add`,
+ *     the unverified add-a-contact flow — not a row destination, and not
+ *     browsing anyone; see docs/architecture/2026-09-26-unverified-connections.md.)
  */
 export const dynamic = "force-dynamic";
 
@@ -80,12 +83,29 @@ export default async function ConnectionsPage() {
       style={{ animation: "sc-rise .5s var(--sc-ease-glide) both" }}
     >
       <header className="flex flex-col gap-[5px] pt-1.5">
-        <h1 className="text-[30px] leading-[34px] font-semibold tracking-[-0.03em]">People</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-[30px] leading-[34px] font-semibold tracking-[-0.03em]">People</h1>
+          {/*
+           * Added 2026-09-26 alongside the unverified add-a-contact flow —
+           * see docs/architecture/2026-09-26-unverified-connections.md. This
+           * is the one link on this screen that does not require meeting
+           * anyone in person first.
+           */}
+          <Link
+            href="/connections/add"
+            className="mt-1 flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] leading-4 font-semibold"
+            style={{ background: "rgba(13,18,32,.06)", color: "var(--sc-text)" }}
+          >
+            <UserPlus size={14} strokeWidth={2} aria-hidden />
+            Add
+          </Link>
+        </div>
         <p
           className="max-w-[54ch] text-[14px] leading-5"
           style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
         >
-          Everyone you&rsquo;ve met in person. There&rsquo;s no way to browse anyone else&rsquo;s.
+          Everyone you&rsquo;ve connected with — in person, or added yourself. There&rsquo;s still no way to
+          browse anyone else&rsquo;s list.
         </p>
       </header>
 
@@ -148,21 +168,31 @@ function EmptyPeople() {
           className="max-w-[40ch] text-[13px] leading-[19px]"
           style={{ color: "var(--sc-text-muted)", textWrap: "pretty" }}
         >
-          This list only fills up in person. A connection is made by tapping an NFC card or scanning
-          someone&rsquo;s code while you&rsquo;re both standing there — nothing else adds to it.
+          Tap an NFC card or scan someone&rsquo;s code while you&rsquo;re both standing there, or add someone
+          yourself — scan a card, scan a badge, or just type in their details.
         </p>
       </div>
-      <Link
-        href="/connect"
-        className="mt-1 inline-flex items-center gap-2 rounded-full px-5 py-3 text-[14px] leading-[18px] font-semibold text-white"
-        style={{
-          background: "linear-gradient(150deg, var(--sc-accent), var(--sc-accent-deep))",
-          boxShadow: "0 14px 30px -10px rgba(11,96,255,.55)",
-        }}
-      >
-        <QrCode size={17} strokeWidth={1.9} aria-hidden />
-        Connect in person
-      </Link>
+      <div className="flex flex-wrap justify-center gap-2">
+        <Link
+          href="/connect"
+          className="mt-1 inline-flex items-center gap-2 rounded-full px-5 py-3 text-[14px] leading-[18px] font-semibold text-white"
+          style={{
+            background: "linear-gradient(150deg, var(--sc-accent), var(--sc-accent-deep))",
+            boxShadow: "0 14px 30px -10px rgba(11,96,255,.55)",
+          }}
+        >
+          <QrCode size={17} strokeWidth={1.9} aria-hidden />
+          Connect in person
+        </Link>
+        <Link
+          href="/connections/add"
+          className="mt-1 inline-flex items-center gap-2 rounded-full px-5 py-3 text-[14px] leading-[18px] font-semibold"
+          style={{ background: "rgba(255,255,255,.7)", border: "1px solid rgba(13,18,32,.1)", color: "var(--sc-text)" }}
+        >
+          <UserPlus size={17} strokeWidth={1.9} aria-hidden />
+          Add a contact
+        </Link>
+      </div>
     </div>
   );
 }

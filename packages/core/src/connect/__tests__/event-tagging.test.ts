@@ -412,67 +412,19 @@ describe("event tagging cannot affect whether a connection is accepted or why it
    * Every refusal the QR path can produce, as a world plus the request that
    * triggers it. Each is replayed against three different event worlds below.
    */
+  // The four GPS-gate refusal reasons (`too_far`, `scanner_accuracy_too_low`,
+  // `scanner_location_stale`, `presenter_location_missing`) are deliberately
+  // NOT in this table anymore (2026-09-26,
+  // docs/architecture/2026-09-26-unverified-connections.md): the gate is
+  // still evaluated but no longer refuses (`qr-verifier.ts` step 8), so none
+  // of them are refusals the QR path can still produce. The gate-vs-tagging
+  // ordering claim these scenarios existed to test is covered directly in
+  // `threats.test.ts`'s "Threat 2" block instead, which now asserts
+  // acceptance for the same inputs.
   const SCENARIOS: Array<{
     reason: string;
     build: (s: FakeConnectStore) => Promise<{ ctx: RequestContext; input: QrRedeemRequest }>;
   }> = [
-    {
-      reason: "too_far",
-      build: async (s) => {
-        const { token } = await livePresenterSession(s);
-        return {
-          ctx: ctx(MALLORY),
-          input: { token, scannerLocation: scannerLocation(ACROSS_TOWN) },
-        };
-      },
-    },
-    {
-      reason: "scanner_accuracy_too_low",
-      build: async (s) => {
-        const { token } = await livePresenterSession(s);
-        return {
-          ctx: ctx(MALLORY),
-          input: { token, scannerLocation: scannerLocation(NEXT_TO_HER, { accuracyM: 5000 }) },
-        };
-      },
-    },
-    {
-      reason: "scanner_location_stale",
-      build: async (s) => {
-        const { token } = await livePresenterSession(s);
-        return {
-          ctx: ctx(BOB),
-          input: {
-            token,
-            scannerLocation: scannerLocation(NEXT_TO_HER, {
-              capturedAt: new Date(NOW.getTime() - 600_000),
-            }),
-          },
-        };
-      },
-    },
-    {
-      reason: "presenter_location_missing",
-      build: async (s) => {
-        // A session with no heartbeat ever posted.
-        const session = await s.createSession({
-          presenterUserId: ALICE,
-          method: "qr_gps",
-          nonce: generateNonce(),
-          deviceId: null,
-          expiresAt: new Date(NOW.getTime() + 300_000),
-          now: NOW,
-        });
-        const iat = Math.floor(NOW.getTime() / 1000);
-        const token = await signQrToken(SECRET, {
-          sid: session.id,
-          nonce: session.currentNonce!,
-          iat,
-          exp: iat + 45,
-        });
-        return { ctx: ctx(BOB), input: { token, scannerLocation: scannerLocation(NEXT_TO_HER) } };
-      },
-    },
     {
       reason: "self_connect",
       build: async (s) => {
@@ -662,7 +614,10 @@ describe("event tagging cannot affect whether a connection is accepted or why it
 
   it("does not consult the event lookup when the scan is refused, even with a perfect match staged", async () => {
     // The same claim as the matrix above, written once in the most direct form
-    // a reader can check at a glance.
+    // a reader can check at a glance. Uses `self_connect` rather than a
+    // distance-based refusal (2026-09-26): the gate no longer refuses, so a
+    // scenario that still genuinely refuses is needed to test "not consulted
+    // on refusal" at all.
     stage(store, eventAtTheVenue(), [
       [ALICE, "going"],
       [MALLORY, "going"],
@@ -674,13 +629,13 @@ describe("event tagging cannot affect whether a connection is accepted or why it
     };
 
     const { token } = await livePresenterSession(store);
-    const outcome = await qr(store).verify(ctx(MALLORY), {
+    const outcome = await qr(store).verify(ctx(ALICE), {
       token,
-      scannerLocation: scannerLocation(ACROSS_TOWN),
+      scannerLocation: scannerLocation(HERE),
     });
 
     expect(outcome.ok).toBe(false);
-    expect(outcome.ok ? null : outcome.reason).toBe("too_far");
+    expect(outcome.ok ? null : outcome.reason).toBe("self_connect");
     expect(lookups).toBe(0);
   });
 
@@ -690,9 +645,9 @@ describe("event tagging cannot affect whether a connection is accepted or why it
       [MALLORY, "going"],
     ]);
     const { token } = await livePresenterSession(store);
-    const outcome = await qr(store).verify(ctx(MALLORY), {
+    const outcome = await qr(store).verify(ctx(ALICE), {
       token,
-      scannerLocation: scannerLocation(ACROSS_TOWN),
+      scannerLocation: scannerLocation(HERE),
     });
     expect(outcome.ok ? "accepted" : outcome.evidence.eventId).toBeNull();
   });

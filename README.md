@@ -4,6 +4,8 @@
 
 A private social app where every connection is created through verified physical, in-person contact — an NFC tap or a GPS-verified QR scan — and never any other way. No stranger search, no follow/following, no global directory. This is a from-scratch rebuild; nothing here shares code with the legacy SmartCard app.
 
+> **This sentence is stale as of 2026-09-26.** The owner deliberately removed the in-person-verification requirement and added an unverified "scan a card / add manually" path — see `docs/architecture/2026-09-26-unverified-connections.md` for the full amendment, what actually changed, and the concrete new risk it accepted. This paragraph has not been rewritten because that is the project owner's call to make, not a change to slip in alongside the feature that made it stale — see that document's §8.
+
 Web (Next.js), iOS/Android (React Native + Expo), and a shared TypeScript core in one monorepo.
 
 ---

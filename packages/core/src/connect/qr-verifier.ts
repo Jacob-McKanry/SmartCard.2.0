@@ -13,7 +13,13 @@
  *   5. nonce matches `current_nonce` or `previous_nonce`
  *   6. presenter != scanner
  *   7. not already connected, no block in either direction
- *   8. the GPS gate (§4.3, with relaxation)
+ *   8. the GPS gate is EVALUATED but no longer REJECTS (2026-09-26,
+ *      docs/architecture/2026-09-26-unverified-connections.md). Distance,
+ *      accuracy and staleness are still computed and still carried into
+ *      `connection_attempts` on the success row, because §4.4's tuning
+ *      questions and any future re-introduction of the gate depend on that
+ *      history existing. What changed is only that a bad verdict no longer
+ *      stops the connection.
  *   9. rate limits (§4.6)
  *
  * Nothing is skipped and nothing is reordered. Two of the orderings do real
@@ -172,11 +178,12 @@ export function createQrVerifier(deps: QrVerifierDeps): VerificationMethod<QrRed
         return fail("already_connected", base);
       }
 
-      // --- (8) The GPS gate (§4.3), with relaxation --------------------------
-      // Relaxation is decided first, because it decides which thresholds the
-      // gate runs with. It is derived entirely from the audit log for this
-      // ordered pair; the client cannot ask for it, is never told about it, and
-      // cannot influence it except by genuinely failing on distance twice.
+      // --- (8) The GPS gate (§4.3), with relaxation — EVALUATED, NOT ENFORCED
+      // (2026-09-26). Relaxation is decided first, because it decides which
+      // thresholds the gate runs with. It is derived entirely from the audit
+      // log for this ordered pair; the client cannot ask for it, is never told
+      // about it, and cannot influence it except by genuinely failing on
+      // distance twice.
       const history = await store.loadRelaxationHistory({
         presenterUserId,
         scannerUserId,
@@ -211,23 +218,13 @@ export function createQrVerifier(deps: QrVerifierDeps): VerificationMethod<QrRed
         },
       });
 
-      // Recorded on EVERY attempt, accepted or refused, so §4.4's four tuning
-      // questions can be answered over the whole dataset rather than over the
-      // successes only.
-      const measured: Partial<VerificationEvidence> = {
-        ...base,
-        distanceM: gate.distanceM,
-        scannerAccuracyM: scannerFix?.accuracyM ?? null,
-        presenterAccuracyM: presenterFix?.accuracyM ?? null,
-        radiusConfigUsedM: thresholds.maxDistanceM,
-        accuracyConfigUsedM: thresholds.maxAccuracyM,
-        radiusMode: thresholds.radiusMode,
-        relaxationSourceAttemptId: relaxation.sourceAttemptId,
-      };
-
-      if (!gate.ok) {
-        return fail(gate.reason, measured);
-      }
+      // A failed gate is no longer a rejection (2026-09-26,
+      // docs/architecture/2026-09-26-unverified-connections.md): the owner
+      // deliberately pulled the in-person-proximity requirement while keeping
+      // this exact tap/scan interaction. `gate.distanceM` and the thresholds
+      // used still flow into the success evidence below and land in
+      // `connection_attempts`, so a scan that would have failed the old gate
+      // is still visible there — it is just no longer disqualifying.
 
       // --- (9) Rate limits (§4.6) -------------------------------------------
       // Evaluated last, exactly as §4.2 step 5 lists them. Budget was already
@@ -242,7 +239,16 @@ export function createQrVerifier(deps: QrVerifierDeps): VerificationMethod<QrRed
         windowSeconds: HOUR_SECONDS,
       });
       if (!withinUserLimit) {
-        return fail("rate_limited", measured);
+        return fail("rate_limited", {
+          ...base,
+          distanceM: gate.distanceM,
+          scannerAccuracyM: scannerFix?.accuracyM ?? null,
+          presenterAccuracyM: presenterFix?.accuracyM ?? null,
+          radiusConfigUsedM: thresholds.maxDistanceM,
+          accuracyConfigUsedM: thresholds.maxAccuracyM,
+          radiusMode: thresholds.radiusMode,
+          relaxationSourceAttemptId: relaxation.sourceAttemptId,
+        });
       }
 
       // === EVERYTHING ABOVE DECIDES. EVERYTHING BELOW ONLY DESCRIBES. ========

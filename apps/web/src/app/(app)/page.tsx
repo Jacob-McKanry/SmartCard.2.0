@@ -491,5 +491,13 @@ function verificationMethodLabel(method: ConnectionListItem["verificationMethod"
       return "QR code, verified by location";
     case "nfc_card":
       return "NFC card tap";
+    case "card_scan_ocr":
+      return "Scanned business card";
+    case "badge_qr":
+      return "Scanned badge code";
+    case "badge_nfc":
+      return "Tapped badge";
+    case "manual_entry":
+      return "Added manually";
   }
 }

@@ -78,6 +78,12 @@ interface ExistingUserRow {
   status: string;
 }
 
+interface ClaimPlaceholderRpcResult {
+  claimed: boolean;
+  id?: string;
+  status?: string;
+}
+
 async function findByKindeUserId(kindeUserId: string): Promise<ExistingUserRow | null> {
   const { data, error } = await serviceRoleClient()
     .from("users")
@@ -91,6 +97,62 @@ async function findByKindeUserId(kindeUserId: string): Promise<ExistingUserRow |
     });
   }
   return data;
+}
+
+/**
+ * Claims a `status = 'placeholder'` row by email — the row
+ * `create_manual_connection` (20260926130000) created for someone who had no
+ * account yet when they were scanned or manually added as a connection.
+ *
+ * WHY THIS IS ONE RPC RATHER THAN A SELECT FOLLOWED BY AN UPDATE
+ *
+ * `no-second-write-path.test.ts` enforces, project-wide, that `users.status`
+ * is written from exactly one atomic place (today,
+ * `public.soft_delete_own_account()`) rather than by application code doing
+ * a read-then-write — the same reasoning that function's own header gives:
+ * a `.update()` from here would in fact fail (`status` is outside `users`'
+ * column-level UPDATE grant, 20260809211100), and worse, an application-level
+ * SELECT-then-UPDATE lets two concurrent signups both read `'placeholder'`
+ * before either writes, each believing it won the claim. `claim_placeholder_user`
+ * (20260926140000) does the lookup and the update inside one `plpgsql`
+ * function, `for update` locked, so it is atomic by construction.
+ *
+ * WHY THIS ONLY MATCHES ON EMAIL, NOT PHONE TOO
+ *
+ * `create_manual_connection` itself matches an "already has an account" contact
+ * by email OR phone (the owner's explicit choice — see
+ * docs/architecture/2026-09-26-unverified-connections.md). This function is a
+ * different moment: claiming a placeholder on REAL signup, which only ever has
+ * `KindeIdentity`'s claims to go on, and Kinde does not hand back a phone
+ * number here (`kinde-identity.ts`'s `KindeIdentity` has no phone field at
+ * all). Phone-based claiming would need a separate, later flow (e.g. the user
+ * entering their phone in Profile) — out of scope for this function, which can
+ * only act on what a real login actually asserts.
+ */
+async function claimPlaceholderByEmail(
+  email: string,
+  identity: KindeIdentity,
+): Promise<ExistingUserRow | null> {
+  const { data, error } = await serviceRoleClient().rpc("claim_placeholder_user", {
+    p_email: email,
+    p_kinde_user_id: identity.kindeUserId,
+    p_email_verified: identity.emailVerified,
+    p_first_name: identity.firstName,
+    p_last_name: identity.lastName,
+  });
+
+  if (error) {
+    throw new Error(`Failed to claim placeholder users row: ${error.message}`, { cause: error });
+  }
+
+  const result = data as ClaimPlaceholderRpcResult | null;
+  if (result === null || result.claimed !== true) {
+    return null;
+  }
+  if (typeof result.id !== "string" || typeof result.status !== "string") {
+    throw new Error("claim_placeholder_user returned claimed:true with a malformed shape");
+  }
+  return { id: result.id, status: result.status };
 }
 
 /**
@@ -108,6 +170,23 @@ export async function ensureUser(identity: KindeIdentity): Promise<string> {
 
   if (identity.email === null) {
     throw new MissingEmailClaimError();
+  }
+
+  // Claim a placeholder row before creating a brand-new one (2026-09-26,
+  // docs/architecture/2026-09-26-unverified-connections.md): someone may
+  // already have been scanned or manually added as a connection by another
+  // user before ever signing up themselves. That created a `status =
+  // 'placeholder'` row with this same email and no `kinde_user_id`
+  // (`create_manual_connection`). Claiming it IN PLACE — same `id`, `status`
+  // flips to `'active'`, `kinde_user_id` set — is what keeps every
+  // `connections`/`meetings` row that already points at that id valid; a
+  // second, brand-new row would leave those edges pointing at an account
+  // nobody can ever log into, and would also collide on `users.email`'s
+  // UNIQUE constraint the moment the ordinary insert below ran.
+  const claimed = await claimPlaceholderByEmail(identity.email, identity);
+  if (claimed !== null) {
+    assertActive(claimed.status);
+    return claimed.id;
   }
 
   // Only the columns a brand-new account can honestly assert are set here.

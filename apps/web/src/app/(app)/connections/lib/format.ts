@@ -43,6 +43,12 @@ export function initialsFor(person: { first_name: string | null; last_name: stri
  * The plain-language label for `meetings.verification_method` (§2.4). Kept
  * here rather than inlined at each call site so the two values only ever get
  * described one way across the list and detail views.
+ *
+ * `card_scan_ocr`/`badge_qr`/`badge_nfc`/`manual_entry` were added
+ * 2026-09-26 for the unverified "add a contact" flow — see
+ * docs/architecture/2026-09-26-unverified-connections.md. None of them
+ * claim to be "verified": the labels say what happened (scanned, typed in),
+ * not that proximity was proven, since for these four it was not.
  */
 export function verificationMethodLabel(method: VerificationMethod): string {
   switch (method) {
@@ -50,6 +56,14 @@ export function verificationMethodLabel(method: VerificationMethod): string {
       return "QR code, verified by location";
     case "nfc_card":
       return "NFC card tap";
+    case "card_scan_ocr":
+      return "Scanned business card";
+    case "badge_qr":
+      return "Scanned badge code";
+    case "badge_nfc":
+      return "Tapped badge";
+    case "manual_entry":
+      return "Added manually";
   }
 }
 
