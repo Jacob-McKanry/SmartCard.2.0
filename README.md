@@ -5,6 +5,8 @@
 A private social app where every connection is created through verified physical, in-person contact — an NFC tap or a GPS-verified QR scan — and never any other way. No stranger search, no follow/following, no global directory. This is a from-scratch rebuild; nothing here shares code with the legacy SmartCard app.
 
 > **This sentence is stale as of 2026-09-26.** The owner deliberately removed the in-person-verification requirement and added an unverified "scan a card / add manually" path — see `docs/architecture/2026-09-26-unverified-connections.md` for the full amendment, what actually changed, and the concrete new risk it accepted. This paragraph has not been rewritten because that is the project owner's call to make, not a change to slip in alongside the feature that made it stale — see that document's §8.
+>
+> **Stale again, differently, as of 2026-10-09.** A third path now exists: an opt-in live map lets any two adults who have never met see each other's approximate location and arrange to meet, with a connection formed only if both separately choose it afterward — see `docs/architecture/2026-10-09-live-map-meetups-and-hangouts.md`. This is being built behind an isolated `/MapTest` route, not on the real app, until the owner tests it and says to bring it live. CLAUDE.md's own non-negotiable-rule text has been updated for both amendments; this tagline sentence has not, for the same reason as above.
 
 Web (Next.js), iOS/Android (React Native + Expo), and a shared TypeScript core in one monorepo.
 
@@ -39,6 +41,8 @@ docs/
 ```
 
 ## Status
+
+**Live map amendment recorded 2026-10-09 (`docs/architecture/2026-10-09-live-map-meetups-and-hangouts.md`); nothing in it is built yet beyond this document and the CLAUDE.md update.** A deliberate, owner-confirmed override of the never-built §8 "Friend Proximity" design: strangers, not just existing connections, can be shown to each other by approximate location, opt-in only, with a request-to-meet flow, text messaging, and a connection formed only if both people separately choose it at least 24h after confirming a meetup. Also brings into scope, for the first time: a "hangouts" feature (modeled on the existing Events RSVP system), real user-facing blocking (today's `blocks` table has no UI and only prevents re-connecting), and a private admin log of every meetup's chat — flagged prominently in the document as an **unresolved legal/App-Store-compliance risk**, not something resolved in code. Everything will be built behind an isolated, admin-only `/MapTest` route with seeded mock users, reachable from nowhere else in the app, until the owner tests it and explicitly asks for it to go live with real navigation entries.
 
 **A host can remove an event, 2026-09-02** — two different operations, since "delete" means something different depending on whether anyone has already answered. A live event goes through `public.cancel_event` (`supabase/migrations/20260902120000_host_cancel_and_delete_draft_event.sql`): reuses the same `status -> 'cancelled'` mechanism already built for account-deletion cancellation, so it stays visible to the host and to everyone holding an RSVP or invite rather than a true delete cascading away their RSVP/invite rows. A draft goes through `public.delete_draft_event`, a real `DELETE` — safe because nothing but the host can ever have interacted with a draft, so there is nobody else's record to lose. Both are behind the app's existing two-step confirmation panel, on the event's own page. Verified live across 10 scenarios before applying.
 

@@ -1,0 +1,156 @@
+# Live map, meetups, hangouts and messaging — a deliberate override of §8's "no stranger discovery" rule
+
+**Date:** 2026-10-09
+**Status:** Signed-off product decision (owner, 2026-10-09, recorded in the session transcript across three rounds of explicit flag-and-confirm multiple-choice questions, after the conflict with §8 below was shown directly and confirmed twice). Implementation is phased — see §9 for exactly what is and is not built as of any given point in time; update that section in place as phases land, the same convention `2026-09-26-unverified-connections.md` uses.
+**What this amends:** `docs/architecture/2026-08-09-initial-architecture-proposal.md` §8 ("Friend Proximity") — its core rule (§8.0), its connections-only scope (§8.1), and its explicit "structurally prevented" stranger-discovery threats (§8.6 threats 7 and 9); that document's §4.7 threat 4 ("never add a second path that writes connections", now joined by a third, deliberate one); that document's Q4 (block/report — now resolved, in scope) and Q26 (superseded — §8 as designed will not be built; this document is Friend Proximity's replacement for the map use case); `supabase/migrations/20260809211100`'s "no block filtering in the users select policy... a deliberate amendment, not something to slip in" note; `supabase/migrations/20260809210600`'s blocks table comment; CLAUDE.md's non-negotiable product rule (rewritten below, now reflecting *this* amendment and the 2026-09-26 one CLAUDE.md itself was never updated for); and `docs/architecture/2026-08-27-event-attendee-roster.md`'s "no admin surface for reading who looked at whom" posture (§11 below is a conscious, separately-reasoned departure from it, not an oversight). Each of those files carries a dated pointer back to this document.
+
+---
+
+## 0. The decision, in the owner's terms
+
+The owner supplied a detailed feature brief: a live map inside SmartCard showing nearby people who are open to meeting (not just existing connections) and nearby "hangouts," a one-tap request-to-meet flow with a required note, a server-suggested public meeting spot roughly midway between the two people, confirmation steps ("On my way" / "I'm here" / "Can't make it"), text messaging, and — only if both people separately choose it, at least 24 hours after confirming they were on their way — becoming an ordinary SmartCard connection. Explicitly for networking and making friends, not dating.
+
+**This was flagged before any planning started.** This repo already had a detailed, reasoned design for almost the same product idea — §8 "Friend Proximity" — built on the *opposite* premise: location sharing only between people who are already mutual connections, with a hard rule that there must be no way to query a location and get back a list of users. §8's own threat model (threats 7 and 9) names a feature that shows nearby strangers to meet as something to "structurally prevent," calling it "a stranger-discovery feature in a friendly hat." The owner was shown this conflict directly, in these terms, and chose to proceed with the live map anyway — the same way `2026-09-26-unverified-connections.md` overrode the original NFC/QR-only rule: as a conscious, recorded amendment, not a workaround built around the old design without saying so.
+
+What was confirmed, across three rounds of multiple-choice questions, in order:
+
+1. **Proceed with the override.** Write it as a new, dated architecture amendment (this document) that names exactly what it overrides, and finally updates CLAUDE.md's own text to reflect both this amendment and the 2026-09-26 one (which CLAUDE.md was never edited for — see that document's §8).
+2. **Hangouts** are built from scratch, modeled on the existing Events RSVP system's request/approve/waitlist/capacity pattern, plus a new Free/Costs-money label. Kept as separate tables from `events` on purpose — reusing `events` would inherit `shares_event_with()`'s mutual-profile-visibility grant and the roster/CSV-import machinery, neither of which a hangout join should ever trigger.
+3. **Messaging** is built now: minimal, text-only, no media/groups/reactions.
+4. **Blocking** gets a real, user-facing Block button for the first time (today it only prevents re-connecting and the blocked person is never told), and block-filtering is applied broadly — across the map, meetup requests, messages, and the app's existing feed/roster/profile read paths. This is the deliberate amendment `20260809211100`'s own comment said would be needed if block-filtering profiles was ever in scope.
+5. **The private admin log is built exactly as specced** — every request and meetup, full chat text, kept forever, surviving account deletion. This is a **flagged, unresolved legal and App-Store-compliance risk**, not something resolved in this document or in code (§12).
+6. **Interests**: a proposed 26-item starter list (§8 below), admin-editable the same way the existing curated `cities` table is.
+7. **Home/work zones** are optional, settable any time in settings — not required at setup. Being inside an active zone both hides your pin *and* blinds you (you see nothing on the map), the same symmetric behavior the brief already specifies for ghost mode, so that sitting at home can never make someone an invisible watcher of everyone else.
+8. **Request-note limit**: 140 characters, enforced server-side.
+9. **Admin log scope**: only chat that happens during a request/meetup's active lifetime is captured. Once a meetup matures into an ordinary permanent connection thread, further messages are not logged by this mechanism.
+10. **Map opt-in is explicit and required for everyone**, existing members included — nobody appears on the map until they turn it on. The opt-in moment is the first time someone opens the Map tab: it explains the feature, then offers the choice.
+11. **The 18+/terms gate applies app-wide**, not just to the map — existing members are prompted at their next login. The owner is separately updating the actual Terms & Privacy Policy to cover the age requirement and the live map's data handling; that is the owner's own task, not something this document or any migration does, and it is a launch-gate dependency (§10).
+12. **Group meetups are deferred.** The brief's "bring the person you're with" flow has no in-app consent from the person being brought along — their blurred photo would unblur, their chat would be logged, and they might get a connect prompt, none of which they agreed to. Ship 1:1 meetups first.
+13. **The required content filter** (for App Store approval) is a text filter only at launch — an admin-editable blocked-term list enforced automatically on notes/bios/messages. Photos are not automatically scanned; report + block + a 24-hour admin review SLA cover that surface instead.
+14. **Admin moderation powers** at launch: suspend, unsuspend, remove content, dismiss a report. No permanent bans or formal warnings yet — addable later without new tables.
+15. **The people-pin unlock threshold** (pins appear only once 15 active people are within radius) counts any eligible, visible account — no extra "established account" filter. Flagged, accepted risk: this does not defend against someone creating throwaway accounts to force a single real person's pin to appear in an otherwise-empty area. Acceptable for launch; revisit if abused.
+
+Also per the owner's explicit instruction: everything in this document is built behind an isolated, unlinked test route (`/MapTest`, admin-gated) with seeded mock-user fixtures, so the owner can exercise the whole feature solo before any of it reaches the real navigation. Bringing it onto the real frontend (nav entries, the `app_config.map_enabled` flag) is a separate, later, explicitly-requested step — this amendment's phases build up to that point and stop there.
+
+## 1. What §8 protected, and exactly what changes
+
+| | §8 "Friend Proximity" (never built) | This amendment |
+|---|---|---|
+| **Who can see whom** | Mutual, per-connection opt-in. A stranger can never appear. | Any two opted-in 18+ adults within radius, whether or not they are connected. |
+| **The core query** | "Of the people I have already met and mutually agreed to share with, where are they?" — the distance calculation is the *last* step, never the first. | "Who, among opted-in adults, is within my radius right now?" — a location-to-users query exists, deliberately, for the first time in this product. |
+| **§8.0's hard rule** | "There must be no query path that takes a location and returns users." | Overridden. Replaced with a narrower rule, stated plainly: **"you can only look where you can be seen."** Visibility is symmetric (you must be opted in, visible, and not in ghost mode/a zone, to see anyone, exactly as you must be to be seen), computed entirely from coarse grid-cell centers, and gated by the same single check every pin, request, alert, and message passes through. |
+| **§8.6 threats 7 & 9** | "Reintroduce nearby strangers" and "a stranger-discovery feature in a friendly hat" are named as things to structurally prevent. | This is exactly that feature, built deliberately, with its own threat table below answering what §8 refused to accept the risk of. |
+
+What §8 got right and this amendment **keeps**, because overriding its conclusion does not mean discarding its mechanisms:
+
+- **§8.5's deterministic grid-snap.** A person's pin is the center of a fixed-size grid cell (~569m side, derived from the brief's own "within about 0.25 miles" / 402m maximum-offset setting), never their real position, and never a random jittered point. Deterministic snapping is kept specifically because §8.5 is right that jitter leaks the true point under repeated observation — the whole point of coarsening is to give an observer nothing further no matter how many times they look.
+- **§8.4's zone mechanics.** Coordinates are not stored at all while inside an active zone — not even coarsened — with a hysteresis buffer on exit so pacing near a boundary doesn't flicker a signal, and server-enforced radius bounds.
+- **§8.2's "no SELECT policy" posture.** Raw presence data is never readable by any client role, through any policy branch — the only read path is a `security definer` function that takes no viewer argument and no location argument, deriving the caller from the JWT, the same shape `meeting_locations` already uses.
+- **§8.6 threat 8's invariant, kept without exception**: map/presence data is never an input to any connection-verification path (`create_verified_connection`, the GPS gate, or any part of §4). The third connection path below verifies *consent*, never *proximity* — see §6.
+
+## 2. The concrete new risks, stated plainly, not softened
+
+Per CLAUDE.md's own instruction, each threat below is named as an attack, with the real mitigation and the honest residual — not filed away as a caveat.
+
+| # | Threat | Mitigation in this design | Residual, stated honestly |
+|---|---|---|---|
+| T1 | Live-following one specific person across a session | Positions are snapped to a ~569m grid cell, never exact. Ghost mode, zones, block, report all available. A watcher must themselves be visible to see anyone. | A stranger who is visible can follow an opted-in person's approximate cell in near-real time for as long as that person's app stays open and they stay opted in. |
+| T2 | Finding someone's home or workplace | Zones; coordinates are never stored while inside one (not even coarsened); any grid cell that overlaps an active zone is suppressed entirely, so the home/work cell itself is never shown; zone rows are owner-only, readable by nobody else ever. | Watching long enough can still reveal *that* someone tends to disappear from the map on a schedule (absence inference) — no design that ever shows a real location can eliminate that without lying about where someone is, which this design refuses to do. |
+| T3 | Averaging or triangulating repeated observations back to the true point | Deterministic grid snapping (§1). Every observable output — pins, radius membership, the 15-person unlock count, "left range," the suggested meeting spot's midpoint — is computed from grid-cell centers only, never raw coordinates. | None beyond the cell itself: repeated observation gives an attacker nothing more precise than the cell they already see. |
+| T4 | Watching without being watchable | Seeing anyone on the map requires being visible yourself: opted in, not in ghost mode, not in a zone, with a fresh location fix. Ghost mode and zones both blind you the instant they hide you. | None structural; the only way around it is to actually opt in and be visible, which puts the watcher in the same pool as everyone else. |
+| T5 | Creating throwaway accounts to force a real person's pin to appear in a sparse area (gaming the 15-person unlock threshold) | None beyond ordinary signup friction. **Accepted per owner decision 15** — simpler for launch, revisit if actually abused (the threshold and its counting rule are both `app_config`, adjustable without a release). | A patient attacker can create 15 throwaway accounts near a target to unmask them in an otherwise-empty area. |
+| T6 | GPS spoofing / mock location | A speed-plausibility check rejects jumps implying implausible travel between consecutive fixes; accuracy limits reject low-confidence fixes. | A patient spoofer who moves plausibly can still fake a static location. Not eliminable client-side — the same limit every GPS-based feature in this product already accepts (§4.3's own gate has the identical residual). |
+| T7 | Harassment through requests, notes, or messages | 140-character note limit; an admin-editable text filter on notes/bios/messages; re-request cooldowns; cancellation-abuse rate limits; report + block on every surface; a 24-hour admin response SLA. | A determined harasser can still send one harassing note before any cooldown applies, and can create a new account after a block. Report/block/admin review are the backstop, not a preventive. |
+| T8 | Luring someone to a private or unsafe place | The meeting spot and hangout venues are never client-supplied — both come only from a server-side place-search service, restricted to public categories (cafes, parks, restaurants, libraries and similar), explicitly excluding bars, and writable only by one service-role RPC that no client can call. | None structural for the spot itself; the *meeting* still happens in person between two people who have never met, which is the product's whole premise and is mitigated by it being a public, server-chosen place, never a private address. |
+| T9 | Minors on the map | Self-attested date of birth only, checked once at the app-wide age/terms gate; ID verification is explicitly out of scope (brief §11, confirmed). | A minor who misrepresents their age at signup is not caught by anything in this design. This is the same residual every app without ID verification accepts. |
+| T10 | Evading a block by creating a new account | None beyond ordinary signup friction; reports are the backstop (§10). | A blocked person can always come back as someone new; this is a known, unsolved limit of blocking on any platform without identity verification. |
+| T11 | Database breach | No location history is ever kept — one presence row per user, deleted once stale. A breach yields grid cells, not positions, and no record of movement over time. Zone rows are hard-deleted on account deletion. | A breach at a given instant reveals the approximate cell of everyone currently visible. This is the same residual §8.2's "no history" judgment call already accepted for the never-built design — kept here for the same reason. |
+| T12 | An insider misusing the private admin log | All admin RPCs re-check admin status server-side; every admin read/action is itself logged to an append-only access log. | An admin with legitimate access can still read the full chat history of any meetup. This residual is exactly why §12 below is a flagged, unresolved compliance question and not treated as settled by a technical control. |
+| T13 | A "Share my meetup" link leaking | The link is a bearer token (hashed at rest, shown once), revocable, rate-limited per viewer IP, and never contains positions — only the spot's name/address, both first names, and status. | Anyone who gets the link before it's revoked can see that limited information; this is an accepted tradeoff of making the feature shareable at all, the same tradeoff the existing card-preview link already makes for profile data. |
+| T14 | Lock-screen/push notification leakage | Push payloads for every map/meetup alert carry no location and no message text — only a name and an event type, the same ceiling the existing card-tap notification already enforces. | None beyond what any push notification on a lock screen already reveals (that *something* happened, from *someone*). |
+| T15 | Map/presence data quietly becoming an input to connection verification | §8.6 threat 8's invariant is kept without exception (§1): nothing in this feature, including the third connection path (§6), ever reads presence or map data as part of deciding whether a connection or a verified meeting is real. | None — this is a structural invariant enforced by the third connection path never touching `map_presence` at all, not a judgment call with a residual. |
+| T16 | Repeated cancellation / no-show abuse | Tapping "Can't make it" after both confirmed "On my way" counts toward a cancellation limit; crossing it temporarily restricts how many new requests that person can send. | A first-time or infrequent canceller faces no friction; this is deliberately tuned toward not punishing genuine changes of plan over deterring abuse outright. |
+
+## 3. Mechanisms kept from §8 (detail)
+
+Already summarized in §1; the implementation-level specifics (exact grid math, the zone-overlap check, the visibility function's signature) live in the migrations themselves, per this project's own documentation standard of recording *why* in the migration header rather than duplicating schema detail in two places. The one addition beyond what §8 sketched: §8.2 let a raw GPS fix transit the database before being read through the gated function. This design is stricter — the app server validates, zone-checks, and grid-snaps a fix **before** the single write RPC is ever called, so an exact coordinate never reaches the database at all, not even transiently.
+
+## 4. Location design summary
+
+- Exact coordinates never reach the database — validated, zone-checked, and grid-snapped server-side before one write call persists only the cell center.
+- Any cell overlapping an active zone is suppressed entirely, so a home/work cell is never shown even with a small zone radius.
+- Foreground location only. No background-location permission is ever requested anywhere in this feature — removing both the battery problem and the platform review scrutiny §8.7 worried about for a feature that, unlike this one, needed to run while the app was closed.
+- `map_view(...)` and `map_pin_card(...)` take no viewer argument and no location argument, ever — visibility is computed and symmetric, gated by one function every pin, request, alert, and message passes through.
+- Realtime updates deliberately do **not** use Supabase Realtime. The Supabase JWT never reaches a browser or phone today (minted server-side per request, five-minute life) — introducing Realtime would reverse that, and `postgres_changes` delivers rows filtered by RLS, which would require adding the exact "location has a SELECT policy" shape this design exists to avoid. Instead, the existing poll/heartbeat pattern (the same shape the QR connect flow already uses) is extended: the presence heartbeat has to exist anyway to report a location, so returning map state in its response is nearly free.
+
+## 5. Requests, meetups, and messaging — summary
+
+A request/meetup goes through a lazily-settled state machine (pending → accepted/declined/expired/cancelled; once accepted, awaiting-confirmation → confirmed → ended), with every timer (request expiry, the "On my way" window, pin linger, queued-delivery delay, the connect-prompt delay) stored as a deadline and resolved whenever any relevant row is next read or written — never dependent on a background job firing on schedule. Messaging is plain text, one thread per meetup, surviving maturation into a permanent connection thread. Every refusal reason a user could see (declined, timed out, out of range, blocked, ghosted) collapses to the same neutral "not available" message, so a cooldown or a decline can never be told apart from any other reason nothing happened — the same principle §8.4 used for zones and §8.6 threat 4 used for revocation.
+
+## 6. The third connection path
+
+`answer_meetup_connect_prompt` is a **brand-new** `security invoker`, `service_role`-only Postgres function — not a modification of `create_verified_connection` or `create_manual_connection`. It re-derives and re-validates everything from scratch inside one transaction (both people are participants, the 24-hour delay has actually elapsed, the thread isn't closed for cancellation/block/deletion/suspension, neither has blocked the other), records each person's private yes/no (neither can ever read the other's answer before both have answered), and on mutual yes writes the connection using the exact same canonical-pair-ordering and reconnect/reactivation logic `create_verified_connection` and `create_manual_connection` both already use — reused, not reinvented, per the discipline `no-second-write-path.test.ts` enforces project-wide. It deliberately does **not** write a `meeting_locations` row: since the 2026-08-15 default-sharing flip, that would surface the meetup's spot to mutual connections' feeds without either person having chosen that disclosure.
+
+**What this path proves, stated honestly: mutual consent after a confirmed plan — not that the two people actually met.** "On my way" and "I'm here" are self-reported, with no GPS proof behind them (the live map's whole premise is approximate location; proving an exact meeting the way §4's verified path does would require exact location, which this design does not collect). This is a materially weaker guarantee than `create_verified_connection`'s, and a materially similar one to `create_manual_connection`'s already-accepted "device evidence, not required or verified" posture from the 2026-09-26 amendment. CLAUDE.md's rewritten rule (§13) states this plainly rather than letting the third path quietly imply more rigor than it has.
+
+## 7. Hangouts and messaging scope
+
+Separate tables from `events`, deliberately — see §0 item 2. Messaging is plain 1:1 text, no media/groups/reactions, clarifying rather than contradicting CLAUDE.md's existing "no rich messaging" out-of-scope line (§13's edit makes this explicit).
+
+## 8. Interests starter list (26, admin-editable)
+
+Coffee & cafés · Food & restaurants · Cooking · Fitness & gym · Running · Hiking & outdoors · Cycling · Yoga & wellness · Playing sports · Watching sports · Live music · Movies & TV · Books & reading · Art & museums · Photography · Gaming · Board games & trivia · Travel · Tech & startups · Entrepreneurship · Careers & networking · Design & creativity · Volunteering & community · Pets & dogs · Languages & culture · Personal finance & investing
+
+Deliberately excluded: politics, religion, anything alcohol/nightlife-related (bars are excluded as meeting spots on the same grounds), and anything dating-adjacent.
+
+## 9. Status as of this document — what is built, phase by phase
+
+Update this section in place as phases land, per `2026-09-26-unverified-connections.md`'s own convention.
+
+- **Phase 1 (this document, CLAUDE.md, and the cross-reference pointers below): done as of 2026-10-09.**
+- Phases 2–8 (eligibility/safety foundations, map foundations, hangouts, requests/meetups/messaging/the private log, notifications, the third connection path, remaining launch safety) and the `/MapTest` harness with seeded fixtures: **not yet built.**
+- Phase 9 (mobile parity) and Phase 10 (group meetups, per decision 12): **deferred**, not scheduled.
+- **Nothing in this feature is reachable from the real app yet.** Every phase is built behind `/MapTest` (admin-gated, unlinked) until the owner explicitly says to bring it live — at which point a separate, later change adds real navigation entries and flips `app_config.map_enabled`.
+
+## 10. Launch gate
+
+All of the following must hold before `app_config.map_enabled` is ever set to `on`:
+- The owner's lawyer has signed off on the private admin log's retention policy and its interaction with account deletion (§12).
+- The owner's updated Terms & Privacy Policy, covering the age requirement and the live map/meetup data handling, is published.
+- Report-SLA staffing (who actually reviews reports within 24 hours) is confirmed.
+- The content-filter wordlist is seeded.
+
+## 11. The private admin log — a conscious departure from the roster's "no admin surface" posture
+
+`docs/architecture/2026-08-27-event-attendee-roster.md` §3.5 holds that there should be no admin surface for reading who looked at whom. The private admin log built per decision 5 above is a deliberate departure from that posture for this feature specifically — not an oversight, and not a precedent that silently extends to the roster or anywhere else. The log is isolated to its own `private` schema tables (unreachable by any client role regardless of grants), written only by database triggers so no code path can skip it, and scoped per decision 9 (request/meetup-phase chat only, never a matured connection's ordinary messages).
+
+## 12. PRE-LAUNCH BLOCKER — private admin log retention is an unresolved legal and App-Store-compliance risk
+
+Built exactly as specced per decision 5: every request and meetup logged forever, full chat text included, surviving account deletion. **This is not resolved here and must never be described as resolved.** As written, it conflicts with:
+
+- **Apple App Store Review Guideline 5.1.1(v)** — in-app account deletion must remove the account and any data the developer is not legally required to keep.
+- **Google Play's account and data deletion requirements.**
+- **GDPR** Article 17 (right to erasure) and Article 5(1)(c)/(e) (data minimization, storage limitation); **CCPA/CPRA** deletion rights.
+- A **disclosure duty**: the privacy policy and terms must say plainly that meetup chats are kept and reviewable by staff.
+
+This mirrors the brief's own instruction verbatim: *"Keeping log entries, including chat text, after an account is deleted needs a lawyer's confirmation before launch... Do not decide this on my behalf."* Nothing here decides it. What this design does instead is keep the eventual fix cheap: the audit tables use `ON DELETE SET NULL` with a name snapshot rather than a hard foreign-key dependency on the live account, and are written only by triggers — so whatever retention period, purge rule, or disclosure text a lawyer ultimately requires is a single, isolated follow-up migration, not a rewrite of the feature.
+
+## 13. The CLAUDE.md edit
+
+CLAUDE.md's "What this project is" and "Non-negotiable product rule" sections are rewritten as part of this same change (not left stale the way 2026-09-26 left them, per that document's own §8 — the owner explicitly asked for both amendments to be reflected cumulatively this time). See the diff in CLAUDE.md itself; the content is not duplicated here.
+
+## 14. What deliberately did not change
+
+`create_verified_connection` and `create_manual_connection` — zero code changes to either. The branded `VerifiedOutcome`/`sealVerified` type system in `packages/core/src/connect/verification.ts` — untouched; the third connection path does not participate in it, the same way `create_manual_connection` doesn't. The `users` table's own SELECT policy gains no new stranger-facing branch anywhere — every stranger-facing field this feature exposes (a map pin card, a hangout host's view of a joiner) comes from a narrow, fixed-field-list `security definer` RPC, never a widened base-table grant. The event-attendee roster and its amendment are untouched and unreferenced by this one, per `2026-08-27-event-attendee-roster.md`'s own confirmation that it does not govern proximity/location features.
+
+## 15. Open questions still needing the owner's sign-off during implementation
+
+Tracked here, in the style of §9 of the 2026-08-09 document, and updated in place as they resolve rather than deleted:
+
+| # | Question | Status |
+|---|---|---|
+| L1 | Exact map tile provider and place-search provider (place names are kept forever in the admin log, so storage terms matter the same way they did for reverse geocoding, Q25 of the 2026-08-09 document) | Open — blocks Phase 3/4. |
+| L2 | Maximum meetup duration if nobody ever taps "I'm here" | Open — blocks Phase 5. Recommended default: a configurable ceiling (e.g. 4 hours after both confirm), so a meetup cannot stay "active" indefinitely and block the one-active-meetup-at-a-time rule forever. |
+| L3 | Whether a connection formed via the third path appears in mutual connections' "A met B" feed the way a verified meeting does | Open — blocks Phase 7. |
+| L4 | Exact published safety-contact details on the required in-app safety page | Open — blocks Phase 2. |
+| L5 | Whether `pg_cron`/`pg_net` should be enabled for proactive (push-driven) timer notifications, vs. the lazy-settlement design working correctly without them | Open, non-blocking — the design works without cron; this only affects whether a notification can arrive before someone next opens the app. |
