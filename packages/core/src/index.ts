@@ -156,6 +156,16 @@ export {
   type WaitlistEntry,
 } from "./events/rsvp-rules";
 
+// --- 2026-10-09: the live-map amendment's required content filter — a
+// client-side hint only, never the enforcement point (see the module header
+// and `private.text_violation`, the authoritative SQL twin) ---
+export {
+  containsBlockedTerm,
+  normalizeForTextFilter,
+  type BlockedTerm,
+  type TextFilterContext,
+} from "./safety/text-filter";
+
 // Guest-list import: what a CSV from Luma, Eventbrite or Partiful *means*.
 // Not a security boundary — `public.import_event_attendees` re-checks every
 // gate from values it reads itself, so a host bypassing this module gains

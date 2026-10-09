@@ -394,12 +394,64 @@ describe("there is exactly one path that writes the social graph", () => {
     expect(callers).toEqual([join("apps", "web", "src", "server", "account", "account-service.ts")]);
   });
 
+  it("only the safety/moderation service calls admin_suspend_user and admin_unsuspend_user", () => {
+    // The second writer of users.status named above — asserted the same way
+    // as the account-deletion RPC's single caller just above this test.
+    const callers = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => /rpc\(\s*["'`]admin_(un)?suspend_user["'`]/.test(file.text))
+      .map((file) => file.relative)
+      .sort();
+
+    expect(callers).toEqual([join("apps", "web", "src", "server", "safety", "moderation-service.ts")]);
+  });
+
+  it("only the blocks service calls block_user and unblock_user", () => {
+    // Not a graph-write concern (these RPCs don't touch connections/meetings
+    // directly, bar block_user's reuse of the existing active->removed
+    // transition) — asserted anyway, matching this file's own convention that
+    // every security-relevant RPC gets exactly one named TypeScript caller
+    // rather than being reachable from anywhere that imports a Supabase
+    // client.
+    const pattern = /rpc\(\s*["'`](block_user|unblock_user)["'`]/;
+    const callers = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => pattern.test(file.text))
+      .map((file) => file.relative)
+      .sort();
+
+    expect(callers).toEqual([join("apps", "web", "src", "server", "safety", "blocks-service.ts")]);
+  });
+
+  it("only the reports service calls submit_report", () => {
+    const callers = files
+      .filter((file) => !isTestFile(file.relative))
+      .filter((file) => /rpc\(\s*["'`]submit_report["'`]/.test(file.text))
+      .map((file) => file.relative)
+      .sort();
+
+    expect(callers).toEqual([join("apps", "web", "src", "server", "safety", "reports-service.ts")]);
+  });
+
   it("nothing in the app writes users.status or events.status directly", () => {
     // Both columns are outside their tables' column-level UPDATE grants, so a
     // direct write would fail — but it would fail at runtime, in the middle of a
     // destructive action, on a path where a partial result is the thing being
-    // guarded against. The single writer of both is
-    // `public.soft_delete_own_account()`, inside one transaction.
+    // guarded against. `events.status`'s only writer is still
+    // `public.soft_delete_own_account()` (plus the event-cancellation RPCs).
+    //
+    // `users.status` gained a SECOND writer 2026-10-09
+    // (`docs/architecture/2026-10-09-live-map-meetups-and-hangouts.md`,
+    // owner decision 14): `public.admin_suspend_user` / `public.admin_unsuspend_user`
+    // (`supabase/migrations/20261009150100_reports_and_moderation.sql`). This is
+    // deliberate, not a gap this test failed to catch — it serves a
+    // structurally different caller (an admin acting on someone else's
+    // account, after a report) than `soft_delete_own_account()` (a member
+    // acting on their own). Both are atomic RPCs, neither is a direct
+    // supabase-js `.update()`, so this assertion — which only checks for the
+    // latter — still holds for both writers; the next test asserts each RPC's
+    // single TypeScript caller, the same way `only the account service calls
+    // the atomic account-deletion RPC` does above.
     const pattern =
       /\.from\(\s*["'`](users|events)["'`]\s*\)[\s\S]{0,200}?\.update\([\s\S]{0,200}?status:/;
     const offenders = files
