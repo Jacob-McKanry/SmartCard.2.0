@@ -20,7 +20,7 @@
  *
  * WHY THIS MODULE EXISTS RATHER THAN LIVING ON EACH SCREEN
  *
- * These helpers were written once for Home (`app/(app)/page.tsx`) and are now
+ * These helpers were written once for Home (`app/(app)/home-screen.tsx`) and are now
  * needed by browse, detail and the host queue. Home's own header records the
  * codebase's convention that two-line display helpers stay feature-local — that
  * convention is about `displayName`-style trivia, not about this. The zone

@@ -18,7 +18,7 @@ import { userProfileUpdateSchema } from "@smartcard/types";
  * `packages/core/src/connect/__tests__/no-second-write-path.test.ts`, next to
  * the service-role importer list it belongs with.
  *
- * RULE 2 — NOBODY GETS TRAPPED IN THE FLOW. The gate in `(app)/layout.tsx` is
+ * RULE 2 — NOBODY GETS TRAPPED IN THE FLOW. The gate in `(app)/app-shell.tsx` is
  * unconditional: anybody whose flag is false is sent to `/onboarding` on every
  * signed-in navigation. Every field the flow collects is optional, so if there
  * were a way to reach the end without the flag being written, the person would
@@ -146,10 +146,16 @@ describe("nobody can be trapped in onboarding", () => {
   });
 
   it("the gate sends an unfinished account to the flow", () => {
-    const layout = read("app/(app)/layout.tsx");
+    // The gate lives in `AppShell` (moved out of the layout 2026-11-20 so the
+    // shared `/` route could run it too). Both callers must still use it:
+    // the `(app)` layout for every signed-in screen, and `app/page.tsx` for
+    // Home — otherwise an unfinished account could reach Home un-gated.
+    const shell = read("app/(app)/app-shell.tsx");
+    expect(shell).toContain("hasCompletedSignup");
+    expect(shell).toMatch(/redirect\("\/onboarding"\)/);
 
-    expect(layout).toContain("hasCompletedSignup");
-    expect(layout).toMatch(/redirect\("\/onboarding"\)/);
+    expect(read("app/(app)/layout.tsx")).toMatch(/<AppShell>/);
+    expect(read("app/page.tsx")).toMatch(/<AppShell[\s>]/);
   });
 
   it("the flow offers a skip, and skipping records completion", () => {
