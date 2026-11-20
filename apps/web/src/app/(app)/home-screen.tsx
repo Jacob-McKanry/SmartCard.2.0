@@ -51,13 +51,21 @@ import { RsvpPill } from "./events/lib/rsvp-pill";
  *
  * 3. The prototype's event rows show a venue. That one *is* in the schema
  *    (`events.venue_name`) and is rendered.
+ *
+ * WHY THIS IS NOT A `page.tsx` ANY MORE (2026-11-20)
+ *
+ * `/` is now shared between two audiences: a signed-out visitor to
+ * smartcard.tech sees the public landing page, and a member sees this screen.
+ * The `(app)` layout cannot make that split, because it redirects every
+ * signed-out request to `/sign-in` and is never told which page it is wrapping.
+ * So the route lives in `app/page.tsx`, which runs the same gate through
+ * `AppShell` and renders this component only for a signed-in member. Nothing
+ * about what this screen loads or shows changed in the move.
  */
-export const dynamic = "force-dynamic";
-
 /** §6: "next two events". Two, not a scrollable list — that is what `/events` is. */
 const HOME_EVENT_COUNT = 2;
 
-export default async function Home() {
+export async function HomeScreen() {
   const context = await getAuthenticatedContext();
   if (context === null) {
     redirect("/sign-in");
